@@ -523,6 +523,12 @@
   }
   .discover-search input::placeholder{color:var(--muted);}
 
+  /* Desktop-only featured banner — see the discover-active block below.
+     Hidden by default so it never appears on mobile. */
+  .discover-hero{
+    display:none;
+  }
+
   .discover-tabs{
     display:flex;gap:8px;
     padding:14px 18px 10px;
@@ -642,5 +648,286 @@
     .statusbar,
     .caption{
       display:none;
+    }
+  }
+
+  /* Desktop sidebar (hidden everywhere except the Discover screen's
+     wide layout below). */
+  .sidebar{
+    display:none;
+  }
+  .sidebar-logo{
+    font-family:'Anton',sans-serif;
+    font-size:20px;
+    letter-spacing:1px;
+    color:#fff;
+    padding:4px 12px 28px;
+  }
+  .sidebar-nav{
+    display:flex;
+    flex-direction:column;
+    gap:4px;
+  }
+  .sidebar-item{
+    display:flex;align-items:center;gap:12px;
+    background:none;
+    border:none;
+    color:var(--muted);
+    font-family:'Manrope',sans-serif;
+    font-weight:700;
+    font-size:14px;
+    padding:11px 12px;
+    border-radius:10px;
+    cursor:pointer;
+    text-align:left;
+    width:100%;
+  }
+  .sidebar-item svg{width:20px;height:20px;flex-shrink:0;}
+  .sidebar-item:hover{background:rgba(255,255,255,0.05);}
+  .sidebar-item.active{
+    background:rgba(125,179,89,0.14);
+    color:var(--leaf-light);
+  }
+  .sidebar-item:disabled{
+    cursor:default;
+    opacity:0.45;
+  }
+  .sidebar-item:disabled:hover{background:none;}
+
+  /* `.feed-stage` groups the elements that render ON TOP of the video
+     (the video itself, vignette, play/pause pulse, episode-progress
+     spine, brand/coins topbar, dot pager). display:contents makes this
+     wrapper invisible to layout by default, so on mobile — and inside
+     the illustrated phone frame between 600–900px — every one of those
+     children positions itself exactly as if it were still a direct
+     child of `#feed`, i.e. exactly as before this wrapper existed. Only
+     the desktop For You layout below gives `.feed-stage` a real box. */
+  .feed-stage{
+    display:contents;
+  }
+
+  /* Chrome shared by both screens at the desktop breakpoint: the
+     sidebar, and stripping the illustrated phone-frame chrome (notch,
+     fake status bar, bottom nav — the sidebar replaces bottom-nav's
+     job). This used to be scoped to body.discover-active only; both
+     screens now get this same shell, and each screen's own block below
+     (`body.discover-active …` / `body.feed-active …`) only styles what
+     goes *inside* it. */
+  @media (min-width: 900px){
+    body{
+      padding:0;
+    }
+    .stage{
+      flex-direction:row;
+      align-items:stretch;
+      justify-content:flex-start;
+      gap:0;
+      width:100%;
+      height:100vh;
+      height:100dvh;
+    }
+    .sidebar{
+      display:flex;
+      flex-direction:column;
+      width:230px;
+      flex-shrink:0;
+      padding:28px 14px;
+      background:var(--panel);
+      border-right:1px solid rgba(255,255,255,0.06);
+      box-sizing:border-box;
+    }
+    .caption{
+      display:none;
+    }
+    .phone{
+      width:auto;
+      max-width:none;
+      flex:1;
+      min-width:0;
+      height:100vh;
+      height:100dvh;
+      aspect-ratio:auto;
+      border:none;
+      border-radius:0;
+      box-shadow:none;
+    }
+    .notch,
+    .statusbar,
+    .bottomnav{
+      display:none;
+    }
+
+    /* ----- Discover ("Home") screen's own desktop layout ----- */
+
+    /* Content column: search/hero/tabs/grid all share this same capped,
+       centered width so the page reads as one designed column instead
+       of cards scattered across an ultrawide window. 1400px sits in the
+       middle of a comfortable range (roughly 1300–1500px) for a 2–6
+       column poster grid — checked at 1024px, ~1400px and ~1800px+
+       window widths; narrower than that it just fills the available
+       space as it already did, wider than that it stops growing and
+       centers instead of stretching the grid painfully thin. */
+    body.discover-active .discover-header,
+    body.discover-active .discover-hero,
+    body.discover-active .discover-tabs,
+    body.discover-active .discover-body{
+      width:100%;
+      max-width:1400px;
+      margin:0 auto;
+      box-sizing:border-box;
+    }
+    body.discover-active .discover-header{
+      padding:36px 44px 0;
+    }
+    body.discover-active .discover-search{
+      max-width:480px;
+      padding:12px 16px;
+    }
+    body.discover-active .discover-search input{
+      font-size:14px;
+    }
+    body.discover-active .discover-hero{
+      display:block;
+      position:relative;
+      height:320px;
+      margin-top:28px;
+      padding:0 44px;
+      overflow:hidden;
+    }
+    body.discover-active .hero-media{
+      position:absolute;
+      inset:0;
+      border-radius:16px;
+      overflow:hidden;
+    }
+    body.discover-active .hero-media img{
+      width:100%;height:100%;object-fit:cover;display:block;
+    }
+    body.discover-active .hero-gradient{
+      position:absolute;inset:0;
+      background:
+        linear-gradient(100deg, rgba(13,19,14,0.95) 0%, rgba(13,19,14,0.6) 42%, rgba(13,19,14,0.05) 78%),
+        linear-gradient(0deg, rgba(13,19,14,0.75) 0%, rgba(13,19,14,0) 45%);
+    }
+    body.discover-active .hero-content{
+      position:relative;
+      height:100%;
+      display:flex;
+      flex-direction:column;
+      justify-content:flex-end;
+      max-width:480px;
+      padding:0 0 32px 40px;
+    }
+    body.discover-active .hero-title{
+      font-family:'Anton',sans-serif;
+      font-size:36px;
+      letter-spacing:0.5px;
+      color:#fff;
+      margin:0 0 10px;
+      text-shadow:0 2px 14px rgba(0,0,0,0.5);
+    }
+    body.discover-active .hero-synopsis{
+      font-size:14px;
+      line-height:1.5;
+      color:var(--muted);
+      margin:0 0 18px;
+      display:-webkit-box;
+      -webkit-line-clamp:2;
+      -webkit-box-orient:vertical;
+      overflow:hidden;
+    }
+    body.discover-active .hero-play{
+      align-self:flex-start;
+      display:flex;align-items:center;gap:8px;
+      background:var(--leaf);
+      color:#0D130E;
+      border:none;
+      font-family:'Manrope',sans-serif;
+      font-weight:800;
+      font-size:14px;
+      padding:12px 22px;
+      border-radius:10px;
+      cursor:pointer;
+    }
+    body.discover-active .hero-play:active{
+      background:var(--leaf-deep);
+      color:#fff;
+    }
+    body.discover-active .discover-tabs{
+      padding:22px 44px 16px;
+      overflow-x:visible;
+    }
+    body.discover-active .dtab{
+      font-size:13px;
+      padding:9px 18px;
+    }
+    body.discover-active .discover-body{
+      padding:6px 44px 60px;
+    }
+    body.discover-active .discover-note{
+      text-align:left;
+      font-size:13px;
+    }
+    body.discover-active .genre-chips{
+      margin-bottom:20px;
+    }
+    body.discover-active .poster-grid{
+      grid-template-columns:repeat(auto-fill, minmax(170px, 1fr));
+      gap:22px;
+    }
+    body.discover-active .poster-card .poster-title{
+      font-size:13px;
+      padding:26px 10px 10px;
+    }
+
+    /* ----- For You screen's own desktop layout -----
+       TikTok-style: no illustrated phone frame, video centered as its
+       own tall panel, with the action icons and the series info sitting
+       beside it instead of overlaid on top of it. `.feed-stage` (video +
+       vignette + play/pause pulse + progress spine + brand/coins topbar
+       + dot pager) becomes a real sized box here; `.actionrail` and
+       `.info` drop their mobile absolute-overlay positioning and become
+       ordinary flex columns next to it. Nothing inside any of these
+       three pieces changes — same elements, same IDs, same click
+       handlers, same data, only their position and the video's frame. */
+    body.feed-active #feed{
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      gap:44px;
+      padding:0 44px;
+      box-sizing:border-box;
+    }
+    body.feed-active .feed-stage{
+      display:block;
+      position:relative;
+      flex-shrink:0;
+      width:auto;
+      height:min(82vh, 780px);
+      aspect-ratio:340/706;
+      overflow:hidden;
+      box-shadow:0 20px 60px -20px rgba(0,0,0,0.6);
+    }
+    body.feed-active .actionrail{
+      position:static;
+      right:auto;
+      bottom:auto;
+      flex-shrink:0;
+    }
+    body.feed-active .info{
+      position:static;
+      left:auto;
+      right:auto;
+      bottom:auto;
+      width:min(320px, 26vw);
+      max-width:360px;
+      flex-shrink:0;
+    }
+    body.feed-active .info .title{
+      font-size:34px;
+    }
+    body.feed-active .info .synopsis{
+      max-width:none;
+      font-size:14px;
     }
   }

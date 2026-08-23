@@ -58,16 +58,33 @@ const ctaRow = document.querySelector('.ctarow');
 const discoverScreen = document.getElementById('discoverScreen');
 const navHome = document.getElementById('navHome');
 const navForYou = document.getElementById('navForYou');
+// Desktop-only sidebar nav (>=900px, Discover screen's own layout — see
+// styles.css). Same two destinations as navHome/navForYou above, just a
+// second set of clickable elements for the wide-screen layout; they call
+// the exact same showScreen() function, no separate navigation logic.
+const sidebarHome = document.getElementById('sidebarHome');
+const sidebarForYou = document.getElementById('sidebarForYou');
 
 // Screen switching between the "Home" (Discover) grid and the "For You"
 // swipe feed. Both screens stay mounted and populated at all times —
 // this just toggles which one is visible, so switching back to a
 // screen never re-fetches or re-renders it from scratch.
+//
+// Also toggles `discover-active` / `feed-active` on <body>: above the
+// desktop breakpoint, styles.css uses these to switch each screen into
+// its own desktop layout (sidebar + grid for Discover, sidebar + centered
+// video + beside-video info/actions for For You) instead of the mobile
+// phone-frame presentation. Below the breakpoint neither class does
+// anything — mobile stays exactly as it was.
 function showScreen(name){
   feed.classList.toggle('screen-hidden', name !== 'feed');
   discoverScreen.classList.toggle('screen-hidden', name !== 'discover');
   navHome.classList.toggle('active', name === 'discover');
   navForYou.classList.toggle('active', name === 'feed');
+  sidebarHome.classList.toggle('active', name === 'discover');
+  sidebarForYou.classList.toggle('active', name === 'feed');
+  document.body.classList.toggle('discover-active', name === 'discover');
+  document.body.classList.toggle('feed-active', name === 'feed');
 }
 
 // Used by discover.js: open a specific series (by its index in `slides`)
@@ -81,6 +98,8 @@ function openSeriesInFeed(i){
 
 navHome.addEventListener('click', ()=> showScreen('discover'));
 navForYou.addEventListener('click', ()=> showScreen('feed'));
+sidebarHome.addEventListener('click', ()=> showScreen('discover'));
+sidebarForYou.addEventListener('click', ()=> showScreen('feed'));
 
 function buildSpine(currentEp,totalEp){
   const count = 14;

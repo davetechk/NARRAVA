@@ -21,6 +21,7 @@ let selectedGenreIds = new Set();
 const discoverSearchInput = document.getElementById('discoverSearchInput');
 const discoverTabs = document.getElementById('discoverTabs');
 const discoverBody = document.getElementById('discoverBody');
+const discoverHero = document.getElementById('discoverHero');
 
 function posterArtSrc(slide){
   return (slide.art && slide.art.type === 'img') ? slide.art.src : '';
@@ -108,6 +109,35 @@ function renderDiscoverBody(){
   });
 }
 
+// Desktop-only featured banner above the tabs (hidden on mobile via
+// CSS). Picks one series at random from the same `slides` app.js
+// already loaded — no extra fetch, no invented "featured" flag, and
+// this pick is made once so it doesn't jump around every time the
+// tab/search/genre selection re-renders the grid below it.
+function renderHero(){
+  if(!discoverHero) return;
+  if(slides.length === 0){
+    discoverHero.innerHTML = '';
+    return;
+  }
+
+  const s = slides[Math.floor(Math.random() * slides.length)];
+  const src = posterArtSrc(s);
+  const img = src ? '<img src="' + src + '" alt="">' : '';
+
+  discoverHero.innerHTML =
+    '<div class="hero-media">' + img + '<div class="hero-gradient"></div></div>' +
+    '<div class="hero-content">' +
+      '<h2 class="hero-title">' + s.title + '</h2>' +
+      '<p class="hero-synopsis">' + s.synopsis + '</p>' +
+      '<button class="hero-play" id="heroPlayBtn" type="button">▶ Watch Now</button>' +
+    '</div>';
+
+  document.getElementById('heroPlayBtn').addEventListener('click', () => {
+    openSeriesInFeed(slides.indexOf(s));
+  });
+}
+
 discoverTabs.addEventListener('click', e => {
   const btn = e.target.closest('.dtab');
   if(!btn) return;
@@ -130,6 +160,7 @@ async function initDiscover(){
   });
 
   await slidesReady; // app.js: don't render the grid until slides exist
+  renderHero();
   renderDiscoverBody();
 }
 

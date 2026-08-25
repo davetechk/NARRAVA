@@ -56,14 +56,18 @@ const payBtn = document.getElementById('payBtn');
 const toast = document.getElementById('toast');
 const ctaRow = document.querySelector('.ctarow');
 const discoverScreen = document.getElementById('discoverScreen');
+const profileScreen = document.getElementById('profileScreen');
 const navHome = document.getElementById('navHome');
 const navForYou = document.getElementById('navForYou');
+const navProfile = document.getElementById('navProfile');
 // Desktop-only sidebar nav (>=900px, Discover screen's own layout — see
-// styles.css). Same two destinations as navHome/navForYou above, just a
-// second set of clickable elements for the wide-screen layout; they call
-// the exact same showScreen() function, no separate navigation logic.
+// styles.css). Same destinations as navHome/navForYou/navProfile above,
+// just a second set of clickable elements for the wide-screen layout;
+// they call the exact same showScreen() function, no separate
+// navigation logic.
 const sidebarHome = document.getElementById('sidebarHome');
 const sidebarForYou = document.getElementById('sidebarForYou');
+const sidebarProfile = document.getElementById('sidebarProfile');
 
 // Screen switching between the "Home" (Discover) grid and the "For You"
 // swipe feed. Both screens stay mounted and populated at all times —
@@ -79,10 +83,13 @@ const sidebarForYou = document.getElementById('sidebarForYou');
 function showScreen(name){
   feed.classList.toggle('screen-hidden', name !== 'feed');
   discoverScreen.classList.toggle('screen-hidden', name !== 'discover');
+  profileScreen.classList.toggle('screen-hidden', name !== 'profile');
   navHome.classList.toggle('active', name === 'discover');
   navForYou.classList.toggle('active', name === 'feed');
+  navProfile.classList.toggle('active', name === 'profile');
   sidebarHome.classList.toggle('active', name === 'discover');
   sidebarForYou.classList.toggle('active', name === 'feed');
+  sidebarProfile.classList.toggle('active', name === 'profile');
   document.body.classList.toggle('discover-active', name === 'discover');
   document.body.classList.toggle('feed-active', name === 'feed');
 }
@@ -100,6 +107,13 @@ navHome.addEventListener('click', ()=> showScreen('discover'));
 navForYou.addEventListener('click', ()=> showScreen('feed'));
 sidebarHome.addEventListener('click', ()=> showScreen('discover'));
 sidebarForYou.addEventListener('click', ()=> showScreen('feed'));
+
+// Profile: check the current Supabase Auth session each time the tab is
+// opened (renderProfileScreen, defined in auth.js) rather than tracking
+// it continuously — simple, and sufficient since nothing else on screen
+// depends on auth state while the user is on a different tab.
+navProfile.addEventListener('click', ()=> { showScreen('profile'); renderProfileScreen(); });
+sidebarProfile.addEventListener('click', ()=> { showScreen('profile'); renderProfileScreen(); });
 
 function buildSpine(currentEp,totalEp){
   const count = 14;

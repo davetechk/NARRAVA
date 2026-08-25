@@ -624,6 +624,261 @@
     padding:40px 20px;
   }
 
+  /* Profile screen: always the same menu, logged in or out (DramaBox-
+     style) — signing in happens through the popup below, opened from
+     inside this screen, instead of replacing it. profile-panel is
+     capped and centered so the menu reads as one designed column at
+     the wide desktop width too, same idea as discover-body. */
+  .profile{
+    position:absolute;
+    inset:0;
+    overflow-y:auto;
+    box-sizing:border-box;
+    padding:50px 18px 96px;
+  }
+  .profile-panel{
+    width:100%;
+    max-width:420px;
+    margin:0 auto;
+  }
+
+  .profile-header{
+    display:flex;
+    align-items:center;
+    gap:14px;
+    margin-bottom:18px;
+  }
+  .profile-avatar{
+    width:56px;height:56px;
+    flex-shrink:0;
+    border-radius:50%;
+    background:rgba(255,255,255,0.06);
+    border:1px solid rgba(255,255,255,0.1);
+    display:flex;align-items:center;justify-content:center;
+    color:var(--muted);
+  }
+  .profile-avatar svg{width:28px;height:28px;}
+  .profile-id{min-width:0;}
+  .profile-email{
+    font-size:15px;
+    font-weight:800;
+    color:var(--text);
+    word-break:break-all;
+  }
+  .profile-login-row{
+    display:flex;align-items:center;gap:6px;
+    background:none;border:none;
+    color:var(--text);
+    font-family:'Manrope',sans-serif;
+    font-weight:800;font-size:16px;
+    padding:0;cursor:pointer;
+  }
+  .profile-login-row svg{width:16px;height:16px;color:var(--muted);}
+
+  .profile-banner{
+    display:flex;align-items:center;justify-content:space-between;
+    width:100%;
+    background:linear-gradient(120deg, rgba(232,184,92,0.18), rgba(125,179,89,0.14));
+    border:1px solid rgba(232,184,92,0.35);
+    border-radius:14px;
+    padding:14px 16px;
+    margin-bottom:16px;
+    cursor:pointer;
+    text-align:left;
+    color:var(--text);
+  }
+  .profile-banner-title{
+    font-weight:800;font-size:14px;color:var(--gold);
+    margin-bottom:2px;
+  }
+  .profile-banner-sub{
+    font-size:11.5px;color:var(--muted);
+  }
+  .profile-banner svg{width:16px;height:16px;color:var(--gold);flex-shrink:0;}
+
+  .profile-features{
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    gap:8px;
+    margin-bottom:20px;
+  }
+  .profile-feature{
+    display:flex;flex-direction:column;align-items:center;gap:6px;
+    background:rgba(255,255,255,0.04);
+    border:1px solid rgba(255,255,255,0.08);
+    border-radius:12px;
+    padding:12px 4px;
+    font-size:10.5px;
+    font-weight:700;
+    color:var(--muted);
+    text-align:center;
+  }
+  .profile-feature svg{width:18px;height:18px;color:var(--leaf-light);}
+
+  .profile-menu{
+    background:var(--panel-2);
+    border:1px solid rgba(255,255,255,0.08);
+    border-radius:14px;
+    margin-bottom:16px;
+    overflow:hidden;
+  }
+  .profile-row{
+    display:flex;align-items:center;gap:12px;
+    width:100%;
+    background:none;border:none;
+    border-bottom:1px solid rgba(255,255,255,0.06);
+    color:var(--text);
+    font-family:'Manrope',sans-serif;
+    font-weight:700;font-size:13.5px;
+    padding:14px 16px;
+    cursor:pointer;
+    text-align:left;
+  }
+  .profile-row:last-child{border-bottom:none;}
+  .profile-row-icon{
+    display:flex;flex-shrink:0;color:var(--leaf-light);
+  }
+  .profile-row-icon svg{width:19px;height:19px;}
+  .profile-row-label{flex:1;min-width:0;}
+  .profile-row-value{
+    color:var(--gold);
+    font-weight:800;
+    margin-right:2px;
+  }
+  .profile-row-chevron{
+    display:flex;flex-shrink:0;color:var(--muted);
+  }
+  .profile-row-chevron svg{width:15px;height:15px;}
+
+  /* Sign Up / Log In popup, opened from inside the Profile screen above
+     instead of replacing it — same show/hide pattern as the Get Coins
+     sheet (.sheet-backdrop), just centered instead of docked to the
+     bottom. */
+  .auth-modal-backdrop{
+    position:absolute;inset:0;
+    background:rgba(4,7,5,0.65);
+    display:flex;align-items:center;justify-content:center;
+    padding:20px;
+    box-sizing:border-box;
+    opacity:0;pointer-events:none;
+    transition:opacity 0.25s ease;
+    z-index:120;
+  }
+  .auth-modal-backdrop.open{opacity:1;pointer-events:auto;}
+  .auth-modal{
+    position:relative;
+    width:100%;
+    max-width:320px;
+    transform:translateY(10px);
+    transition:transform 0.25s ease;
+  }
+  .auth-modal-backdrop.open .auth-modal{transform:translateY(0);}
+  .auth-modal-close{
+    position:absolute;
+    top:-12px;right:-8px;
+    width:28px;height:28px;
+    border-radius:50%;
+    background:var(--panel);
+    border:1px solid rgba(255,255,255,0.12);
+    color:var(--text);
+    font-size:12px;
+    cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+    z-index:2;
+  }
+  .auth-card{
+    background:var(--panel-2);
+    border:1px solid rgba(255,255,255,0.08);
+    border-radius:16px;
+    padding:24px 22px;
+  }
+  .auth-title{
+    font-family:'Anton',sans-serif;
+    font-size:22px;
+    letter-spacing:0.5px;
+    color:#fff;
+    margin:0 0 16px;
+  }
+  .auth-error{
+    display:none;
+    font-size:12.5px;
+    line-height:1.4;
+    color:#F2A0A0;
+    background:rgba(242,160,160,0.1);
+    border:1px solid rgba(242,160,160,0.35);
+    border-radius:8px;
+    padding:9px 11px;
+    margin-bottom:14px;
+  }
+  .auth-error.show{display:block;}
+  .auth-error.note{
+    color:var(--leaf-light);
+    background:rgba(125,179,89,0.12);
+    border-color:rgba(125,179,89,0.4);
+  }
+  .auth-label{
+    display:block;
+    font-size:11.5px;
+    font-weight:700;
+    color:var(--muted);
+    text-transform:uppercase;
+    letter-spacing:0.5px;
+    margin:0 0 6px;
+  }
+  .auth-input{
+    display:block;
+    width:100%;
+    background:rgba(255,255,255,0.05);
+    border:1px solid rgba(255,255,255,0.12);
+    border-radius:10px;
+    padding:10px 12px;
+    margin-bottom:14px;
+    color:var(--text);
+    font-family:'Manrope',sans-serif;
+    font-size:14px;
+    box-sizing:border-box;
+  }
+  .auth-input:focus{
+    outline:none;
+    border-color:var(--leaf);
+  }
+  .auth-submit{
+    width:100%;
+    background:var(--leaf);
+    color:#0D130E;
+    border:none;
+    font-family:'Manrope',sans-serif;
+    font-weight:800;
+    font-size:14px;
+    padding:12px;
+    border-radius:10px;
+    cursor:pointer;
+  }
+  .auth-submit:disabled{
+    opacity:0.6;
+    cursor:default;
+  }
+  .auth-submit:active:not(:disabled){
+    background:var(--leaf-deep);
+    color:#fff;
+  }
+  .auth-switch{
+    text-align:center;
+    font-size:12.5px;
+    color:var(--muted);
+    margin-top:16px;
+  }
+  .auth-link{
+    background:none;
+    border:none;
+    padding:0;
+    color:var(--leaf-light);
+    font-family:'Manrope',sans-serif;
+    font-weight:700;
+    font-size:12.5px;
+    cursor:pointer;
+    text-decoration:underline;
+  }
   /* Real phones / narrow browser windows: fill the viewport, no
      illustrated phone-frame chrome (that chrome is only useful for
      previewing the mobile-first layout on a wide desktop window). */
@@ -794,6 +1049,17 @@
       padding:0 44px;
       overflow:hidden;
     }
+    body.discover-active .hero-slide{
+      position:absolute;
+      inset:0;
+      opacity:0;
+      pointer-events:none;
+      transition:opacity 0.5s ease;
+    }
+    body.discover-active .hero-slide.active{
+      opacity:1;
+      pointer-events:auto;
+    }
     body.discover-active .hero-media{
       position:absolute;
       inset:0;
@@ -852,6 +1118,47 @@
     body.discover-active .hero-play:active{
       background:var(--leaf-deep);
       color:#fff;
+    }
+    body.discover-active .hero-arrow{
+      position:absolute;
+      top:50%;
+      transform:translateY(-50%);
+      z-index:5;
+      width:36px;height:36px;
+      border-radius:50%;
+      background:rgba(4,7,5,0.5);
+      border:1px solid rgba(255,255,255,0.18);
+      color:#fff;
+      font-size:20px;
+      line-height:1;
+      display:flex;align-items:center;justify-content:center;
+      cursor:pointer;
+    }
+    body.discover-active .hero-arrow:hover{
+      background:rgba(4,7,5,0.75);
+    }
+    body.discover-active .hero-arrow-prev{left:60px;}
+    body.discover-active .hero-arrow-next{right:60px;}
+    body.discover-active .hero-dots{
+      position:absolute;
+      z-index:5;
+      right:60px;
+      bottom:16px;
+      display:flex;
+      gap:6px;
+    }
+    body.discover-active .hero-dot{
+      width:8px;height:8px;
+      border-radius:50%;
+      background:rgba(255,255,255,0.35);
+      border:none;
+      padding:0;
+      cursor:pointer;
+    }
+    body.discover-active .hero-dot.active{
+      background:var(--leaf-light);
+      width:22px;
+      border-radius:4px;
     }
     body.discover-active .discover-tabs{
       padding:22px 44px 16px;

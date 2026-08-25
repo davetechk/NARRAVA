@@ -26,7 +26,7 @@ async function fetchSlides() {
   try {
     const { data: seriesRows, error: seriesError } = await supabaseClient
       .from('series')
-      .select('id, title, description, cover_image_url, free_episode_count, created_at');
+      .select('id, title, description, cover_image_url, free_episode_count, created_at, featured_at');
 
     if (seriesError) throw seriesError;
     if (!seriesRows || seriesRows.length === 0) return [];
@@ -57,6 +57,7 @@ async function fetchSlides() {
         return {
           id: series.id,
           createdAt: series.created_at,
+          featuredAt: series.featured_at,
           title: series.title,
           synopsis: series.description || '',
           epBadge: 'EP ' + currentEp + ' · ' + totalEp,

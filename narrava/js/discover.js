@@ -110,32 +110,112 @@ function renderDiscoverBody(){
 }
 
 // Desktop-only featured banner above the tabs (hidden on mobile via
-// CSS). Picks one series at random from the same `slides` app.js
-// already loaded — no extra fetch, no invented "featured" flag, and
-// this pick is made once so it doesn't jump around every time the
-// tab/search/genre selection re-renders the grid below it.
-function renderHero(){
-  if(!discoverHero) return;
-  if(slides.length === 0){
-    discoverHero.innerHTML = '';
-    return;
-  }
+// CSS). Built from the same `slides` app.js already loaded — no extra
+// fetch. `featured_at` (set via Supabase, no admin UI for it yet) is
+// the only source of truth for what's featured; nothing here invents a
+// second curation concept.
+let heroItems = [];
+let heroIndex = 0;
+let heroTimer = null;
+const HERO_AUTO_ADVANCE_MS = 6000;
 
-  const s = slides[Math.floor(Math.random() * slides.length)];
+// Up to 3 series with a non-null featured_at, most recently featured
+// first. If none are featured yet (no admin panel exists to set this),
+// fall back to one random series so the hero never just goes blank.
+function pickHeroItems(){
+  const featured = slides
+    .filter(s => s.featuredAt)
+    .sort((a, b) => new Date(b.featuredAt) - new Date(a.featuredAt))
+    .slice(0, 3);
+
+  if(featured.length > 0) return featured;
+  if(slides.length === 0) return [];
+  return [ slides[Math.floor(Math.random() * slides.length)] ];
+}
+
+function heroSlideMarkup(s){
   const src = posterArtSrc(s);
   const img = src ? '<img src="' + src + '" alt="">' : '';
-
-  discoverHero.innerHTML =
+  return (
     '<div class="hero-media">' + img + '<div class="hero-gradient"></div></div>' +
     '<div class="hero-content">' +
       '<h2 class="hero-title">' + s.title + '</h2>' +
       '<p class="hero-synopsis">' + s.synopsis + '</p>' +
-      '<button class="hero-play" id="heroPlayBtn" type="button">▶ Watch Now</button>' +
-    '</div>';
+      '<button class="hero-play" type="button">▶ Watch Now</button>' +
+    '</div>'
+  );
+}
 
-  document.getElementById('heroPlayBtn').addEventListener('click', () => {
-    openSeriesInFeed(slides.indexOf(s));
+function goToHero(i){
+  if(heroItems.length === 0) return;
+  heroIndex = (i + heroItems.length) % heroItems.length;
+  discoverHero.querySelectorAll('.hero-slide').forEach((el, idx) => {
+    el.classList.toggle('active', idx === heroIndex);
   });
+  discoverHero.querySelectorAll('.hero-dot').forEach((el, idx) => {
+    el.classList.toggle('active', idx === heroIndex);
+  });
+}
+
+function restartHeroAutoAdvance(){
+  if(heroTimer) clearInterval(heroTimer);
+  if(heroItems.length < 2) return;
+  heroTimer = setInterval(() => goToHero(heroIndex + 1), HERO_AUTO_ADVANCE_MS);
+}
+
+function renderHero(){
+  if(!discoverHero) return;
+
+  if(heroTimer){ clearInterval(heroTimer); heroTimer = null; }
+  heroItems = pickHeroItems();
+  heroIndex = 0;
+
+  if(heroItems.length === 0){
+    discoverHero.innerHTML = '';
+    return;
+  }
+
+  const slidesHtml = heroItems.map((s, i) =>
+    '<div class="hero-slide' + (i === 0 ? ' active' : '') + '">' + heroSlideMarkup(s) + '</div>'
+  ).join('');
+
+  // Arrows/dots only make sense with more than one item — with a
+  // single featured (or fallback) series this just renders as the
+  // plain single banner it always was.
+  const controlsHtml = heroItems.length > 1
+    ? '<button class="hero-arrow hero-arrow-prev" type="button" aria-label="Previous">‹</button>' +
+      '<button class="hero-arrow hero-arrow-next" type="button" aria-label="Next">›</button>' +
+      '<div class="hero-dots">' +
+        heroItems.map((_, i) => '<button class="hero-dot' + (i === 0 ? ' active' : '') + '" type="button" data-i="' + i + '"></button>').join('') +
+      '</div>'
+    : '';
+
+  discoverHero.innerHTML = slidesHtml + controlsHtml;
+
+  discoverHero.querySelectorAll('.hero-slide').forEach((slideEl, i) => {
+    slideEl.querySelector('.hero-play').addEventListener('click', () => {
+      openSeriesInFeed(slides.indexOf(heroItems[i]));
+    });
+  });
+
+  if(heroItems.length > 1){
+    discoverHero.querySelector('.hero-arrow-prev').addEventListener('click', () => {
+      goToHero(heroIndex - 1);
+      restartHeroAutoAdvance();
+    });
+    discoverHero.querySelector('.hero-arrow-next').addEventListener('click', () => {
+      goToHero(heroIndex + 1);
+      restartHeroAutoAdvance();
+    });
+    discoverHero.querySelectorAll('.hero-dot').forEach(dot => {
+      dot.addEventListener('click', () => {
+        goToHero(parseInt(dot.dataset.i, 10));
+        restartHeroAutoAdvance();
+      });
+    });
+  }
+
+  restartHeroAutoAdvance();
 }
 
 discoverTabs.addEventListener('click', e => {

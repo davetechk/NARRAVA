@@ -15,6 +15,7 @@
 const profilePanel = document.getElementById('profilePanel');
 
 let currentSession = null; // Supabase session, or null when signed out
+let isAdmin = false; // profiles.is_admin for the current session, false when signed out
 
 const PROFILE_ICONS = {
   chevron: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>',
@@ -27,7 +28,8 @@ const PROFILE_ICONS = {
   language: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 2.5 14.3 0 18M12 3c-2.5 2.7-2.5 14.3 0 18"/></svg>',
   help: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 015 .5c0 1.7-2.5 1.7-2.5 3.5M12 17h.01"/></svg>',
   signout: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>',
-  avatar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>'
+  avatar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>',
+  admin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>'
 };
 
 function menuRow(id, label, icon, valueHtml){
@@ -87,6 +89,10 @@ function renderProfileMenu(){
       menuRow('rowHelp', 'Help & Feedback', PROFILE_ICONS.help) +
     '</div>' +
 
+    (isAdmin
+      ? '<div class="profile-menu">' + menuRow('rowAdminPanel', 'Admin Panel', PROFILE_ICONS.admin) + '</div>'
+      : '') +
+
     (loggedIn
       ? '<div class="profile-menu">' + menuRow('rowSignOut', 'Sign Out', PROFILE_ICONS.signout) + '</div>'
       : '');
@@ -116,6 +122,14 @@ function wireProfileRows(loggedIn){
     document.getElementById(id).addEventListener('click', () => showToast('Coming soon'));
   });
 
+  const adminRow = document.getElementById('rowAdminPanel');
+  if(adminRow){
+    adminRow.addEventListener('click', () => {
+      showScreen('admin');
+      renderAdminScreen();
+    });
+  }
+
   const signOutRow = document.getElementById('rowSignOut');
   if(signOutRow){
     signOutRow.addEventListener('click', async () => {
@@ -130,8 +144,31 @@ function wireProfileRows(loggedIn){
       }
 
       currentSession = null;
+      isAdmin = false;
       renderProfileMenu();
     });
+  }
+}
+
+// Same pattern as loadWalletBalance below: a normal select-own read on
+// the current user's own profiles row, governed by the existing RLS
+// policy — this only decides whether the Admin Panel row is drawn, the
+// real gate is the admin-only RLS policies on series / series_genres.
+async function checkIsAdmin(){
+  if(!currentSession){ isAdmin = false; return; }
+
+  try {
+    const { data, error } = await supabaseClient
+      .from('profiles')
+      .select('is_admin')
+      .eq('id', currentSession.user.id)
+      .single();
+
+    if(error) throw error;
+    isAdmin = !!(data && data.is_admin);
+  } catch(err){
+    console.error('Narrava: failed to check admin status', err);
+    isAdmin = false;
   }
 }
 
@@ -164,5 +201,6 @@ async function renderProfileScreen(){
     console.error('Narrava: failed to check auth session', err);
     currentSession = null;
   }
+  await checkIsAdmin();
   renderProfileMenu();
 }

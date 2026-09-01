@@ -19,6 +19,12 @@ const ADMIN_BACK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentCol
 let adminSeries = [];       // [{id, title, description, cover_image_url, free_episode_count, featured_at}]
 let adminGenres = [];       // [{id, name}]
 let adminSeriesGenres = {}; // series_id -> Set(genre_id)
+let adminTotalUsers = null;   // admin_total_users() RPC result, or null if it failed / isn't available
+let adminTotalRevenue = null; // admin_total_revenue() RPC result, or null if it failed / isn't available
+
+function formatNaira(amount){
+  return '₦' + Number(amount).toLocaleString('en-NG');
+}
 
 function adminHeaderHtml(){
   return '<div class="admin-header">' +
@@ -27,28 +33,46 @@ function adminHeaderHtml(){
   '</div>';
 }
 
-// Three real, current counts — derived from the same series/genres rows
-// already held in memory for the list below, not a separate query, so
-// they can never drift out of sync with what the list itself shows.
+// Five real, current numbers. The first three are derived from the same
+// series/genres rows already held in memory for the list below — no
+// separate query, so they can never drift out of sync with what the
+// list itself shows. Registered Users and Total Revenue come from the
+// admin_total_users()/admin_total_revenue() RPCs read in loadAdminData;
+// either one shows as '—' instead of the panel breaking if that RPC
+// failed or came back null (loadAdminData leaves them at null in that
+// case, never at a raw error object or the string "null").
 function statsHtml(){
   const totalSeries = adminSeries.length;
   const totalGenres = adminGenres.length;
   const featuredNow = adminSeries.filter(s => !!s.featured_at).length;
 
-  return '<div class="admin-stats" id="adminStats">' +
+  const totalUsersDisplay = (adminTotalUsers === null || adminTotalUsers === undefined)
+    ? '—' : adminTotalUsers;
+  const totalRevenueDisplay = (adminTotalRevenue === null || adminTotalRevenue === undefined)
+    ? '—' : formatNaira(adminTotalRevenue);
+
+  return '<div class="admin-stats">' +
     '<div class="admin-stat"><div class="admin-stat-value">' + totalSeries + '</div><div class="admin-stat-label">Total Series</div></div>' +
     '<div class="admin-stat"><div class="admin-stat-value">' + totalGenres + '</div><div class="admin-stat-label">Total Genres</div></div>' +
     '<div class="admin-stat"><div class="admin-stat-value">' + featuredNow + '</div><div class="admin-stat-label">Featured Now</div></div>' +
-  '</div>';
+    '<div class="admin-stat"><div class="admin-stat-value">' + totalUsersDisplay + '</div><div class="admin-stat-label">Registered Users</div></div>' +
+    '<div class="admin-stat"><div class="admin-stat-value">' + totalRevenueDisplay + '</div><div class="admin-stat-label">Total Revenue</div></div>' +
+  '</div>' +
+  // Same muted, centered note style as the Discover screen's "Rankings
+  // coming soon" note — an honest placeholder, not a sixth stat card,
+  // so it never reads as a broken or missing number.
+  '<div class="discover-note">Subscriptions launch in Phase 2 — no subscription data exists yet.</div>';
 }
 
-// Re-renders just the stat row in place (used after a featured toggle,
-// which updates a single series' state without redrawing the whole
-// panel — the full create-series flow already re-renders everything).
+// Re-renders just the stat row + note in place (used after a featured
+// toggle, which updates a single series' state without redrawing the
+// whole panel — the full create-series flow already re-renders
+// everything). Targets the wrapper div, not .admin-stats itself, since
+// statsHtml() now returns two sibling elements.
 function renderStats(){
   const statsEl = document.getElementById('adminStats');
   if(!statsEl) return;
-  statsEl.outerHTML = statsHtml();
+  statsEl.innerHTML = statsHtml();
 }
 
 function createFormHtml(){
@@ -125,7 +149,7 @@ function renderAdminList(){
 function renderAdminPanel(){
   adminPanel.innerHTML =
     adminHeaderHtml() +
-    statsHtml() +
+    '<div id="adminStats">' + statsHtml() + '</div>' +
     '<div class="admin-section-title">Create Series</div>' +
     createFormHtml() +
     '<div class="admin-section-title">Existing Series</div>' +
@@ -138,10 +162,12 @@ function renderAdminPanel(){
 
 async function loadAdminData(){
   try {
-    const [seriesResult, genreResult, linkResult] = await Promise.all([
+    const [seriesResult, genreResult, linkResult, usersResult, revenueResult] = await Promise.all([
       supabaseClient.from('series').select('id, title, description, cover_image_url, free_episode_count, featured_at').order('created_at', { ascending: false }),
       supabaseClient.from('genres').select('id, name'),
-      supabaseClient.from('series_genres').select('series_id, genre_id')
+      supabaseClient.from('series_genres').select('series_id, genre_id'),
+      supabaseClient.rpc('admin_total_users'),
+      supabaseClient.rpc('admin_total_revenue')
     ]);
 
     if(seriesResult.error) throw seriesResult.error;
@@ -155,11 +181,29 @@ async function loadAdminData(){
       if(!adminSeriesGenres[link.series_id]) adminSeriesGenres[link.series_id] = new Set();
       adminSeriesGenres[link.series_id].add(link.genre_id);
     });
+
+    // These two never abort the rest of the panel — a failed or null
+    // RPC just falls back to '—' in the stats row (see statsHtml).
+    if(usersResult.error){
+      console.error('Narrava: admin_total_users failed', usersResult.error);
+      adminTotalUsers = null;
+    } else {
+      adminTotalUsers = usersResult.data === undefined ? null : usersResult.data;
+    }
+
+    if(revenueResult.error){
+      console.error('Narrava: admin_total_revenue failed', revenueResult.error);
+      adminTotalRevenue = null;
+    } else {
+      adminTotalRevenue = revenueResult.data === undefined ? null : revenueResult.data;
+    }
   } catch(err){
     console.error('Narrava: failed to load admin data', err);
     adminSeries = [];
     adminGenres = [];
     adminSeriesGenres = {};
+    adminTotalUsers = null;
+    adminTotalRevenue = null;
     showToast('Could not load admin data — please try again');
   }
 }

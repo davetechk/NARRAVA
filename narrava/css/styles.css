@@ -1351,7 +1351,7 @@
       max-width:960px;
     }
     body.admin-active .admin-stats{
-      grid-template-columns:repeat(3, minmax(160px, 220px));
+      grid-template-columns:repeat(5, minmax(140px, 1fr));
     }
     body.admin-active .admin-stat{
       padding:20px 12px;

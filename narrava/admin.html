@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Narrava — Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css">
+<link rel="stylesheet" href="css/admin.css">
+</head>
+<body class="admin-page">
+
+<div class="toast" id="toast"></div>
+
+<!-- Login gate: sign in only, no sign up — admin accounts are
+     provisioned by hand in the database, never through self sign up. -->
+<div class="admin-gate" id="adminLoginView">
+  <div class="admin-gate-card">
+    <div class="admin-gate-logo">NARRAVA ADMIN</div>
+    <h1 class="auth-title">Log In</h1>
+    <div class="auth-error" id="adminLoginError"></div>
+    <form id="adminLoginForm" novalidate>
+      <label class="auth-label" for="adminLoginEmail">Email</label>
+      <input class="auth-input" type="email" id="adminLoginEmail" autocomplete="email" required>
+      <label class="auth-label" for="adminLoginPassword">Password</label>
+      <input class="auth-input" type="password" id="adminLoginPassword" autocomplete="current-password" required>
+      <button class="auth-submit" type="submit" id="adminLoginSubmit">Log In</button>
+    </form>
+  </div>
+</div>
+
+<!-- Signed in, but profiles.is_admin is false for this account. -->
+<div class="admin-gate screen-hidden" id="adminDeniedView">
+  <div class="admin-gate-card">
+    <div class="admin-gate-logo">NARRAVA ADMIN</div>
+    <h1 class="auth-title">Not an Admin Account</h1>
+    <p class="admin-gate-text">This account doesn’t have admin access. Admin accounts are provisioned manually in the database — if you believe this is a mistake, contact whoever manages it.</p>
+    <button class="auth-submit" type="button" id="adminDeniedSignOut">Sign Out</button>
+  </div>
+</div>
+
+<!-- The dashboard itself. -->
+<div class="admin-app screen-hidden" id="adminAppView">
+  <nav class="admin-sidebar">
+    <div class="admin-sidebar-logo">NARRAVA</div>
+    <div class="admin-sidebar-nav">
+      <button class="admin-nav-item" data-view="dashboard" type="button">Dashboard</button>
+      <div class="admin-nav-section">Content Management</div>
+      <button class="admin-nav-item admin-nav-sub" data-view="content" type="button">Series List</button>
+      <button class="admin-nav-item admin-nav-sub" data-view="content" type="button">Episodes</button>
+      <button class="admin-nav-item admin-nav-sub" data-view="content" type="button">Genres</button>
+      <button class="admin-nav-item" data-view="users" type="button">User Management</button>
+      <button class="admin-nav-item" data-view="revenue" type="button">Revenue &amp; Analytics</button>
+      <button class="admin-nav-item" data-view="settings" type="button">System Settings</button>
+    </div>
+    <div class="admin-sidebar-footer">
+      <div class="admin-sidebar-email" id="adminSidebarEmail"></div>
+      <button class="admin-sidebar-signout" type="button" id="adminSignOutBtn">Sign Out</button>
+    </div>
+  </nav>
+  <main class="admin-main">
+    <div id="adminMainContent"></div>
+  </main>
+</div>
+
+<script src="js/config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tus-js-client@4.2.2/dist/tus.min.js"></script>
+<script src="js/supabase-client.js"></script>
+<script src="js/shared-utils.js"></script>
+<script src="js/admin.js"></script>
+</body>
+</html>

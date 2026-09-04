@@ -1,0 +1,452 @@
+/* admin.css
+   Layout and components specific to the admin dashboard (admin.html).
+   Loaded alongside styles.css, which still supplies the shared design
+   tokens (:root custom properties, fonts) and a handful of reused
+   pieces — .auth-* form styles, .genre-chip(s), .discover-note,
+   .toast, .screen-hidden — rather than duplicating any of those here.
+   Nothing in this file is reachable from index.html. */
+
+body.admin-page{
+  display:block;
+  padding:0;
+  min-height:100vh;
+  background:var(--ink);
+}
+
+#toast{
+  position:fixed;
+  top:24px;
+  left:50%;
+  z-index:999;
+}
+
+/* ---------- Login gate / not-an-admin views ---------- */
+
+.admin-gate{
+  min-height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:24px;
+  box-sizing:border-box;
+}
+.admin-gate-card{
+  width:100%;
+  max-width:360px;
+  background:var(--panel-2);
+  border:1px solid rgba(255,255,255,0.08);
+  border-radius:16px;
+  padding:32px 26px;
+}
+.admin-gate-logo{
+  font-family:'Anton',sans-serif;
+  font-size:20px;
+  letter-spacing:1px;
+  color:var(--leaf-light);
+  margin-bottom:22px;
+}
+.admin-gate-text{
+  font-size:13px;
+  color:var(--muted);
+  line-height:1.6;
+  margin:0 0 20px;
+}
+
+/* ---------- App shell: sidebar + main ---------- */
+
+.admin-app{
+  display:flex;
+  min-height:100vh;
+  align-items:stretch;
+}
+.admin-sidebar{
+  width:240px;
+  flex-shrink:0;
+  background:var(--panel);
+  border-right:1px solid rgba(255,255,255,0.08);
+  display:flex;
+  flex-direction:column;
+  padding:24px 0 16px;
+  position:sticky;
+  top:0;
+  height:100vh;
+  box-sizing:border-box;
+}
+.admin-sidebar-logo{
+  font-family:'Anton',sans-serif;
+  font-size:19px;
+  letter-spacing:1px;
+  color:#fff;
+  padding:0 24px 22px;
+}
+.admin-sidebar-nav{
+  flex:1;
+  overflow-y:auto;
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+}
+.admin-nav-section{
+  font-size:10.5px;
+  font-weight:800;
+  text-transform:uppercase;
+  letter-spacing:0.5px;
+  color:var(--muted);
+  padding:16px 24px 6px;
+}
+.admin-nav-item{
+  display:flex;
+  align-items:center;
+  width:100%;
+  background:none;
+  border:none;
+  border-left:3px solid transparent;
+  color:var(--text);
+  font-family:'Manrope',sans-serif;
+  font-weight:700;
+  font-size:13.5px;
+  padding:11px 24px;
+  cursor:pointer;
+  text-align:left;
+}
+.admin-nav-item:hover{background:rgba(255,255,255,0.04);}
+.admin-nav-item.active{
+  background:rgba(125,179,89,0.12);
+  border-left-color:var(--leaf);
+  color:var(--leaf-light);
+}
+.admin-nav-item.admin-nav-sub{
+  padding-left:36px;
+  font-size:12.5px;
+  font-weight:600;
+}
+.admin-sidebar-footer{
+  padding:16px 24px 0;
+  margin-top:12px;
+  border-top:1px solid rgba(255,255,255,0.08);
+}
+.admin-sidebar-email{
+  font-size:11px;
+  color:var(--muted);
+  margin-bottom:10px;
+  word-break:break-all;
+}
+.admin-sidebar-signout{
+  width:100%;
+  background:rgba(255,255,255,0.06);
+  border:1px solid rgba(255,255,255,0.1);
+  color:var(--text);
+  font-family:'Manrope',sans-serif;
+  font-weight:700;
+  font-size:12.5px;
+  padding:9px;
+  border-radius:8px;
+  cursor:pointer;
+}
+.admin-main{
+  flex:1;
+  min-width:0;
+  padding:32px 40px 60px;
+  box-sizing:border-box;
+}
+
+/* ---------- Page header (heading + optional search) ---------- */
+
+.admin-page-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:20px;
+  flex-wrap:wrap;
+  margin-bottom:24px;
+}
+.admin-page-title{
+  font-family:'Anton',sans-serif;
+  font-weight:400;
+  font-size:25px;
+  letter-spacing:0.5px;
+  color:#fff;
+  margin:0;
+}
+.admin-search{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  background:rgba(255,255,255,0.05);
+  border:1px solid rgba(255,255,255,0.12);
+  border-radius:10px;
+  padding:9px 14px;
+  width:280px;
+  max-width:100%;
+  box-sizing:border-box;
+}
+.admin-search svg{width:15px;height:15px;flex-shrink:0;stroke:var(--muted);}
+.admin-search input{
+  border:none;background:none;outline:none;
+  color:var(--text);
+  font-family:'Manrope',sans-serif;
+  font-size:13px;
+  width:100%;
+}
+.admin-search input::placeholder{color:var(--muted);}
+
+/* ---------- Stats ---------- */
+
+.admin-stats{
+  display:grid;
+  grid-template-columns:repeat(5, 1fr);
+  gap:16px;
+  margin-bottom:10px;
+}
+.admin-stat{
+  background:var(--panel-2);
+  border:1px solid rgba(255,255,255,0.08);
+  border-radius:14px;
+  padding:20px 16px;
+}
+.admin-stat-value{
+  font-family:'Anton',sans-serif;
+  font-weight:400;
+  font-size:29px;
+  line-height:1;
+  color:var(--leaf-light);
+  margin-bottom:8px;
+}
+.admin-stat-label{
+  font-size:11px;
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:0.4px;
+  color:var(--muted);
+}
+
+/* ---------- Section titles / cards / empty state ---------- */
+
+.admin-section-title{
+  font-size:12px;
+  font-weight:800;
+  text-transform:uppercase;
+  letter-spacing:0.5px;
+  color:var(--muted);
+  margin:28px 0 12px;
+}
+.admin-card{
+  background:var(--panel-2);
+  border:1px solid rgba(255,255,255,0.08);
+  border-radius:14px;
+  padding:22px;
+  max-width:520px;
+  margin-bottom:20px;
+  box-sizing:border-box;
+}
+.admin-empty{
+  text-align:center;
+  color:var(--muted);
+  font-size:13px;
+  padding:30px 10px;
+}
+.admin-placeholder{
+  background:var(--panel-2);
+  border:1px solid rgba(255,255,255,0.08);
+  border-radius:14px;
+  padding:64px 24px;
+  text-align:center;
+  color:var(--muted);
+  font-size:13.5px;
+  max-width:520px;
+  line-height:1.6;
+}
+.admin-placeholder strong{
+  display:block;
+  color:var(--text);
+  font-size:16px;
+  margin-bottom:8px;
+}
+
+/* ---------- Series list ---------- */
+
+.admin-list{
+  background:var(--panel-2);
+  border:1px solid rgba(255,255,255,0.08);
+  border-radius:14px;
+  overflow:hidden;
+  margin-bottom:28px;
+}
+.admin-series-list-header{
+  display:grid;
+  grid-template-columns:1.6fr 1.3fr 116px 130px 84px;
+  gap:16px;
+  padding:12px 20px;
+  font-size:10.5px;
+  font-weight:800;
+  text-transform:uppercase;
+  letter-spacing:0.5px;
+  color:var(--muted);
+  border-bottom:1px solid rgba(255,255,255,0.08);
+}
+.admin-series-row{
+  display:grid;
+  grid-template-columns:1.6fr 1.3fr 116px 130px 84px;
+  align-items:center;
+  gap:16px;
+  padding:16px 20px;
+  border-bottom:1px solid rgba(255,255,255,0.06);
+}
+.admin-series-row:last-child{border-bottom:none;}
+.admin-series-title{
+  font-weight:800;font-size:14px;color:var(--text);
+  margin-bottom:4px;
+}
+.admin-series-meta{
+  font-size:11px;color:var(--muted);
+}
+.admin-series-genres .genre-chips{margin-bottom:0;}
+
+.admin-toggle-btn{
+  width:100%;
+  padding:8px 6px;
+  border-radius:8px;
+  border:1px solid rgba(255,255,255,0.14);
+  background:rgba(255,255,255,0.04);
+  color:var(--muted);
+  font-family:'Manrope',sans-serif;
+  font-weight:800;font-size:11.5px;
+  cursor:pointer;
+  white-space:nowrap;
+}
+.admin-toggle-btn.published.active{
+  background:rgba(125,179,89,0.16);
+  border-color:var(--leaf);
+  color:var(--leaf-light);
+}
+.admin-toggle-btn.featured.active{
+  background:var(--gold);
+  border-color:var(--gold);
+  color:#241a05;
+}
+.admin-toggle-btn:disabled{opacity:0.6;cursor:default;}
+
+.admin-row-actions{
+  display:flex;
+  gap:8px;
+}
+.admin-icon-btn{
+  width:32px;height:32px;
+  flex-shrink:0;
+  border-radius:8px;
+  border:1px solid rgba(255,255,255,0.12);
+  background:rgba(255,255,255,0.04);
+  color:var(--text);
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;
+}
+.admin-icon-btn svg{width:15px;height:15px;}
+.admin-icon-btn.delete{color:#F2A0A0;}
+.admin-icon-btn.delete:hover{background:rgba(242,160,160,0.12);border-color:rgba(242,160,160,0.4);}
+
+/* Inline edit form — replaces a row's content, spans the full grid
+   width instead of trying to fit inside one column. */
+.admin-edit-form{
+  grid-column:1 / -1;
+  padding-top:6px;
+}
+.admin-edit-form-row{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:14px;
+}
+.admin-edit-actions{
+  display:flex;
+  gap:10px;
+  margin-top:4px;
+}
+.admin-edit-actions .auth-submit{width:auto;padding:10px 22px;}
+.admin-edit-cancel{
+  background:none;
+  border:1px solid rgba(255,255,255,0.14);
+  color:var(--text);
+  font-family:'Manrope',sans-serif;font-weight:700;font-size:13px;
+  padding:10px 22px;border-radius:10px;cursor:pointer;
+}
+
+/* Inline delete confirmation — same full-width replacement approach,
+   deliberately not a native confirm() dialog. */
+.admin-delete-confirm{
+  grid-column:1 / -1;
+  background:rgba(242,160,160,0.08);
+  border:1px solid rgba(242,160,160,0.3);
+  border-radius:10px;
+  padding:14px 16px;
+}
+.admin-delete-confirm p{margin:0 0 12px;font-size:13px;color:var(--text);line-height:1.5;}
+.admin-delete-confirm-actions{display:flex;gap:10px;}
+.admin-delete-confirm-btn{
+  background:#c94b4b;color:#fff;border:none;
+  font-family:'Manrope',sans-serif;font-weight:800;font-size:12.5px;
+  padding:9px 18px;border-radius:8px;cursor:pointer;
+}
+.admin-delete-cancel-btn{
+  background:none;border:1px solid rgba(255,255,255,0.14);
+  color:var(--text);font-family:'Manrope',sans-serif;font-weight:700;font-size:12.5px;
+  padding:9px 18px;border-radius:8px;cursor:pointer;
+}
+
+/* ---------- Episode Management (persistent panel) ---------- */
+
+.admin-episode-panel-select{
+  margin-bottom:18px;
+  max-width:360px;
+}
+.admin-episode-list{margin-bottom:4px;}
+.admin-episode-row{
+  display:flex;align-items:center;gap:12px;
+  padding:10px 0;
+  border-bottom:1px solid rgba(255,255,255,0.05);
+  font-size:13px;
+}
+.admin-episode-row:last-child{border-bottom:none;}
+.admin-episode-number{font-weight:800;color:var(--text);flex-shrink:0;width:56px;}
+.admin-episode-title{flex:1;min-width:0;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.admin-episode-video{flex-shrink:0;font-size:11.5px;font-weight:700;color:var(--muted);}
+.admin-episode-video.has-video{color:var(--leaf-light);}
+.admin-episode-form{margin-top:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.08);}
+.admin-episode-form-row{display:grid;grid-template-columns:160px 1fr;gap:14px;}
+.admin-upload-progress{display:none;align-items:center;gap:10px;margin-bottom:14px;}
+.admin-upload-progress.show{display:flex;}
+.admin-upload-progress-bar{flex:1;height:8px;border-radius:4px;background:rgba(255,255,255,0.08);overflow:hidden;}
+.admin-upload-progress-fill{height:100%;width:0%;background:var(--leaf);transition:width 0.2s ease;}
+.admin-upload-progress-label{flex-shrink:0;font-size:11.5px;font-weight:800;color:var(--leaf-light);width:36px;text-align:right;}
+
+/* ---------- Narrow-window fallback ----------
+   The dashboard is desktop-first by design (a sidebar layout is
+   inherently that), but this keeps it usable rather than broken on a
+   narrower window: sidebar becomes a horizontal scrollable strip, the
+   series table collapses to stacked cards. */
+@media (max-width: 860px){
+  .admin-app{flex-direction:column;}
+  .admin-sidebar{
+    width:100%;
+    height:auto;
+    position:relative;
+    flex-direction:row;
+    align-items:center;
+    padding:14px 12px;
+    overflow-x:auto;
+  }
+  .admin-sidebar-logo{padding:0 14px 0 4px;}
+  .admin-sidebar-nav{flex-direction:row;flex:none;}
+  .admin-nav-section{display:none;}
+  .admin-nav-item{padding:8px 14px;border-left:none;border-bottom:3px solid transparent;white-space:nowrap;}
+  .admin-nav-item.active{border-left:none;border-bottom-color:var(--leaf);background:none;}
+  .admin-nav-item.admin-nav-sub{padding-left:14px;}
+  .admin-sidebar-footer{display:none;}
+  .admin-main{padding:20px 16px 40px;}
+  .admin-stats{grid-template-columns:repeat(2, 1fr);}
+  .admin-series-list-header{display:none;}
+  .admin-series-row{
+    grid-template-columns:1fr;
+    align-items:stretch;
+    gap:10px;
+  }
+  .admin-row-actions{justify-content:flex-end;}
+}

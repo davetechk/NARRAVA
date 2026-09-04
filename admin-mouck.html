@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Narrava Admin — Project Overview</title>
+<style>
+  :root{
+    --bg: #000000;
+    --panel: #000000;
+    --panel-2: #111111;
+    --card: #0a0a0a;
+    --border: #262626;
+    --border-soft: #1c1c1c;
+    --text: #f2f2f2;
+    --text-dim: #9a9a9a;
+    --text-faint: #6b6b6b;
+    --accent-blue: #3b82c4;
+    --accent-blue-bg: #14304a;
+    --accent-orange: #3b82c4;
+    --accent-orange-bg: #14304a;
+    --accent-purple: #3b82c4;
+    --accent-purple-bg: #14304a;
+    --accent-gray: #3b82c4;
+    --accent-gray-bg: #14304a;
+    --accent-green: #3b82c4;
+    --accent-green-bg: #14304a;
+    --green: #3fbf6b;
+    --input-bg: #050505;
+    --radius: 10px;
+  }
+
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size:14px;
+    line-height:1.4;
+  }
+
+  a{color:inherit;text-decoration:none;}
+
+  .app{
+    display:flex;
+    min-height:100vh;
+  }
+
+  /* ---------------- SIDEBAR ---------------- */
+  .sidebar{
+    width:230px;
+    flex-shrink:0;
+    background:var(--panel);
+    border-right:1px solid var(--border-soft);
+    display:flex;
+    flex-direction:column;
+    padding:18px 14px;
+  }
+  .brand{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:6px 4px 20px 4px;
+    font-weight:700;
+    font-size:16px;
+    letter-spacing:.2px;
+  }
+  .brand-icon{
+    width:26px;height:26px;
+    display:flex;align-items:center;justify-content:center;
+    color:var(--text);
+    flex-shrink:0;
+  }
+  nav.nav-group{
+    display:flex;
+    flex-direction:column;
+    gap:2px;
+    margin-bottom:6px;
+  }
+  .nav-item{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:9px 10px;
+    border-radius:8px;
+    color:var(--text-dim);
+    font-size:13.5px;
+    cursor:pointer;
+    user-select:none;
+  }
+  .nav-item svg{flex-shrink:0;opacity:.85;}
+  .nav-item:hover{background:var(--panel-2);color:var(--text);}
+  .nav-item.active{
+    background:var(--accent-blue-bg);
+    color:#fff;
+  }
+  .nav-item.active svg{color:var(--accent-blue);opacity:1;}
+  .nav-sub{
+    display:flex;
+    flex-direction:column;
+    margin:2px 0 8px 34px;
+    gap:1px;
+  }
+  .nav-sub a{
+    padding:7px 8px;
+    border-radius:6px;
+    color:var(--text-dim);
+    font-size:13px;
+  }
+  .nav-sub a:hover{background:var(--panel-2);color:var(--text);}
+
+  .sidebar-spacer{flex:1;}
+
+  .sidebar-user{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:10px 8px;
+    border-top:1px solid var(--border-soft);
+    margin-top:6px;
+  }
+  .avatar{
+    width:32px;height:32px;
+    border-radius:50%;
+    background:#2c2c2c;
+    display:flex;align-items:center;justify-content:center;
+    font-size:12px;font-weight:600;
+    color:#ddd;
+    flex-shrink:0;
+  }
+  .sidebar-user .who{flex:1;min-width:0;}
+  .sidebar-user .who .name{font-weight:600;font-size:13.5px;}
+  .sidebar-user .who .status{
+    font-size:11.5px;
+    color:var(--text-faint);
+    display:flex;align-items:center;gap:5px;
+  }
+  .status-dot{width:6px;height:6px;border-radius:50%;background:var(--green);display:inline-block;}
+  .chev{color:var(--text-faint);}
+
+  /* ---------------- MAIN ---------------- */
+  .main{
+    flex:1;
+    min-width:0;
+    padding:26px 30px 40px 30px;
+  }
+
+  .topbar{
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:24px;
+    margin-bottom:22px;
+  }
+  .topbar h1{
+    font-size:25px;
+    margin:0 0 4px 0;
+    font-weight:700;
+  }
+  .topbar .sub{color:var(--text-faint);font-size:13px;}
+
+  .search-box{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    background:var(--input-bg);
+    border:1px solid var(--border);
+    border-radius:9px;
+    padding:10px 14px;
+    width:300px;
+    color:var(--text-faint);
+    flex-shrink:0;
+  }
+  .search-box svg{flex-shrink:0;opacity:.7;}
+
+  /* stat cards */
+  .stats-row{
+    display:grid;
+    grid-template-columns:repeat(5,1fr);
+    gap:14px;
+    margin-bottom:22px;
+  }
+  .stat-card{
+    background:var(--card);
+    border:1px solid var(--border-soft);
+    border-radius:var(--radius);
+    padding:16px;
+    display:flex;
+    gap:12px;
+    align-items:flex-start;
+  }
+  .stat-icon{
+    width:38px;height:38px;
+    border-radius:9px;
+    display:flex;align-items:center;justify-content:center;
+    flex-shrink:0;
+  }
+  .stat-icon.blue{background:var(--accent-blue-bg);color:var(--accent-blue);}
+  .stat-icon.orange{background:var(--accent-orange-bg);color:var(--accent-orange);}
+  .stat-icon.purple{background:var(--accent-purple-bg);color:var(--accent-purple);}
+  .stat-icon.gray{background:var(--accent-gray-bg);color:var(--accent-gray);}
+  .stat-icon.green{background:var(--accent-green-bg);color:var(--accent-green);}
+  .stat-body .label{font-size:12px;color:var(--text-faint);margin-bottom:2px;}
+  .stat-body .value{font-size:20px;font-weight:700;margin-bottom:2px;}
+  .stat-body .caption{font-size:11.5px;color:var(--text-faint);}
+  .revenue-note{
+    grid-column: 5 / 6;
+    margin-top:8px;
+    background:var(--panel-2);
+    border:1px solid var(--border-soft);
+    border-radius:8px;
+    padding:9px 10px;
+    font-size:11px;
+    line-height:1.45;
+    color:var(--text-dim);
+  }
+
+  /* layout below stats: two columns */
+  .content-grid{
+    display:grid;
+    grid-template-columns: 1.75fr 1fr;
+    gap:16px;
+    align-items:start;
+  }
+
+  .panel{
+    background:var(--card);
+    border:1px solid var(--border-soft);
+    border-radius:var(--radius);
+    padding:20px;
+  }
+  .panel h2{
+    font-size:17px;
+    margin:0 0 16px 0;
+    font-weight:700;
+  }
+
+  .field-row{
+    display:grid;
+    grid-template-columns:1fr 1fr 1fr;
+    gap:14px;
+    margin-bottom:6px;
+  }
+  .field{display:flex;flex-direction:column;gap:6px;}
+  .field label{
+    font-size:11px;
+    letter-spacing:.4px;
+    color:var(--text-faint);
+    font-weight:600;
+  }
+  .field input, .field textarea, .field select{
+    background:var(--input-bg);
+    border:1px solid var(--border);
+    border-radius:7px;
+    padding:9px 11px;
+    color:var(--text);
+    font-size:13px;
+    font-family:inherit;
+    outline:none;
+    width:100%;
+  }
+  .field input::placeholder, .field textarea::placeholder{color:#555;}
+  .field input:focus, .field textarea:focus, .field select:focus{
+    border-color:#3a3a3a;
+  }
+  .field-url-wrap{position:relative;}
+  .field-url-wrap svg{
+    position:absolute;right:10px;top:50%;transform:translateY(-50%);
+    color:var(--text-faint);
+    pointer-events:none;
+  }
+
+  .helper-text{
+    font-size:11.5px;
+    color:var(--text-faint);
+    margin:4px 0 14px 0;
+  }
+
+  .field-row-2{
+    display:grid;
+    grid-template-columns: 1fr 130px auto;
+    gap:14px;
+    align-items:end;
+  }
+
+  .btn{
+    border:none;
+    border-radius:7px;
+    padding:10px 18px;
+    font-size:13px;
+    font-weight:600;
+    cursor:pointer;
+    white-space:nowrap;
+  }
+  .btn-primary{
+    background:#e8e8e8;
+    color:#111;
+  }
+  .btn-primary:hover{background:#fff;}
+  .btn-ghost{
+    background:transparent;
+    border:1px dashed var(--border);
+    color:var(--text-dim);
+    width:100%;
+    padding:14px;
+    border-radius:8px;
+    font-weight:600;
+    font-size:13px;
+  }
+  .btn-ghost:hover{border-color:#444;color:var(--text);}
+  .btn-link{
+    color:#6fa8dc;
+    font-size:12.5px;
+    font-weight:600;
+    cursor:pointer;
+    background:none;
+    border:none;
+    padding:0;
+  }
+  .btn-link:hover{text-decoration:underline;}
+
+  /* existing content table */
+  .table-wrap{margin-top:6px;}
+  table.content-table{
+    width:100%;
+    border-collapse:collapse;
+  }
+  table.content-table thead th{
+    text-align:left;
+    font-size:11px;
+    letter-spacing:.3px;
+    color:var(--text-faint);
+    font-weight:600;
+    padding:0 8px 10px 8px;
+    border-bottom:1px solid var(--border-soft);
+  }
+  table.content-table tbody td{
+    padding:14px 8px;
+    border-bottom:1px solid var(--border-soft);
+    vertical-align:middle;
+  }
+  table.content-table tbody tr:last-child td{border-bottom:none;}
+
+  .series-cell{display:flex;align-items:center;gap:10px;}
+  .thumb{
+    width:42px;height:42px;
+    border-radius:7px;
+    background:linear-gradient(135deg,#333,#1a1a1a);
+    background-size:cover;
+    background-position:center;
+    flex-shrink:0;
+    border:1px solid var(--border-soft);
+  }
+  .series-cell .series-name{font-weight:600;font-size:13.5px;}
+
+  .genre-tags{display:flex;flex-wrap:wrap;gap:6px;max-width:210px;}
+  .tag{
+    font-size:11px;
+    padding:3px 9px;
+    border-radius:20px;
+    background:var(--panel-2);
+    color:var(--text-dim);
+    border:1px solid var(--border-soft);
+    white-space:nowrap;
+  }
+
+  .toggle{
+    width:34px;height:19px;
+    border-radius:20px;
+    background:#2a2a2a;
+    position:relative;
+    display:inline-block;
+    cursor:pointer;
+    border:1px solid var(--border);
+  }
+  .toggle.on{background:#2e7d46;border-color:#2e7d46;}
+  .toggle::after{
+    content:"";
+    position:absolute;
+    top:2px;left:2px;
+    width:13px;height:13px;
+    border-radius:50%;
+    background:#eee;
+    transition:transform .15s ease;
+  }
+  .toggle.on::after{transform:translateX(15px);}
+
+  .last-count{font-weight:600;color:var(--text-dim);text-align:left;}
+
+  /* right column: upload episodes */
+  .upload-panel h2{color:#f2f2f2;}
+  .step-label{
+    font-size:11px;
+    letter-spacing:.3px;
+    color:var(--text-faint);
+    font-weight:700;
+    margin:18px 0 8px 0;
+  }
+  .step-label:first-of-type{margin-top:0;}
+  .select-wrap{position:relative;}
+  .select-wrap select{
+    appearance:none;
+    -webkit-appearance:none;
+    padding-right:30px;
+  }
+  .select-wrap svg{
+    position:absolute;right:10px;top:50%;transform:translateY(-50%);
+    color:var(--text-faint);
+    pointer-events:none;
+  }
+
+  .progress-block{margin-top:6px;}
+  .progress-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    margin-bottom:8px;
+  }
+  .progress-row .stream-name{font-weight:600;font-size:13px;}
+  .progress-row .stream-pct{font-size:13px;color:var(--text-dim);}
+  .progress-track{
+    width:100%;
+    height:7px;
+    background:#232323;
+    border-radius:20px;
+    overflow:hidden;
+    margin-bottom:8px;
+  }
+  .progress-fill{
+    height:100%;
+    width:10%;
+    background:linear-gradient(90deg,#3fbf6b,#5fd987);
+    border-radius:20px;
+  }
+  .progress-note{font-size:11.5px;color:var(--text-faint);line-height:1.5;}
+
+  /* bottom status bar */
+  .status-bar{
+    position:fixed;
+    left:0;right:0;bottom:0;
+    background:#0d0d0d;
+    border-top:1px solid var(--border-soft);
+    padding:8px 24px;
+    display:flex;
+    gap:24px;
+    font-size:12px;
+    color:var(--text-dim);
+    z-index:10;
+  }
+  .status-bar .status-item{display:flex;align-items:center;gap:7px;}
+  .dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+  .dot.green{background:#3fbf6b;}
+  .dot.orange{background:#d98a3d;}
+
+  .main{padding-bottom:56px;}
+
+  @media (max-width: 1200px){
+    .stats-row{grid-template-columns:repeat(3,1fr);}
+    .revenue-note{grid-column:auto;}
+  }
+  @media (max-width: 980px){
+    .content-grid{grid-template-columns:1fr;}
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand-icon">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M4 4h3v16H4V4zm5 6h3v10H9V10zm5-4h3v14h-3V6z" fill="currentColor"/>
+        </svg>
+      </span>
+      Narrava Admin
+    </div>
+
+    <nav class="nav-group">
+      <div class="nav-item active">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.8"/><rect x="13" y="3" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.8"/><rect x="3" y="13" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.8"/><rect x="13" y="13" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.8"/></svg>
+        Dashboard
+      </div>
+
+      <div class="nav-item">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M3 9h18" stroke="currentColor" stroke-width="1.8"/></svg>
+        Content Management
+      </div>
+      <div class="nav-sub">
+        <a href="#">Series List</a>
+        <a href="#">Episodes</a>
+        <a href="#">Genres</a>
+      </div>
+
+      <div class="nav-item">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="3.4" stroke="currentColor" stroke-width="1.8"/><path d="M4.5 20c1.4-4 4.2-6 7.5-6s6.1 2 7.5 6" stroke="currentColor" stroke-width="1.8"/></svg>
+        User Management
+      </div>
+
+      <div class="nav-item">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M4 20V10M12 20V4M20 20v-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        Revenue &amp; Analytics
+      </div>
+
+      <div class="nav-item">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8"/><path d="M19 12a7 7 0 00-.1-1.2l2-1.5-2-3.4-2.3.9a7 7 0 00-2-1.2L14.2 3h-4.4l-.4 2.6a7 7 0 00-2 1.2l-2.3-.9-2 3.4 2 1.5a7 7 0 000 2.4l-2 1.5 2 3.4 2.3-.9c.6.5 1.3.9 2 1.2l.4 2.6h4.4l.4-2.6c.7-.3 1.4-.7 2-1.2l2.3.9 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z" stroke="currentColor" stroke-width="1.4"/></svg>
+        System Settings
+      </div>
+    </nav>
+
+    <div class="sidebar-spacer"></div>
+
+    <div class="sidebar-user">
+      <div class="avatar">FC</div>
+      <div class="who">
+        <div class="name">F. Coker</div>
+        <div class="status"><span class="status-dot"></span> Status</div>
+      </div>
+      <span class="chev">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </span>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <div class="topbar">
+      <div>
+        <h1>Project Overview</h1>
+        <div class="sub">Completely our admin dashboard</div>
+      </div>
+      <div class="search-box">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.8"/><path d="M20 20l-3.5-3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        Quick Search
+      </div>
+    </div>
+
+    <!-- STATS -->
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-icon blue">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 4h3v16H4V4zm5 6h3v10H9V10zm5-4h3v14h-3V6z" fill="currentColor"/></svg>
+        </div>
+        <div class="stat-body">
+          <div class="label">Total Series</div>
+          <div class="value">3</div>
+          <div class="caption">Active Series</div>
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-icon orange">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M20 12l-8 8-9-9V4h7l10 8z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><circle cx="7.5" cy="7.5" r="1.3" fill="currentColor"/></svg>
+        </div>
+        <div class="stat-body">
+          <div class="label">Total Genres</div>
+          <div class="value">1</div>
+          <div class="caption">Content Categories</div>
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-icon purple">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 2.5l2.9 6 6.6.9-4.8 4.6 1.1 6.6L12 17.6l-5.8 3 1.1-6.6-4.8-4.6 6.6-.9 2.9-6z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="stat-body">
+          <div class="label">Featured Now</div>
+          <div class="value">2</div>
+          <div class="caption">Discover Carousel Items</div>
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-icon gray">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="9" cy="8" r="3" stroke="currentColor" stroke-width="1.7"/><path d="M2.5 19c1-3.4 3.4-5 6.5-5s5.5 1.6 6.5 5" stroke="currentColor" stroke-width="1.7"/><circle cx="17" cy="8.5" r="2.4" stroke="currentColor" stroke-width="1.5"/><path d="M15.2 14.3c2.3.3 4 1.6 4.8 4.7" stroke="currentColor" stroke-width="1.5"/></svg>
+        </div>
+        <div class="stat-body">
+          <div class="label">Registered Users</div>
+          <div class="value">6</div>
+          <div class="caption">Total Accounts</div>
+        </div>
+      </div>
+
+      <div>
+        <div class="stat-card" style="margin-bottom:0;">
+          <div class="stat-icon green">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="3" y="6" width="18" height="13" rx="2" stroke="currentColor" stroke-width="1.7"/><path d="M3 10h18" stroke="currentColor" stroke-width="1.7"/><circle cx="17" cy="14" r="1.2" fill="currentColor"/></svg>
+          </div>
+          <div class="stat-body">
+            <div class="label">Total Revenue</div>
+            <div class="value">₦0</div>
+            <div class="caption">Lifetime Revenue</div>
+          </div>
+        </div>
+        <div class="revenue-note">
+          Subscriptions and ad revenue are currently inactive; only coin transactions are tracked.
+        </div>
+      </div>
+    </div>
+
+    <!-- CONTENT GRID -->
+    <div class="content-grid">
+
+      <div class="left-col">
+
+        <!-- CREATE SERIES -->
+        <div class="panel" style="margin-bottom:16px;">
+          <h2>Create Series</h2>
+
+          <div class="field-row">
+            <div class="field">
+              <label>TITLE</label>
+              <input type="text" placeholder="My Maiden Slave">
+            </div>
+            <div class="field">
+              <label>DESCRIPTION</label>
+              <textarea rows="1" placeholder="Description lines here" style="resize:none;"></textarea>
+            </div>
+            <div class="field">
+              <label>COVER IMAGE URL</label>
+              <div class="field-url-wrap">
+                <input type="text" placeholder="https://...">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M14 3h7v7M21 3l-9 9M9 21H4a2 2 0 01-2-2v-5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </div>
+            </div>
+          </div>
+          <div class="helper-text">Series will be immediately live upon creation. (Future draft features in development).</div>
+
+          <div class="field-row-2">
+            <div class="field">
+              <label>COVER IMAGE URL</label>
+              <input type="text" placeholder="URL">
+            </div>
+            <div class="field">
+              <label>FREE EPISODE COUNT</label>
+              <input type="text" value="10">
+            </div>
+            <button class="btn btn-primary">Create Series</button>
+          </div>
+        </div>
+
+        <!-- EXISTING CONTENT -->
+        <div class="panel">
+          <h2>Existing Content</h2>
+          <div class="table-wrap">
+            <table class="content-table">
+              <thead>
+                <tr>
+                  <th>SERIES</th>
+                  <th>GENRES</th>
+                  <th>FEATURED STATUS</th>
+                  <th>LAST</th>
+                  <th>ACTIONS</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>
+                    <div class="series-cell">
+                      <div class="thumb" style="background-image:url('https://images.unsplash.com/photo-1506869640319-fe1a24fd76dc?w=100&h=100&fit=crop');"></div>
+                      <span class="series-name">My Maiden Slave</span>
+                    </div>
+                  </td>
+                  <td>
+                    <div class="genre-tags">
+                      <span class="tag">Romance</span>
+                      <span class="tag">Family Drama</span>
+                      <span class="tag">Family Drama</span>
+                      <span class="tag">Etc</span>
+                    </div>
+                  </td>
+                  <td><span class="toggle on"></span></td>
+                  <td class="last-count">6</td>
+                  <td><button class="btn-link">Create Episode</button></td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="series-cell">
+                      <div class="thumb" style="background-image:url('https://images.unsplash.com/photo-1520975954732-35dd22299614?w=100&h=100&fit=crop');"></div>
+                      <span class="series-name">The Golden Age</span>
+                    </div>
+                  </td>
+                  <td>
+                    <div class="genre-tags">
+                      <span class="tag">Romance</span>
+                      <span class="tag">Family Drama</span>
+                      <span class="tag">Family Drama</span>
+                      <span class="tag">Etc</span>
+                    </div>
+                  </td>
+                  <td><span class="toggle on"></span></td>
+                  <td class="last-count">6</td>
+                  <td><button class="btn-link">Create Episode</button></td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="series-cell">
+                      <div class="thumb" style="background-image:url('https://images.unsplash.com/photo-1520975916090-3105956dac38?w=100&h=100&fit=crop');"></div>
+                      <span class="series-name">Midnight Wolf</span>
+                    </div>
+                  </td>
+                  <td>
+                    <div class="genre-tags">
+                      <span class="tag">Romance</span>
+                      <span class="tag">Family Drama</span>
+                      <span class="tag">Family Drama</span>
+                    </div>
+                  </td>
+                  <td><span class="toggle on"></span></td>
+                  <td class="last-count">0</td>
+                  <td><button class="btn-link">Create Episode</button></td>
+                </tr>
+                <tr>
+                  <td>
+                    <div class="series-cell">
+                      <div class="thumb"></div>
+                      <span class="series-name">Midnight Slave</span>
+                    </div>
+                  </td>
+                  <td>
+                    <div class="genre-tags">
+                      <span class="tag">Romance</span>
+                    </div>
+                  </td>
+                  <td><span class="toggle on"></span></td>
+                  <td class="last-count">0</td>
+                  <td><button class="btn-link">Create Episode</button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- UPLOAD EPISODES -->
+      <div class="panel upload-panel">
+        <h2>Upload Episodes</h2>
+
+        <div class="step-label">STEP 1: SELECT SERIES</div>
+        <div class="field select-wrap">
+          <select>
+            <option>My Maiden Slave</option>
+            <option>The Golden Age</option>
+            <option>Midnight Wolf</option>
+            <option>Midnight Slave</option>
+          </select>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+
+        <div class="step-label">STEP 2: UPLOAD FILE</div>
+        <button class="btn-ghost">Add Video File</button>
+
+        <div class="step-label">STEP 3: POST-UPLOAD ACTIONS</div>
+        <div class="progress-block">
+          <div class="progress-row">
+            <span class="stream-name">Bunny Stream</span>
+            <span class="stream-pct">10%</span>
+          </div>
+          <div class="progress-track"><div class="progress-fill"></div></div>
+          <div class="progress-note">Upload progress bar Bunny Stream, and the "processions honest processing note is exteryly.</div>
+        </div>
+
+        <div class="step-label">STEP 4: EPISODE DETAILS</div>
+        <div class="field">
+          <input type="text" placeholder="Episode Name">
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+</div>
+
+<!-- STATUS BAR -->
+<div class="status-bar">
+  <div class="status-item"><span class="dot green"></span> Paystack Test Mode Active</div>
+  <div class="status-item"><span class="dot orange"></span> Bunny Stream Video Processing</div>
+</div>
+
+<script>
+  // Toggle switches are interactive
+  document.querySelectorAll('.toggle').forEach(t => {
+    t.addEventListener('click', () => t.classList.toggle('on'));
+  });
+
+  // Create Episode buttons -> select that series in the upload panel + scroll
+  document.querySelectorAll('.btn-link').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const row = e.target.closest('tr');
+      const name = row.querySelector('.series-name').textContent.trim();
+      const select = document.querySelector('.select-wrap select');
+      [...select.options].forEach(o => { if (o.text === name) select.value = name; });
+      document.querySelector('.upload-panel').scrollIntoView({behavior:'smooth', block:'center'});
+    });
+  });
+
+  // Create Series button - simple demo feedback
+  document.querySelector('.btn-primary').addEventListener('click', () => {
+    const btn = document.querySelector('.btn-primary');
+    const original = btn.textContent;
+    btn.textContent = 'Created!';
+    setTimeout(() => btn.textContent = original, 1200);
+  });
+
+  // Add Video File demo
+  document.querySelector('.btn-ghost').addEventListener('click', () => {
+    const btn = document.querySelector('.btn-ghost');
+    btn.textContent = 'File Selected ✓';
+  });
+</script>
+
+</body>
+</html>

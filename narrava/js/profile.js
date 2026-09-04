@@ -41,6 +41,16 @@ function menuRow(id, label, icon, valueHtml){
   '</button>';
 }
 
+// Same visual row, but a plain link — the Admin Panel now lives on its
+// own separate page (admin.html), not a screen inside this app.
+function menuLinkRow(id, label, icon, href){
+  return '<a class="profile-row" id="' + id + '" href="' + href + '">' +
+    '<span class="profile-row-icon">' + icon + '</span>' +
+    '<span class="profile-row-label">' + label + '</span>' +
+    '<span class="profile-row-chevron">' + PROFILE_ICONS.chevron + '</span>' +
+  '</a>';
+}
+
 function renderProfileMenu(){
   const loggedIn = !!currentSession;
 
@@ -90,7 +100,7 @@ function renderProfileMenu(){
     '</div>' +
 
     (isAdmin
-      ? '<div class="profile-menu">' + menuRow('rowAdminPanel', 'Admin Panel', PROFILE_ICONS.admin) + '</div>'
+      ? '<div class="profile-menu">' + menuLinkRow('rowAdminPanel', 'Admin Panel', PROFILE_ICONS.admin, 'admin.html') + '</div>'
       : '') +
 
     (loggedIn
@@ -121,14 +131,6 @@ function wireProfileRows(loggedIn){
   ['rowRewards', 'rowGifts', 'rowHistory', 'rowDownload', 'rowLanguage', 'rowHelp'].forEach(id => {
     document.getElementById(id).addEventListener('click', () => showToast('Coming soon'));
   });
-
-  const adminRow = document.getElementById('rowAdminPanel');
-  if(adminRow){
-    adminRow.addEventListener('click', () => {
-      showScreen('admin');
-      renderAdminScreen();
-    });
-  }
 
   const signOutRow = document.getElementById('rowSignOut');
   if(signOutRow){

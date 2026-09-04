@@ -53,11 +53,9 @@ const sheetClose = document.getElementById('sheetClose');
 const packagesWrap = document.getElementById('packages');
 const methodsWrap = document.getElementById('methods');
 const payBtn = document.getElementById('payBtn');
-const toast = document.getElementById('toast');
 const ctaRow = document.querySelector('.ctarow');
 const discoverScreen = document.getElementById('discoverScreen');
 const profileScreen = document.getElementById('profileScreen');
-const adminScreen = document.getElementById('adminScreen');
 const navHome = document.getElementById('navHome');
 const navForYou = document.getElementById('navForYou');
 const navProfile = document.getElementById('navProfile');
@@ -85,7 +83,6 @@ function showScreen(name){
   feed.classList.toggle('screen-hidden', name !== 'feed');
   discoverScreen.classList.toggle('screen-hidden', name !== 'discover');
   profileScreen.classList.toggle('screen-hidden', name !== 'profile');
-  adminScreen.classList.toggle('screen-hidden', name !== 'admin');
   navHome.classList.toggle('active', name === 'discover');
   navForYou.classList.toggle('active', name === 'feed');
   navProfile.classList.toggle('active', name === 'profile');
@@ -94,7 +91,6 @@ function showScreen(name){
   sidebarProfile.classList.toggle('active', name === 'profile');
   document.body.classList.toggle('discover-active', name === 'discover');
   document.body.classList.toggle('feed-active', name === 'feed');
-  document.body.classList.toggle('admin-active', name === 'admin');
 }
 
 // Used by discover.js: open a specific series (by its index in `slides`)
@@ -323,12 +319,6 @@ document.querySelectorAll('.region-btn').forEach(btn=>{
     renderSheet();
   });
 });
-
-function showToast(msg){
-  toast.textContent = msg;
-  toast.classList.add('show');
-  setTimeout(()=>toast.classList.remove('show'), 2200);
-}
 
 payBtn.addEventListener('click', ()=>{
   payBtn.disabled = true;

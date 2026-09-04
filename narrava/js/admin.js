@@ -1,298 +1,183 @@
 // admin.js
 //
-// Admin panel, part 1: create a series, assign it genres, and toggle it
-// featured — all real writes on the admin's own authenticated Supabase
-// client. The admin-only RLS policies from Week 1 already gate every
-// write here; this file adds no new access, it's a UI for what the
-// Table Editor already allowed by hand. Episode/video upload is a
-// separate, later task and this file does not touch it.
+// The admin dashboard — its own real page (admin.html), not a screen
+// inside the consumer app. Owns three things: (1) a simple login-only
+// gate (no sign up — admin accounts are provisioned by hand in the
+// database) that checks profiles.is_admin the same way the rest of the
+// app does, (2) the dashboard itself — real stats, create/edit/delete
+// series, genre assignment, publish/feature toggles, and episode
+// upload — all real writes on the admin's own authenticated Supabase
+// client, and (3) honest "Coming soon" placeholders for the sections
+// that aren't built yet (User Management, Revenue & Analytics, System
+// Settings), so the sidebar never links to something broken.
 //
-// Reachable only via the "Admin Panel" row profile.js draws when
-// profiles.is_admin is true for the current session — that's a display
-// decision, not a security boundary; the real boundary is the RLS
-// policies on series / series_genres.
+// The admin-only RLS policies already gate every write here — this is
+// a UI for what those policies already allowed, not a new access path.
+// escapeHtml/showToast come from shared-utils.js, shared with the
+// consumer app rather than duplicated.
 
-const adminPanel = document.getElementById('adminPanel');
+// ---------- elements ----------
+const adminLoginView = document.getElementById('adminLoginView');
+const adminDeniedView = document.getElementById('adminDeniedView');
+const adminAppView = document.getElementById('adminAppView');
+const adminMainContent = document.getElementById('adminMainContent');
 
-const ADMIN_BACK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 6l-6 6 6 6"/></svg>';
+const ADMIN_EDIT_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>';
+const ADMIN_DELETE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0l-1 14a2 2 0 01-2 2H7a2 2 0 01-2-2L4 6"/></svg>';
+const ADMIN_SEARCH_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>';
 
-let adminSeries = [];       // [{id, title, description, cover_image_url, free_episode_count, featured_at}]
+// ---------- state ----------
+let adminSession = null;
+
+let adminSeries = [];       // [{id, title, description, cover_image_url, free_episode_count, featured_at, status}]
 let adminGenres = [];       // [{id, name}]
 let adminSeriesGenres = {}; // series_id -> Set(genre_id)
-let adminTotalUsers = null;   // admin_total_users() RPC result, or null if it failed / isn't available
-let adminTotalRevenue = null; // admin_total_revenue() RPC result, or null if it failed / isn't available
+let adminTotalUsers = null;
+let adminTotalRevenue = null;
 
-let adminEpisodes = {};              // series_id -> [{id, episode_number, title, bunny_video_id, duration_seconds}], undefined until first expand
-let adminExpandedSeries = new Set(); // series_ids currently expanded in the list
+let adminEpisodesCache = {}; // series_id -> [{id, episode_number, title, bunny_video_id, duration_seconds}], undefined until first loaded
+
+let activeView = 'dashboard';       // 'dashboard' | 'content' | 'users' | 'revenue' | 'settings'
+let seriesSearchQuery = '';         // client-side filter on adminSeries, no re-query
+let editingSeriesId = null;         // series currently showing its inline edit form
+let deletingSeriesId = null;        // series currently showing its inline delete confirmation
+let selectedEpisodeSeriesId = null; // series currently selected in the persistent Episode Management panel
 
 function formatNaira(amount){
   return '₦' + Number(amount).toLocaleString('en-NG');
 }
 
-function adminHeaderHtml(){
-  return '<div class="admin-header">' +
-    '<button type="button" class="admin-back" id="adminBackBtn" aria-label="Back to Profile">' + ADMIN_BACK_ICON + '</button>' +
-    '<h2 class="admin-title">Admin Panel</h2>' +
-  '</div>';
+// ================= Login gate =================
+
+function showLoginView(){
+  adminLoginView.classList.remove('screen-hidden');
+  adminDeniedView.classList.add('screen-hidden');
+  adminAppView.classList.add('screen-hidden');
+}
+function showDeniedView(){
+  adminLoginView.classList.add('screen-hidden');
+  adminDeniedView.classList.remove('screen-hidden');
+  adminAppView.classList.add('screen-hidden');
+}
+function showAppView(){
+  adminLoginView.classList.add('screen-hidden');
+  adminDeniedView.classList.add('screen-hidden');
+  adminAppView.classList.remove('screen-hidden');
+  const emailEl = document.getElementById('adminSidebarEmail');
+  if(emailEl && adminSession) emailEl.textContent = adminSession.user.email;
 }
 
-// Five real, current numbers. The first three are derived from the same
-// series/genres rows already held in memory for the list below — no
-// separate query, so they can never drift out of sync with what the
-// list itself shows. Registered Users and Total Revenue come from the
-// admin_total_users()/admin_total_revenue() RPCs read in loadAdminData;
-// either one shows as '—' instead of the panel breaking if that RPC
-// failed or came back null (loadAdminData leaves them at null in that
-// case, never at a raw error object or the string "null").
-function statsHtml(){
-  const totalSeries = adminSeries.length;
-  const totalGenres = adminGenres.length;
-  const featuredNow = adminSeries.filter(s => !!s.featured_at).length;
-
-  const totalUsersDisplay = (adminTotalUsers === null || adminTotalUsers === undefined)
-    ? '—' : adminTotalUsers;
-  const totalRevenueDisplay = (adminTotalRevenue === null || adminTotalRevenue === undefined)
-    ? '—' : formatNaira(adminTotalRevenue);
-
-  return '<div class="admin-stats">' +
-    '<div class="admin-stat"><div class="admin-stat-value">' + totalSeries + '</div><div class="admin-stat-label">Total Series</div></div>' +
-    '<div class="admin-stat"><div class="admin-stat-value">' + totalGenres + '</div><div class="admin-stat-label">Total Genres</div></div>' +
-    '<div class="admin-stat"><div class="admin-stat-value">' + featuredNow + '</div><div class="admin-stat-label">Featured Now</div></div>' +
-    '<div class="admin-stat"><div class="admin-stat-value">' + totalUsersDisplay + '</div><div class="admin-stat-label">Registered Users</div></div>' +
-    '<div class="admin-stat"><div class="admin-stat-value">' + totalRevenueDisplay + '</div><div class="admin-stat-label">Total Revenue</div></div>' +
-  '</div>' +
-  // Same muted, centered note style as the Discover screen's "Rankings
-  // coming soon" note — an honest placeholder, not a sixth stat card,
-  // so it never reads as a broken or missing number.
-  '<div class="discover-note">Subscriptions launch in Phase 2 — no subscription data exists yet.</div>';
+// Same pattern used elsewhere in the app (profile.js's checkIsAdmin): a
+// normal select-own read on the signed-in user's own profiles row,
+// governed by the existing RLS policy. This only decides whether this
+// *page* shows its content — the real boundary is the admin-only RLS
+// policies on series / series_genres / episodes themselves.
+async function checkIsAdmin(userId){
+  try {
+    const { data, error } = await supabaseClient
+      .from('profiles')
+      .select('is_admin')
+      .eq('id', userId)
+      .single();
+    if(error) throw error;
+    return !!(data && data.is_admin);
+  } catch(err){
+    console.error('Narrava: failed to check admin status', err);
+    return false;
+  }
 }
 
-// Re-renders just the stat row + note in place (used after a featured
-// toggle, which updates a single series' state without redrawing the
-// whole panel — the full create-series flow already re-renders
-// everything). Targets the wrapper div, not .admin-stats itself, since
-// statsHtml() now returns two sibling elements.
-function renderStats(){
-  const statsEl = document.getElementById('adminStats');
-  if(!statsEl) return;
-  statsEl.innerHTML = statsHtml();
+async function afterAuthResolved(session){
+  adminSession = session;
+  const admin = await checkIsAdmin(session.user.id);
+  if(admin){
+    showAppView();
+    await loadAdminData();
+    renderMain();
+  } else {
+    showDeniedView();
+  }
 }
 
-function createFormHtml(){
-  return '<div class="admin-card">' +
-    '<div class="auth-error" id="adminCreateError"></div>' +
-    '<form id="adminCreateForm" novalidate>' +
-      '<label class="auth-label" for="adminTitle">Title</label>' +
-      '<input class="auth-input" type="text" id="adminTitle" required>' +
-      '<label class="auth-label" for="adminDescription">Description</label>' +
-      '<textarea class="auth-input" id="adminDescription" rows="3" required></textarea>' +
-      '<label class="auth-label" for="adminCoverUrl">Cover Image URL</label>' +
-      '<input class="auth-input" type="url" id="adminCoverUrl" placeholder="https://…">' +
-      '<label class="auth-label" for="adminFreeEpisodes">Free Episode Count</label>' +
-      '<input class="auth-input" type="number" id="adminFreeEpisodes" min="0" value="10" required>' +
-      '<button class="auth-submit" type="submit" id="adminCreateSubmit">Create Series</button>' +
-    '</form>' +
-  '</div>';
+async function initAdminPage(){
+  try {
+    const { data, error } = await supabaseClient.auth.getSession();
+    if(error) throw error;
+    const session = data && data.session;
+    if(!session){ showLoginView(); return; }
+    await afterAuthResolved(session);
+  } catch(err){
+    console.error('Narrava: failed to check auth session', err);
+    showLoginView();
+  }
 }
 
-// One row per series. Same markup on mobile and desktop — mobile stacks
-// it into a card (.admin-series-row's default column layout), the
-// >=900px admin-active rules in styles.css turn it into a compact
-// table-style grid row instead. Nothing here needs to know which one
-// is active.
-function seriesRowHtml(series){
-  const genreIds = adminSeriesGenres[series.id] || new Set();
-  const chipsHtml = adminGenres.length
-    ? '<div class="genre-chips">' + adminGenres.map(g =>
-        '<button type="button" class="genre-chip' + (genreIds.has(g.id) ? ' active' : '') + '" data-series-id="' + series.id + '" data-genre-id="' + g.id + '">' + escapeHtml(g.name) + '</button>'
-      ).join('') + '</div>'
-    : '<div class="admin-series-meta">No genres exist yet.</div>';
+async function handleAdminLoginSubmit(e){
+  e.preventDefault();
 
-  const isFeatured = !!series.featured_at;
-  const isExpanded = adminExpandedSeries.has(series.id);
+  const email = document.getElementById('adminLoginEmail').value.trim();
+  const password = document.getElementById('adminLoginPassword').value;
+  const errorEl = document.getElementById('adminLoginError');
+  const submitBtn = document.getElementById('adminLoginSubmit');
 
-  return '<div class="admin-series-row" data-series-id="' + series.id + '">' +
-    '<div class="admin-series-main">' +
-      '<div class="admin-series-title">' + escapeHtml(series.title) + '</div>' +
-      '<div class="admin-series-desc">' + escapeHtml(series.description) + '</div>' +
-      '<div class="admin-series-meta">Free episodes: ' + series.free_episode_count + '</div>' +
-    '</div>' +
-    '<div class="admin-series-genres">' + chipsHtml + '</div>' +
-    '<div class="admin-series-featured">' +
-      '<button type="button" class="admin-featured-btn' + (isFeatured ? ' active' : '') + '" data-action="toggle-featured" data-series-id="' + series.id + '">' +
-        (isFeatured ? '★ Featured — tap to unfeature' : '☆ Not featured — tap to feature') +
-      '</button>' +
-      '<button type="button" class="admin-episodes-toggle" data-action="toggle-episodes" data-series-id="' + series.id + '">' +
-        (isExpanded ? '▾ Episodes' : '▸ Episodes') +
-      '</button>' +
-    '</div>' +
-    '<div class="admin-series-episodes" id="episodesPanel-' + series.id + '"' + (isExpanded ? '' : ' hidden') + '>' +
-      (isExpanded ? episodesPanelHtml(series.id) : '') +
-    '</div>' +
-  '</div>';
+  errorEl.textContent = '';
+  errorEl.classList.remove('show');
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Logging in…';
+
+  try {
+    const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+    if(error){
+      errorEl.textContent = error.message;
+      errorEl.classList.add('show');
+      return;
+    }
+    submitBtn.textContent = 'Checking admin access…';
+    await afterAuthResolved(data.session);
+  } catch(err){
+    console.error('Narrava: admin login failed', err);
+    errorEl.textContent = 'Something went wrong. Please try again.';
+    errorEl.classList.add('show');
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Log In';
+  }
 }
 
-// Episodes for one series — a plain list (number / title / whether a
-// video is attached) plus the Add Episode form. Only rendered once
-// that series row is expanded (see handleEpisodesToggle); the fetch
-// itself is lazy and cached in adminEpisodes so re-collapsing and
-// re-expanding the same row doesn't re-fetch.
-function episodesPanelHtml(seriesId){
-  const episodes = adminEpisodes[seriesId] || [];
-  const listHtml = episodes.length
-    ? '<div class="admin-episode-list">' + episodes.map(episodeRowHtml).join('') + '</div>'
-    : '<div class="admin-series-meta">No episodes yet.</div>';
-
-  const nextEpisodeNumber = episodes.length
-    ? Math.max.apply(null, episodes.map(ep => ep.episode_number)) + 1
-    : 1;
-
-  return listHtml +
-    // Always visible whenever this panel is open, not just right after
-    // an upload — Bunny's processing time is true any time an admin is
-    // looking here, not just in the moment right after a save.
-    '<div class="discover-note">A newly uploaded video may take a few minutes to finish processing on Bunny before it’s watchable.</div>' +
-    addEpisodeFormHtml(seriesId, nextEpisodeNumber);
-}
-
-function episodeRowHtml(ep){
-  const hasVideo = !!ep.bunny_video_id;
-  return '<div class="admin-episode-row">' +
-    '<span class="admin-episode-number">Ep ' + ep.episode_number + '</span>' +
-    '<span class="admin-episode-title">' + (ep.title ? escapeHtml(ep.title) : 'Untitled') + '</span>' +
-    '<span class="admin-episode-video' + (hasVideo ? ' has-video' : '') + '">' + (hasVideo ? '✓ Video attached' : '— No video') + '</span>' +
-  '</div>';
-}
-
-function addEpisodeFormHtml(seriesId, nextEpisodeNumber){
-  return '<form class="admin-episode-form" id="addEpisodeForm-' + seriesId + '" data-series-id="' + seriesId + '" novalidate>' +
-    '<div class="auth-error" id="episodeError-' + seriesId + '"></div>' +
-    '<div class="admin-episode-form-row">' +
-      '<div>' +
-        '<label class="auth-label" for="episodeNumber-' + seriesId + '">Episode #</label>' +
-        '<input class="auth-input" type="number" min="1" id="episodeNumber-' + seriesId + '" value="' + nextEpisodeNumber + '" required>' +
-      '</div>' +
-      '<div>' +
-        '<label class="auth-label" for="episodeTitle-' + seriesId + '">Title (optional)</label>' +
-        '<input class="auth-input" type="text" id="episodeTitle-' + seriesId + '">' +
-      '</div>' +
-    '</div>' +
-    '<label class="auth-label" for="episodeFile-' + seriesId + '">Video File</label>' +
-    '<input class="auth-input" type="file" accept="video/*" id="episodeFile-' + seriesId + '" required>' +
-    '<div class="admin-upload-progress" id="episodeProgress-' + seriesId + '" hidden>' +
-      '<div class="admin-upload-progress-bar"><div class="admin-upload-progress-fill" id="episodeProgressFill-' + seriesId + '"></div></div>' +
-      '<div class="admin-upload-progress-label" id="episodeProgressLabel-' + seriesId + '">0%</div>' +
-    '</div>' +
-    '<button class="auth-submit" type="submit" id="episodeSubmit-' + seriesId + '">Upload Episode</button>' +
-  '</form>';
-}
-
-// Desktop-only column labels (styles.css hides this on mobile) —
-// skipped entirely when the list is empty, same as an empty table.
-function seriesListHeaderHtml(){
-  return '<div class="admin-series-list-header">' +
-    '<div>Series</div><div>Genres</div><div>Featured</div>' +
-  '</div>';
-}
-
-function renderAdminList(){
-  const listEl = document.getElementById('adminSeriesList');
-  if(!listEl) return;
-
-  listEl.innerHTML = adminSeries.length
-    ? seriesListHeaderHtml() + '<div class="admin-list">' + adminSeries.map(seriesRowHtml).join('') + '</div>'
-    : '<div class="admin-empty">No series yet — create the first one above.</div>';
-
-  listEl.querySelectorAll('.genre-chip').forEach(chip => {
-    chip.addEventListener('click', () => handleGenreChipClick(chip));
-  });
-  listEl.querySelectorAll('[data-action="toggle-featured"]').forEach(btn => {
-    btn.addEventListener('click', () => handleFeaturedToggle(btn));
-  });
-  listEl.querySelectorAll('[data-action="toggle-episodes"]').forEach(btn => {
-    btn.addEventListener('click', () => handleEpisodesToggle(btn));
-  });
-  // Any series that render already-expanded (state survives a full list
-  // re-render, e.g. after creating a new series) need their Add Episode
-  // form's submit handler re-attached too, same as the toggle above.
-  adminExpandedSeries.forEach(seriesId => wireEpisodesPanel(seriesId));
-}
-
-// Expand/collapse one series' episode list. Fetches lazily (only on
-// first expand) and caches in adminEpisodes so flipping the row closed
-// and back open never re-fetches. Collapsing empties the panel's DOM
-// (cheap) but keeps the cached data, so re-expanding is instant.
-async function handleEpisodesToggle(btn){
-  const seriesId = btn.dataset.seriesId;
-  const panelEl = document.getElementById('episodesPanel-' + seriesId);
-  if(!panelEl) return;
-
-  if(adminExpandedSeries.has(seriesId)){
-    adminExpandedSeries.delete(seriesId);
-    panelEl.hidden = true;
-    panelEl.innerHTML = '';
-    btn.textContent = '▸ Episodes';
+async function handleAdminSignOut(){
+  try {
+    const { error } = await supabaseClient.auth.signOut();
+    if(error) throw error;
+  } catch(err){
+    console.error('Narrava: sign out failed', err);
+    showToast('Could not sign out — please try again');
     return;
   }
 
-  adminExpandedSeries.add(seriesId);
-  btn.textContent = '▾ Episodes';
-  panelEl.hidden = false;
+  adminSession = null;
+  adminSeries = [];
+  adminGenres = [];
+  adminSeriesGenres = {};
+  adminTotalUsers = null;
+  adminTotalRevenue = null;
+  adminEpisodesCache = {};
+  activeView = 'dashboard';
+  seriesSearchQuery = '';
+  editingSeriesId = null;
+  deletingSeriesId = null;
+  selectedEpisodeSeriesId = null;
 
-  if(adminEpisodes[seriesId] === undefined){
-    panelEl.innerHTML = '<div class="admin-empty">Loading episodes…</div>';
-    await loadEpisodesForSeries(seriesId);
-  }
-
-  renderEpisodesPanel(seriesId);
+  document.getElementById('adminLoginEmail').value = '';
+  document.getElementById('adminLoginPassword').value = '';
+  showLoginView();
 }
 
-async function loadEpisodesForSeries(seriesId){
-  try {
-    const { data, error } = await supabaseClient
-      .from('episodes')
-      .select('id, episode_number, title, bunny_video_id, duration_seconds')
-      .eq('series_id', seriesId)
-      .order('episode_number', { ascending: true });
-    if(error) throw error;
-    adminEpisodes[seriesId] = data || [];
-  } catch(err){
-    console.error('Narrava: failed to load episodes', err);
-    adminEpisodes[seriesId] = [];
-    showToast('Could not load episodes — please try again');
-  }
-}
-
-function renderEpisodesPanel(seriesId){
-  const panelEl = document.getElementById('episodesPanel-' + seriesId);
-  if(!panelEl) return;
-  panelEl.innerHTML = episodesPanelHtml(seriesId);
-  wireEpisodesPanel(seriesId);
-}
-
-function wireEpisodesPanel(seriesId){
-  const formEl = document.getElementById('addEpisodeForm-' + seriesId);
-  if(formEl) formEl.addEventListener('submit', handleAddEpisodeSubmit);
-}
-
-function renderAdminPanel(){
-  adminPanel.innerHTML =
-    adminHeaderHtml() +
-    '<div id="adminStats">' + statsHtml() + '</div>' +
-    '<div class="admin-section-title">Create Series</div>' +
-    createFormHtml() +
-    '<div class="admin-section-title">Existing Series</div>' +
-    '<div id="adminSeriesList"></div>';
-
-  document.getElementById('adminBackBtn').addEventListener('click', () => showScreen('profile'));
-  document.getElementById('adminCreateForm').addEventListener('submit', handleCreateSeriesSubmit);
-  renderAdminList();
-}
+// ================= Data load =================
 
 async function loadAdminData(){
   try {
     const [seriesResult, genreResult, linkResult, usersResult, revenueResult] = await Promise.all([
-      supabaseClient.from('series').select('id, title, description, cover_image_url, free_episode_count, featured_at').order('created_at', { ascending: false }),
+      supabaseClient.from('series').select('id, title, description, cover_image_url, free_episode_count, featured_at, status').order('created_at', { ascending: false }),
       supabaseClient.from('genres').select('id, name'),
       supabaseClient.from('series_genres').select('series_id, genre_id'),
       supabaseClient.rpc('admin_total_users'),
@@ -337,8 +222,280 @@ async function loadAdminData(){
   }
 }
 
+// ================= Sidebar / view switching =================
+
+function setActiveNav(){
+  document.querySelectorAll('.admin-nav-item').forEach(b => {
+    b.classList.toggle('active', b.dataset.view === activeView);
+  });
+}
+
+function renderMain(){
+  setActiveNav();
+  if(activeView === 'dashboard'){
+    adminMainContent.innerHTML = dashboardViewHtml();
+  } else if(activeView === 'content'){
+    adminMainContent.innerHTML = contentViewHtml();
+    wireContentView();
+  } else {
+    adminMainContent.innerHTML = placeholderViewHtml(activeView);
+  }
+}
+
+function pageHeaderHtml(title, showSearch){
+  return '<div class="admin-page-header">' +
+    '<h1 class="admin-page-title">' + title + '</h1>' +
+    (showSearch
+      ? '<div class="admin-search">' + ADMIN_SEARCH_ICON +
+          '<input type="text" id="adminSeriesSearch" placeholder="Search series by title…" value="' + escapeHtml(seriesSearchQuery) + '">' +
+        '</div>'
+      : '') +
+  '</div>';
+}
+
+function placeholderViewHtml(view){
+  const titles = { users: 'User Management', revenue: 'Revenue & Analytics', settings: 'System Settings' };
+  const title = titles[view] || 'Coming Soon';
+  return pageHeaderHtml(title, false) +
+    '<div class="admin-placeholder"><strong>Coming soon</strong>' + title + ' isn’t built yet. This is an honest placeholder, not missing functionality — nothing here is broken.</div>';
+}
+
+// ================= Dashboard view =================
+
+// Five real, current numbers — Total Series/Genres/Featured come from
+// the same rows already held in memory for the content view's list, so
+// they can never drift out of sync with what that list shows. The two
+// RPC-backed numbers show '—' instead of breaking the layout if either
+// RPC failed or came back null (loadAdminData leaves them at null in
+// that case, never a raw error object or the string "null").
+function statsHtml(){
+  const totalSeries = adminSeries.length;
+  const totalGenres = adminGenres.length;
+  const featuredNow = adminSeries.filter(s => !!s.featured_at).length;
+
+  const totalUsersDisplay = (adminTotalUsers === null || adminTotalUsers === undefined)
+    ? '—' : adminTotalUsers;
+  const totalRevenueDisplay = (adminTotalRevenue === null || adminTotalRevenue === undefined)
+    ? '—' : formatNaira(adminTotalRevenue);
+
+  return '<div class="admin-stats">' +
+    '<div class="admin-stat"><div class="admin-stat-value">' + totalSeries + '</div><div class="admin-stat-label">Total Series</div></div>' +
+    '<div class="admin-stat"><div class="admin-stat-value">' + totalGenres + '</div><div class="admin-stat-label">Total Genres</div></div>' +
+    '<div class="admin-stat"><div class="admin-stat-value">' + featuredNow + '</div><div class="admin-stat-label">Featured Now</div></div>' +
+    '<div class="admin-stat"><div class="admin-stat-value">' + totalUsersDisplay + '</div><div class="admin-stat-label">Registered Users</div></div>' +
+    '<div class="admin-stat"><div class="admin-stat-value">' + totalRevenueDisplay + '</div><div class="admin-stat-label">Total Revenue</div></div>' +
+  '</div>' +
+  '<div class="discover-note">Subscriptions launch in Phase 2 — no subscription data exists yet.</div>';
+}
+
+function dashboardViewHtml(){
+  return pageHeaderHtml('Dashboard', false) + statsHtml();
+}
+
+// ================= Content Management view =================
+
+function createFormHtml(){
+  return '<div class="admin-card">' +
+    '<div class="auth-error" id="adminCreateError"></div>' +
+    '<form id="adminCreateForm" novalidate>' +
+      '<label class="auth-label" for="adminTitle">Title</label>' +
+      '<input class="auth-input" type="text" id="adminTitle" required>' +
+      '<label class="auth-label" for="adminDescription">Description</label>' +
+      '<textarea class="auth-input" id="adminDescription" rows="3" required></textarea>' +
+      '<label class="auth-label" for="adminCoverUrl">Cover Image URL</label>' +
+      '<input class="auth-input" type="url" id="adminCoverUrl" placeholder="https://…">' +
+      '<label class="auth-label" for="adminFreeEpisodes">Free Episode Count</label>' +
+      '<input class="auth-input" type="number" id="adminFreeEpisodes" min="0" value="10" required>' +
+      '<button class="auth-submit" type="submit" id="adminCreateSubmit">Create Series</button>' +
+    '</form>' +
+  '</div>';
+}
+
+function filteredSeries(){
+  const q = seriesSearchQuery.trim().toLowerCase();
+  if(!q) return adminSeries;
+  return adminSeries.filter(s => s.title.toLowerCase().includes(q));
+}
+
+function seriesListHeaderHtml(){
+  return '<div class="admin-series-list-header">' +
+    '<div>Series</div><div>Genres</div><div>Published</div><div>Featured</div><div>Actions</div>' +
+  '</div>';
+}
+
+function seriesListHtml(){
+  if(!adminSeries.length){
+    return '<div class="admin-empty">No series yet — create the first one above.</div>';
+  }
+  const list = filteredSeries();
+  if(!list.length){
+    return '<div class="admin-empty">No series match “' + escapeHtml(seriesSearchQuery) + '”.</div>';
+  }
+  return seriesListHeaderHtml() + '<div class="admin-list">' + list.map(seriesRowHtml).join('') + '</div>';
+}
+
+function seriesRowHtml(series){
+  if(editingSeriesId === series.id) return editSeriesRowHtml(series);
+  if(deletingSeriesId === series.id) return deleteConfirmRowHtml(series);
+
+  const genreIds = adminSeriesGenres[series.id] || new Set();
+  const chipsHtml = adminGenres.length
+    ? '<div class="genre-chips">' + adminGenres.map(g =>
+        '<button type="button" class="genre-chip' + (genreIds.has(g.id) ? ' active' : '') + '" data-series-id="' + series.id + '" data-genre-id="' + g.id + '">' + escapeHtml(g.name) + '</button>'
+      ).join('') + '</div>'
+    : '<div class="admin-series-meta">No genres exist yet.</div>';
+
+  const isPublished = series.status === 'published';
+  const isFeatured = !!series.featured_at;
+
+  return '<div class="admin-series-row" data-series-id="' + series.id + '">' +
+    '<div class="admin-series-main">' +
+      '<div class="admin-series-title">' + escapeHtml(series.title) + '</div>' +
+      '<div class="admin-series-meta">Free episodes: ' + series.free_episode_count + '</div>' +
+    '</div>' +
+    '<div class="admin-series-genres">' + chipsHtml + '</div>' +
+    '<button type="button" class="admin-toggle-btn published' + (isPublished ? ' active' : '') + '" data-action="toggle-published" data-series-id="' + series.id + '">' +
+      (isPublished ? '● Published' : '○ Draft') +
+    '</button>' +
+    '<button type="button" class="admin-toggle-btn featured' + (isFeatured ? ' active' : '') + '" data-action="toggle-featured" data-series-id="' + series.id + '">' +
+      (isFeatured ? '★ Featured' : '☆ Not featured') +
+    '</button>' +
+    '<div class="admin-row-actions">' +
+      '<button type="button" class="admin-icon-btn" data-action="edit-series" data-series-id="' + series.id + '" aria-label="Edit series">' + ADMIN_EDIT_ICON + '</button>' +
+      '<button type="button" class="admin-icon-btn delete" data-action="delete-series" data-series-id="' + series.id + '" aria-label="Delete series">' + ADMIN_DELETE_ICON + '</button>' +
+    '</div>' +
+  '</div>';
+}
+
+function editSeriesRowHtml(series){
+  return '<div class="admin-series-row" data-series-id="' + series.id + '">' +
+    '<form class="admin-edit-form" id="editSeriesForm-' + series.id + '" data-series-id="' + series.id + '" novalidate>' +
+      '<div class="auth-error" id="editSeriesError-' + series.id + '"></div>' +
+      '<div class="admin-edit-form-row">' +
+        '<div>' +
+          '<label class="auth-label" for="editTitle-' + series.id + '">Title</label>' +
+          '<input class="auth-input" type="text" id="editTitle-' + series.id + '" value="' + escapeHtml(series.title) + '" required>' +
+        '</div>' +
+        '<div>' +
+          '<label class="auth-label" for="editFreeEpisodes-' + series.id + '">Free Episode Count</label>' +
+          '<input class="auth-input" type="number" min="0" id="editFreeEpisodes-' + series.id + '" value="' + series.free_episode_count + '" required>' +
+        '</div>' +
+      '</div>' +
+      '<label class="auth-label" for="editDescription-' + series.id + '">Description</label>' +
+      '<textarea class="auth-input" rows="3" id="editDescription-' + series.id + '" required>' + escapeHtml(series.description) + '</textarea>' +
+      '<label class="auth-label" for="editCoverUrl-' + series.id + '">Cover Image URL</label>' +
+      '<input class="auth-input" type="url" id="editCoverUrl-' + series.id + '" value="' + escapeHtml(series.cover_image_url || '') + '" placeholder="https://…">' +
+      '<div class="admin-edit-actions">' +
+        '<button class="auth-submit" type="submit" id="editSeriesSubmit-' + series.id + '">Save Changes</button>' +
+        '<button type="button" class="admin-edit-cancel" data-action="cancel-edit" data-series-id="' + series.id + '">Cancel</button>' +
+      '</div>' +
+    '</form>' +
+  '</div>';
+}
+
+function deleteConfirmRowHtml(series){
+  const cached = adminEpisodesCache[series.id];
+  const episodeNote = cached !== undefined
+    ? (cached.length + ' episode' + (cached.length === 1 ? '' : 's'))
+    : 'its episodes';
+
+  return '<div class="admin-series-row" data-series-id="' + series.id + '">' +
+    '<div class="admin-delete-confirm">' +
+      '<p>Delete “' + escapeHtml(series.title) + '” permanently? This also deletes ' + episodeNote + ' and its genre links — the database cascades that automatically. This can’t be undone.</p>' +
+      '<div class="admin-delete-confirm-actions">' +
+        '<button type="button" class="admin-delete-confirm-btn" data-action="confirm-delete" data-series-id="' + series.id + '">Delete Permanently</button>' +
+        '<button type="button" class="admin-delete-cancel-btn" data-action="cancel-delete" data-series-id="' + series.id + '">Cancel</button>' +
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+function contentViewHtml(){
+  return pageHeaderHtml('Content Management', true) +
+    '<div class="admin-section-title">Create Series</div>' +
+    createFormHtml() +
+    '<div class="admin-section-title">Existing Series</div>' +
+    '<div id="adminSeriesList">' + seriesListHtml() + '</div>' +
+    '<div class="admin-section-title">Episode Management</div>' +
+    '<div class="admin-card" id="episodeManagementCard">' + episodeManagementHtml() + '</div>';
+}
+
+function wireContentView(){
+  document.getElementById('adminCreateForm').addEventListener('submit', handleCreateSeriesSubmit);
+  wireSeriesListActions();
+
+  const searchInput = document.getElementById('adminSeriesSearch');
+  if(searchInput){
+    searchInput.addEventListener('input', () => {
+      seriesSearchQuery = searchInput.value;
+      renderSeriesList();
+    });
+  }
+
+  wireEpisodeManagement();
+}
+
+function renderSeriesList(){
+  const el = document.getElementById('adminSeriesList');
+  if(!el) return;
+  el.innerHTML = seriesListHtml();
+  wireSeriesListActions();
+}
+
+function wireSeriesListActions(){
+  const el = document.getElementById('adminSeriesList');
+  if(!el) return;
+
+  el.querySelectorAll('.genre-chip').forEach(chip => {
+    chip.addEventListener('click', () => handleGenreChipClick(chip));
+  });
+  el.querySelectorAll('[data-action="toggle-published"]').forEach(btn => {
+    btn.addEventListener('click', () => handlePublishedToggle(btn));
+  });
+  el.querySelectorAll('[data-action="toggle-featured"]').forEach(btn => {
+    btn.addEventListener('click', () => handleFeaturedToggle(btn));
+  });
+  el.querySelectorAll('[data-action="edit-series"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      editingSeriesId = btn.dataset.seriesId;
+      deletingSeriesId = null;
+      renderSeriesList();
+    });
+  });
+  el.querySelectorAll('[data-action="cancel-edit"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      editingSeriesId = null;
+      renderSeriesList();
+    });
+  });
+  el.querySelectorAll('[data-action="delete-series"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      deletingSeriesId = btn.dataset.seriesId;
+      editingSeriesId = null;
+      renderSeriesList();
+    });
+  });
+  el.querySelectorAll('[data-action="cancel-delete"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      deletingSeriesId = null;
+      renderSeriesList();
+    });
+  });
+  el.querySelectorAll('[data-action="confirm-delete"]').forEach(btn => {
+    btn.addEventListener('click', () => handleDeleteSeries(btn));
+  });
+  el.querySelectorAll('.admin-edit-form').forEach(form => {
+    form.addEventListener('submit', handleEditSeriesSubmit);
+  });
+}
+
 async function handleCreateSeriesSubmit(e){
   e.preventDefault();
+
+  // Captured now, not read off `e` after the await below — the browser
+  // clears e.currentTarget once event dispatch finishes, so reading it
+  // post-await throws "Cannot read properties of null (reading 'reset')".
+  const form = e.currentTarget;
 
   const title = document.getElementById('adminTitle').value.trim();
   const description = document.getElementById('adminDescription').value.trim();
@@ -362,6 +519,9 @@ async function handleCreateSeriesSubmit(e){
   submitBtn.textContent = 'Creating…';
 
   try {
+    // No status field sent — new series default to 'draft' at the
+    // database level. Publishing is a separate, deliberate action from
+    // the list below (handlePublishedToggle), not part of creation.
     const { data, error } = await supabaseClient
       .from('series')
       .insert({
@@ -370,18 +530,22 @@ async function handleCreateSeriesSubmit(e){
         cover_image_url: coverImageUrl || null,
         free_episode_count: freeEpisodeCount
       })
-      .select('id, title, description, cover_image_url, free_episode_count, featured_at')
+      .select('id, title, description, cover_image_url, free_episode_count, featured_at, status')
       .single();
 
     if(error) throw error;
 
     adminSeries.unshift(data);
-    showToast('Series created ✓');
-    renderAdminPanel();
+    showToast('Series created ✓ — it starts as a draft, publish it below when ready');
+    form.reset();
+    document.getElementById('adminFreeEpisodes').value = 10;
+    renderSeriesList();
+    populateEpisodeSeriesSelect();
   } catch(err){
     console.error('Narrava: failed to create series', err);
     errorEl.textContent = err.message || 'Could not create series — please try again.';
     errorEl.classList.add('show');
+  } finally {
     submitBtn.disabled = false;
     submitBtn.textContent = 'Create Series';
   }
@@ -423,6 +587,35 @@ async function handleGenreChipClick(chip){
   }
 }
 
+async function handlePublishedToggle(btn){
+  const seriesId = btn.dataset.seriesId;
+  const series = adminSeries.find(s => String(s.id) === String(seriesId));
+  if(!series) return;
+
+  const willPublish = series.status !== 'published';
+  btn.disabled = true;
+
+  try {
+    const { data, error } = await supabaseClient
+      .from('series')
+      .update({ status: willPublish ? 'published' : 'draft' })
+      .eq('id', seriesId)
+      .select('status')
+      .single();
+    if(error) throw error;
+
+    series.status = data.status;
+    btn.classList.toggle('active', series.status === 'published');
+    btn.textContent = series.status === 'published' ? '● Published' : '○ Draft';
+    showToast(series.status === 'published' ? 'Series published ✓ — now visible in Discover' : 'Moved back to draft — hidden from Discover');
+  } catch(err){
+    console.error('Narrava: failed to toggle published status', err);
+    showToast('Could not update published status — please try again');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 async function handleFeaturedToggle(btn){
   const seriesId = btn.dataset.seriesId;
   const series = adminSeries.find(s => String(s.id) === String(seriesId));
@@ -442,8 +635,7 @@ async function handleFeaturedToggle(btn){
 
     series.featured_at = data.featured_at;
     btn.classList.toggle('active', !!series.featured_at);
-    btn.textContent = series.featured_at ? '★ Featured — tap to unfeature' : '☆ Not featured — tap to feature';
-    renderStats();
+    btn.textContent = series.featured_at ? '★ Featured' : '☆ Not featured';
     showToast(series.featured_at ? 'Marked as featured ✓' : 'Removed from featured');
   } catch(err){
     console.error('Narrava: failed to toggle featured', err);
@@ -453,7 +645,247 @@ async function handleFeaturedToggle(btn){
   }
 }
 
-// The full upload flow, in the exact order it has to happen:
+async function handleEditSeriesSubmit(e){
+  e.preventDefault();
+
+  const form = e.currentTarget;
+  const seriesId = form.dataset.seriesId;
+  const errorEl = document.getElementById('editSeriesError-' + seriesId);
+  const submitBtn = document.getElementById('editSeriesSubmit-' + seriesId);
+
+  const title = document.getElementById('editTitle-' + seriesId).value.trim();
+  const description = document.getElementById('editDescription-' + seriesId).value.trim();
+  const coverImageUrl = document.getElementById('editCoverUrl-' + seriesId).value.trim();
+  const freeEpisodeCountRaw = document.getElementById('editFreeEpisodes-' + seriesId).value;
+
+  errorEl.textContent = '';
+  errorEl.classList.remove('show');
+
+  if(!title || !description){
+    errorEl.textContent = 'Title and description are required.';
+    errorEl.classList.add('show');
+    return;
+  }
+
+  const freeEpisodeCount = freeEpisodeCountRaw === '' ? 0 : parseInt(freeEpisodeCountRaw, 10);
+
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Saving…';
+
+  try {
+    const { data, error } = await supabaseClient
+      .from('series')
+      .update({
+        title,
+        description,
+        cover_image_url: coverImageUrl || null,
+        free_episode_count: freeEpisodeCount
+      })
+      .eq('id', seriesId)
+      .select('id, title, description, cover_image_url, free_episode_count, featured_at, status')
+      .single();
+
+    if(error) throw error;
+
+    const idx = adminSeries.findIndex(s => String(s.id) === String(seriesId));
+    if(idx !== -1) adminSeries[idx] = data;
+
+    editingSeriesId = null;
+    showToast('Series updated ✓');
+    renderSeriesList();
+    populateEpisodeSeriesSelect();
+  } catch(err){
+    console.error('Narrava: failed to update series', err);
+    errorEl.textContent = err.message || 'Could not save changes — please try again.';
+    errorEl.classList.add('show');
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Save Changes';
+  }
+}
+
+// The database already cascades series -> episodes / series_genres
+// (set up in Week 1), so a single delete on the series row is enough —
+// no manual cleanup of related rows needed here.
+async function handleDeleteSeries(btn){
+  const seriesId = btn.dataset.seriesId;
+  btn.disabled = true;
+  btn.textContent = 'Deleting…';
+
+  try {
+    const { error } = await supabaseClient.from('series').delete().eq('id', seriesId);
+    if(error) throw error;
+
+    adminSeries = adminSeries.filter(s => String(s.id) !== String(seriesId));
+    delete adminSeriesGenres[seriesId];
+    delete adminEpisodesCache[seriesId];
+    if(String(selectedEpisodeSeriesId) === String(seriesId)) selectedEpisodeSeriesId = null;
+    deletingSeriesId = null;
+
+    showToast('Series deleted ✓');
+    renderSeriesList();
+    populateEpisodeSeriesSelect();
+  } catch(err){
+    console.error('Narrava: failed to delete series', err);
+    showToast('Could not delete series — please try again');
+    btn.disabled = false;
+    btn.textContent = 'Delete Permanently';
+  }
+}
+
+// ================= Episode management (persistent panel) =================
+
+function episodeManagementHtml(){
+  if(!adminSeries.length){
+    return '<div class="admin-series-meta">Create a series above first.</div>';
+  }
+
+  const options = adminSeries.map(s =>
+    '<option value="' + s.id + '"' + (String(s.id) === String(selectedEpisodeSeriesId) ? ' selected' : '') + '>' + escapeHtml(s.title) + '</option>'
+  ).join('');
+
+  return '<div class="admin-episode-panel-select">' +
+      '<label class="auth-label" for="episodeSeriesSelect">Series</label>' +
+      '<select class="auth-input" id="episodeSeriesSelect">' +
+        '<option value="">Choose a series…</option>' + options +
+      '</select>' +
+    '</div>' +
+    '<div id="episodeManagementBody">' + episodeManagementBodyHtml() + '</div>';
+}
+
+function episodeManagementBodyHtml(){
+  if(!selectedEpisodeSeriesId) return '<div class="admin-empty">Choose a series above to view and add episodes.</div>';
+
+  const episodes = adminEpisodesCache[selectedEpisodeSeriesId];
+  if(episodes === undefined) return '<div class="admin-empty">Loading episodes…</div>';
+
+  const listHtml = episodes.length
+    ? '<div class="admin-episode-list">' + episodes.map(episodeRowHtml).join('') + '</div>'
+    : '<div class="admin-series-meta">No episodes yet.</div>';
+
+  const nextEpisodeNumber = episodes.length
+    ? Math.max.apply(null, episodes.map(ep => ep.episode_number)) + 1
+    : 1;
+
+  return listHtml +
+    // Always visible whenever a series is selected here, not just right
+    // after an upload — Bunny's processing time is true any time an
+    // admin is looking here, not just in the moment right after a save.
+    '<div class="discover-note">A newly uploaded video may take a few minutes to finish processing on Bunny before it’s watchable.</div>' +
+    addEpisodeFormHtml(selectedEpisodeSeriesId, nextEpisodeNumber);
+}
+
+function episodeRowHtml(ep){
+  const hasVideo = !!ep.bunny_video_id;
+  return '<div class="admin-episode-row">' +
+    '<span class="admin-episode-number">Ep ' + ep.episode_number + '</span>' +
+    '<span class="admin-episode-title">' + (ep.title ? escapeHtml(ep.title) : 'Untitled') + '</span>' +
+    '<span class="admin-episode-video' + (hasVideo ? ' has-video' : '') + '">' + (hasVideo ? '✓ Video attached' : '— No video') + '</span>' +
+  '</div>';
+}
+
+function addEpisodeFormHtml(seriesId, nextEpisodeNumber){
+  return '<form class="admin-episode-form" id="addEpisodeForm-' + seriesId + '" data-series-id="' + seriesId + '" novalidate>' +
+    '<div class="auth-error" id="episodeError-' + seriesId + '"></div>' +
+    '<div class="admin-episode-form-row">' +
+      '<div>' +
+        '<label class="auth-label" for="episodeNumber-' + seriesId + '">Episode #</label>' +
+        '<input class="auth-input" type="number" min="1" id="episodeNumber-' + seriesId + '" value="' + nextEpisodeNumber + '" required>' +
+      '</div>' +
+      '<div>' +
+        '<label class="auth-label" for="episodeTitle-' + seriesId + '">Title (optional)</label>' +
+        '<input class="auth-input" type="text" id="episodeTitle-' + seriesId + '">' +
+      '</div>' +
+    '</div>' +
+    '<label class="auth-label" for="episodeFile-' + seriesId + '">Video File</label>' +
+    '<input class="auth-input" type="file" accept="video/*" id="episodeFile-' + seriesId + '" required>' +
+    '<div class="admin-upload-progress" id="episodeProgress-' + seriesId + '">' +
+      '<div class="admin-upload-progress-bar"><div class="admin-upload-progress-fill" id="episodeProgressFill-' + seriesId + '"></div></div>' +
+      '<div class="admin-upload-progress-label" id="episodeProgressLabel-' + seriesId + '">0%</div>' +
+    '</div>' +
+    '<button class="auth-submit" type="submit" id="episodeSubmit-' + seriesId + '">Upload Episode</button>' +
+  '</form>';
+}
+
+function wireEpisodeManagement(){
+  const select = document.getElementById('episodeSeriesSelect');
+  if(select){
+    select.addEventListener('change', async () => {
+      selectedEpisodeSeriesId = select.value || null;
+      renderEpisodeManagementBody();
+      if(selectedEpisodeSeriesId && adminEpisodesCache[selectedEpisodeSeriesId] === undefined){
+        await loadEpisodesForSeries(selectedEpisodeSeriesId);
+        renderEpisodeManagementBody();
+      }
+    });
+  }
+  wireEpisodeManagementBody();
+}
+
+function renderEpisodeManagementBody(){
+  const el = document.getElementById('episodeManagementBody');
+  if(!el) return;
+  el.innerHTML = episodeManagementBodyHtml();
+  wireEpisodeManagementBody();
+}
+
+function wireEpisodeManagementBody(){
+  if(!selectedEpisodeSeriesId) return;
+  const formEl = document.getElementById('addEpisodeForm-' + selectedEpisodeSeriesId);
+  if(formEl) formEl.addEventListener('submit', handleAddEpisodeSubmit);
+}
+
+// Called after create/edit/delete series so the dropdown's options stay
+// in sync without re-rendering the whole Content view (which would
+// also wipe out the search box's current text and cursor).
+function populateEpisodeSeriesSelect(){
+  const card = document.getElementById('episodeManagementCard');
+  if(!card) return;
+
+  // If the series currently selected here was just deleted, drop the
+  // selection and re-render the body below too — otherwise the Add
+  // Episode form stays on screen pointing at a series id that no
+  // longer exists. Editing/creating a *different* series must not
+  // trigger this — that would blow away an in-progress upload form for
+  // whichever series the admin actually has open here.
+  const stillSelectable = selectedEpisodeSeriesId && adminSeries.some(s => String(s.id) === String(selectedEpisodeSeriesId));
+  if(selectedEpisodeSeriesId && !stillSelectable) selectedEpisodeSeriesId = null;
+
+  if(!adminSeries.length){
+    card.innerHTML = episodeManagementHtml();
+    return;
+  }
+
+  const select = document.getElementById('episodeSeriesSelect');
+  if(!select){
+    card.innerHTML = episodeManagementHtml();
+    wireEpisodeManagement();
+    return;
+  }
+
+  select.innerHTML = '<option value="">Choose a series…</option>' +
+    adminSeries.map(s => '<option value="' + s.id + '"' + (String(s.id) === String(selectedEpisodeSeriesId) ? ' selected' : '') + '>' + escapeHtml(s.title) + '</option>').join('');
+
+  if(!stillSelectable) renderEpisodeManagementBody();
+}
+
+async function loadEpisodesForSeries(seriesId){
+  try {
+    const { data, error } = await supabaseClient
+      .from('episodes')
+      .select('id, episode_number, title, bunny_video_id, duration_seconds')
+      .eq('series_id', seriesId)
+      .order('episode_number', { ascending: true });
+    if(error) throw error;
+    adminEpisodesCache[seriesId] = data || [];
+  } catch(err){
+    console.error('Narrava: failed to load episodes', err);
+    adminEpisodesCache[seriesId] = [];
+    showToast('Could not load episodes — please try again');
+  }
+}
+
+// The full upload flow, in the exact order it has to happen (unchanged
+// from admin panel part 2 — only its position in the layout moved):
 //   1. ask bunny-upload-init for permission (stop here on any failure —
 //      never touch Bunny without it)
 //   2. stream the actual file to Bunny over tus, showing real progress
@@ -610,12 +1042,12 @@ async function handleAddEpisodeSubmit(e){
 
     if(epError) throw epError;
 
-    if(!adminEpisodes[seriesId]) adminEpisodes[seriesId] = [];
-    adminEpisodes[seriesId].push(epData);
-    adminEpisodes[seriesId].sort((a, b) => a.episode_number - b.episode_number);
+    if(!adminEpisodesCache[seriesId]) adminEpisodesCache[seriesId] = [];
+    adminEpisodesCache[seriesId].push(epData);
+    adminEpisodesCache[seriesId].sort((a, b) => a.episode_number - b.episode_number);
 
     showToast('Episode uploaded ✓ — Bunny may take a few minutes to finish processing');
-    renderEpisodesPanel(seriesId);
+    renderEpisodeManagementBody();
   } catch(err){
     console.error('Narrava: failed to save episode row after a successful Bunny upload', err);
     errorEl.textContent = 'The video uploaded to Bunny successfully (video ID: ' + initResult.videoId + '), but saving the episode record failed: ' +
@@ -627,9 +1059,17 @@ async function handleAddEpisodeSubmit(e){
   }
 }
 
-// Entry point, called from profile.js when the Admin Panel row is tapped.
-async function renderAdminScreen(){
-  adminPanel.innerHTML = '<div class="admin-empty">Loading…</div>';
-  await loadAdminData();
-  renderAdminPanel();
-}
+// ================= Wiring =================
+
+document.getElementById('adminLoginForm').addEventListener('submit', handleAdminLoginSubmit);
+document.getElementById('adminDeniedSignOut').addEventListener('click', handleAdminSignOut);
+document.getElementById('adminSignOutBtn').addEventListener('click', handleAdminSignOut);
+
+document.querySelectorAll('.admin-nav-item').forEach(btn => {
+  btn.addEventListener('click', () => {
+    activeView = btn.dataset.view;
+    renderMain();
+  });
+});
+
+initAdminPage();

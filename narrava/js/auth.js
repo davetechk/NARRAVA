@@ -19,13 +19,6 @@ const authModalClose = document.getElementById('authModalClose');
 
 let authMode = 'login'; // 'login' | 'signup'
 
-function escapeHtml(str){
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
 function openAuthModal(mode){
   authMode = mode === 'signup' ? 'signup' : 'login';
   renderAuthForm();

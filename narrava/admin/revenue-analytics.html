@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Narrava Admin — Revenue &amp; Analytics</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/styles.css">
+<link rel="stylesheet" href="../css/admin.css">
+</head>
+<body class="admin-page" data-page="revenue-analytics">
+
+<div class="toast" id="toast"></div>
+
+<div class="admin-shell">
+  <nav class="admin-sidebar" id="adminSidebar"></nav>
+  <main class="admin-main">
+
+    <div class="admin-topbar">
+      <div>
+        <h1>Revenue &amp; Analytics</h1>
+        <div class="admin-topbar-sub">Track how the platform earns, end to end</div>
+      </div>
+    </div>
+
+    <div id="revenueStatsRow"></div>
+
+    <div class="admin-content-grid">
+      <div class="admin-panel">
+        <div class="admin-panel-head"><div><h2>Revenue — Last 7 Weeks</h2><div class="admin-panel-sub">Coin purchases via Paystack</div></div></div>
+        <div class="admin-bar-chart" id="revenueBarChart"></div>
+        <div class="admin-helper-text" id="revenueBarNote" style="margin-top:14px;"></div>
+      </div>
+
+      <div class="admin-panel">
+        <h2 style="margin-bottom:16px;">Revenue Sources</h2>
+        <div id="revenueSourcesLegend"></div>
+      </div>
+    </div>
+
+    <div class="admin-panel">
+      <div class="admin-panel-head"><div><h2>Top Performing Series</h2><div class="admin-panel-sub">Ranked by coins spent unlocking their episodes</div></div></div>
+      <div id="topSeriesTableWrap"></div>
+      <div class="admin-helper-text" style="margin-top:10px;">Coin purchases top up a wallet, not a specific series, so only coin spend — not a naira figure — can be attributed per series here.</div>
+    </div>
+
+  </main>
+</div>
+
+<script src="../js/config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="../js/supabase-client.js"></script>
+<script src="../js/shared-utils.js"></script>
+<script src="../js/admin-shared.js"></script>
+<script src="../js/admin-revenue.js"></script>
+</body>
+</html>

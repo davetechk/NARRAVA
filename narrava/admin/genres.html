@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Narrava Admin — Genres</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/styles.css">
+<link rel="stylesheet" href="../css/admin.css">
+</head>
+<body class="admin-page" data-page="genres">
+
+<div class="toast" id="toast"></div>
+
+<div class="admin-shell">
+  <nav class="admin-sidebar" id="adminSidebar"></nav>
+  <main class="admin-main">
+
+    <div class="admin-topbar">
+      <div>
+        <h1>Genres</h1>
+        <div class="admin-topbar-sub">Organize series into discoverable categories</div>
+      </div>
+      <div class="admin-search-box">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.8"/><path d="M20 20l-3.5-3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <input type="text" id="genresSearch" placeholder="Search genres…">
+      </div>
+    </div>
+
+    <div class="admin-panel">
+      <div class="admin-panel-head"><div><h2>Add Genre</h2><div class="admin-panel-sub">Genres apply as tags across every series</div></div></div>
+      <div class="auth-error" id="genreAddError"></div>
+      <form id="genreAddForm" novalidate>
+        <div class="admin-field-row" style="grid-template-columns:1fr auto;align-items:end;">
+          <div class="admin-field"><label for="genreNameInput">Genre Name</label><input type="text" id="genreNameInput" placeholder="e.g. Revenge Thriller" required></div>
+          <button class="admin-btn admin-btn-primary" type="submit" id="genreAddSubmit">Add Genre</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="admin-section-title" id="genreListHeading">Content Categories</div>
+    <div class="admin-panel-sub" id="genreListSub" style="margin:-8px 0 12px;"></div>
+    <div class="admin-genre-list" id="genreList"></div>
+
+  </main>
+</div>
+
+<script src="../js/config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="../js/supabase-client.js"></script>
+<script src="../js/shared-utils.js"></script>
+<script src="../js/admin-shared.js"></script>
+<script src="../js/admin-genres.js"></script>
+</body>
+</html>

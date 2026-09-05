@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Narrava Admin — User Management</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/styles.css">
+<link rel="stylesheet" href="../css/admin.css">
+</head>
+<body class="admin-page" data-page="user-management" data-title="User Management">
+
+<div class="toast" id="toast"></div>
+
+<div class="admin-shell">
+  <nav class="admin-sidebar" id="adminSidebar"></nav>
+  <main class="admin-main">
+    <div class="admin-topbar">
+      <div>
+        <h1>User Management</h1>
+        <div class="admin-topbar-sub">Manage registered accounts</div>
+      </div>
+    </div>
+    <div id="comingSoonBody"></div>
+  </main>
+</div>
+
+<script src="../js/config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="../js/supabase-client.js"></script>
+<script src="../js/shared-utils.js"></script>
+<script src="../js/admin-shared.js"></script>
+<script src="../js/admin-coming-soon.js"></script>
+</body>
+</html>

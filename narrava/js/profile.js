@@ -42,7 +42,7 @@ function menuRow(id, label, icon, valueHtml){
 }
 
 // Same visual row, but a plain link — the Admin Panel now lives on its
-// own separate page (admin.html), not a screen inside this app.
+// own separate pages under admin/, not a screen inside this app.
 function menuLinkRow(id, label, icon, href){
   return '<a class="profile-row" id="' + id + '" href="' + href + '">' +
     '<span class="profile-row-icon">' + icon + '</span>' +
@@ -100,7 +100,7 @@ function renderProfileMenu(){
     '</div>' +
 
     (isAdmin
-      ? '<div class="profile-menu">' + menuLinkRow('rowAdminPanel', 'Admin Panel', PROFILE_ICONS.admin, 'admin.html') + '</div>'
+      ? '<div class="profile-menu">' + menuLinkRow('rowAdminPanel', 'Admin Panel', PROFILE_ICONS.admin, 'admin/dashboard.html') + '</div>'
       : '') +
 
     (loggedIn

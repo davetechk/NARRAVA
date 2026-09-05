@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Narrava — Admin</title>
+<title>Narrava — Admin Login</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Anton&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css">
-<link rel="stylesheet" href="css/admin.css">
+<link rel="stylesheet" href="../css/styles.css">
+<link rel="stylesheet" href="../css/admin.css">
 </head>
 <body class="admin-page">
 
@@ -40,35 +40,10 @@
   </div>
 </div>
 
-<!-- The dashboard itself. -->
-<div class="admin-app screen-hidden" id="adminAppView">
-  <nav class="admin-sidebar">
-    <div class="admin-sidebar-logo">NARRAVA</div>
-    <div class="admin-sidebar-nav">
-      <button class="admin-nav-item" data-view="dashboard" type="button">Dashboard</button>
-      <div class="admin-nav-section">Content Management</div>
-      <button class="admin-nav-item admin-nav-sub" data-view="content" type="button">Series List</button>
-      <button class="admin-nav-item admin-nav-sub" data-view="content" type="button">Episodes</button>
-      <button class="admin-nav-item admin-nav-sub" data-view="content" type="button">Genres</button>
-      <button class="admin-nav-item" data-view="users" type="button">User Management</button>
-      <button class="admin-nav-item" data-view="revenue" type="button">Revenue &amp; Analytics</button>
-      <button class="admin-nav-item" data-view="settings" type="button">System Settings</button>
-    </div>
-    <div class="admin-sidebar-footer">
-      <div class="admin-sidebar-email" id="adminSidebarEmail"></div>
-      <button class="admin-sidebar-signout" type="button" id="adminSignOutBtn">Sign Out</button>
-    </div>
-  </nav>
-  <main class="admin-main">
-    <div id="adminMainContent"></div>
-  </main>
-</div>
-
-<script src="js/config.js"></script>
+<script src="../js/config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/tus-js-client@4.2.2/dist/tus.min.js"></script>
-<script src="js/supabase-client.js"></script>
-<script src="js/shared-utils.js"></script>
-<script src="js/admin.js"></script>
+<script src="../js/supabase-client.js"></script>
+<script src="../js/shared-utils.js"></script>
+<script src="../js/admin-login.js"></script>
 </body>
 </html>

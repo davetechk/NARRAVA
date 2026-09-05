@@ -1,7 +1,7 @@
 // shared-utils.js
 //
-// Small helpers used by both the consumer app (index.html) and the
-// admin dashboard (admin.html) — one source, included by both pages,
+// Small helpers used by both the consumer app (index.html) and every
+// admin page (admin/*.html) — one source, included by all of them,
 // rather than duplicating either function.
 
 function escapeHtml(str){
@@ -12,7 +12,7 @@ function escapeHtml(str){
 }
 
 // Looks up #toast fresh on every call (rather than caching it once at
-// load) since index.html and admin.html each have their own #toast
+// load) since index.html and each admin page have their own #toast
 // element in different places in the DOM.
 function showToast(msg){
   const toast = document.getElementById('toast');

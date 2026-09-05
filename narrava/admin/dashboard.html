@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Narrava Admin — Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/styles.css">
+<link rel="stylesheet" href="../css/admin.css">
+</head>
+<body class="admin-page" data-page="dashboard">
+
+<div class="toast" id="toast"></div>
+
+<div class="admin-shell">
+  <nav class="admin-sidebar" id="adminSidebar"></nav>
+  <main class="admin-main">
+
+    <div class="admin-topbar">
+      <div>
+        <h1>Dashboard</h1>
+        <div class="admin-topbar-sub">Narrava admin overview</div>
+      </div>
+      <div class="admin-search-box">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.8"/><path d="M20 20l-3.5-3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <input type="text" id="adminDashboardSearch" placeholder="Quick search series…">
+      </div>
+    </div>
+
+    <div id="adminStatsRow"></div>
+
+    <div class="admin-content-grid">
+      <div>
+        <div class="admin-panel">
+          <div class="admin-panel-head"><h2>Create Series</h2></div>
+          <div class="auth-error" id="adminCreateError"></div>
+          <form id="adminCreateForm" novalidate>
+            <div class="admin-field-row">
+              <div class="admin-field"><label for="adminTitle">Title</label><input type="text" id="adminTitle" required></div>
+              <div class="admin-field"><label for="adminDescription">Description</label><textarea id="adminDescription" rows="1" required></textarea></div>
+              <div class="admin-field"><label for="adminCoverUrl">Cover Image URL</label><input type="text" id="adminCoverUrl" placeholder="https://…"></div>
+            </div>
+            <div class="admin-helper-text">New series start as a draft — publish it from the Series List page when it's ready.</div>
+            <div class="admin-field-row" style="grid-template-columns:1fr 1fr auto;align-items:end;">
+              <div class="admin-field"><label for="adminFreeEpisodes">Free Episode Count</label><input type="number" id="adminFreeEpisodes" min="0" value="10" required></div>
+              <div></div>
+              <button class="admin-btn admin-btn-primary" type="submit" id="adminCreateSubmit">Create Series</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="admin-panel">
+          <div class="admin-panel-head"><h2>Existing Content</h2><a class="admin-btn-link" href="series-list.html">View all series →</a></div>
+          <div id="adminSeriesPreview"></div>
+        </div>
+      </div>
+
+      <div class="admin-panel">
+        <h2 style="margin-bottom:16px;">Upload Episodes</h2>
+        <div class="auth-error" id="dashUploadError"></div>
+        <form id="dashUploadForm" novalidate>
+          <div class="admin-field" style="margin-bottom:16px;">
+            <label for="dashUploadSeries">Step 1: Select Series</label>
+            <div class="admin-select-wrap">
+              <select id="dashUploadSeries" required><option value="">Choose a series…</option></select>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+          </div>
+          <div class="admin-field" style="margin-bottom:16px;">
+            <label>Step 2: Video File</label>
+            <button type="button" class="admin-btn-ghost" id="dashUploadFileBtn">Add Video File</button>
+            <input type="file" accept="video/*" id="dashUploadFile" style="display:none;" required>
+          </div>
+          <div class="admin-upload-progress" id="dashUploadProgress">
+            <div class="admin-progress-track"><div class="admin-progress-fill" id="dashUploadProgressFill"></div></div>
+            <div class="admin-upload-progress-label" id="dashUploadProgressLabel">0%</div>
+          </div>
+          <div class="admin-field-row" style="grid-template-columns:80px 1fr;margin-bottom:16px;">
+            <div class="admin-field"><label for="dashUploadNumber">Ep #</label><input type="number" min="1" id="dashUploadNumber" value="1" required></div>
+            <div class="admin-field"><label for="dashUploadTitle">Episode Name</label><input type="text" id="dashUploadTitle" placeholder="e.g. What the Rain Knew"></div>
+          </div>
+          <button class="admin-btn admin-btn-primary" type="submit" id="dashUploadSubmit" style="width:100%;">Upload Episode</button>
+        </form>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script src="../js/config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tus-js-client@4.2.2/dist/tus.min.js"></script>
+<script src="../js/supabase-client.js"></script>
+<script src="../js/shared-utils.js"></script>
+<script src="../js/admin-shared.js"></script>
+<script src="../js/admin-dashboard.js"></script>
+</body>
+</html>

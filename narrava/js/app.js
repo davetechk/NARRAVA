@@ -27,6 +27,12 @@ const regions = {
 let slides = [];
 let idx = 0;
 let coins = 3;
+
+// Real video playback state (Bunny's player.js). At most one of these
+// is ever wired to a live iframe at a time — see renderMedia() below.
+let currentPlayer = null;        // playerjs.Player for the active slide's video, or null (no video / not ready yet)
+let currentVideoSlideId = null;  // slide.id the most recent player.js instance was created for
+let renderedMediaSlideId = null; // slide.id whose media (video or art) is currently in #bgvideo, so unrelated re-renders (unlock, continue) don't restart a playing video
 let region = 'NG';
 let selectedPkg = 1;
 let selectedMethod = 0;
@@ -134,8 +140,87 @@ function setArt(art){
   }
 }
 
+// Renders whichever media the current slide should show — a real,
+// playing video when its episode has a bunny_video_id, the existing
+// static art otherwise (no video yet, still processing, or anything
+// else not resolved — same honest fallback as before this feature).
+//
+// Replacing #bgvideo's content (for a new slide, or for the fallback
+// art) removes any iframe that was already inside it, and removing an
+// iframe from the DOM is what actually stops its video — the browser
+// tears down the whole embedded document, not just hides it — so at
+// most one video is ever active, without needing to explicitly ask the
+// old player to pause first.
+//
+// Guarded by renderedMediaSlideId so re-rendering the *same* slide
+// (unlocking an episode, tapping Continue) only updates the surrounding
+// UI, not the video itself — otherwise every unrelated re-render would
+// tear down and restart whatever was already playing.
+function renderMedia(s){
+  if(s.id === renderedMediaSlideId) return;
+  renderedMediaSlideId = s.id;
+  currentPlayer = null;
+  currentVideoSlideId = s.id;
+
+  if(!s.bunnyVideoId){
+    bgvideo.classList.remove('has-video');
+    setArt(s.art);
+    return;
+  }
+
+  bgvideo.classList.add('has-video');
+  const src = 'https://iframe.mediadelivery.net/embed/' + BUNNY_LIBRARY_ID + '/' + s.bunnyVideoId +
+    '?autoplay=true&loop=true&muted=true&preload=true&responsive=false';
+  bgvideo.innerHTML = '<iframe src="' + src + '" allow="autoplay" allowfullscreen></iframe>';
+
+  const iframe = bgvideo.querySelector('iframe');
+  const player = new playerjs.Player(iframe);
+
+  // A bunny_video_id that doesn't correspond to a real video (e.g. bad
+  // data) doesn't reliably tell us so through player.js — Bunny just
+  // serves its own plain 404 page inside the iframe, which never attaches
+  // a real player, so 'ready' simply never fires. A plain timeout catches
+  // that, falling back to the same static art a video-less slide shows.
+  //
+  // Deliberately NOT also listening for player.js's 'error' event here:
+  // in testing, once a second Player() instance had been created later
+  // in the same page session, 'error' fired spuriously on a video that
+  // was actually loading and playing fine — a real player.js quirk with
+  // more than one instance alive across a session, not a real failure.
+  // The timeout alone already covers the one failure case that actually
+  // happens with this data (a bad bunny_video_id), without that false
+  // positive.
+  let settled = false;
+  const fallbackTimer = setTimeout(() => {
+    if(settled || currentVideoSlideId !== s.id) return;
+    settled = true;
+    bgvideo.classList.remove('has-video');
+    setArt(s.art);
+  }, 5000);
+
+  player.on('ready', () => {
+    // The feed may have already swiped past this slide while player.js
+    // was still connecting, or the fallback timer already fired — if so
+    // this player belongs to an iframe that isn't on screen (or isn't
+    // showing) anymore, don't resurrect it.
+    if(settled || currentVideoSlideId !== s.id) return;
+    settled = true;
+    clearTimeout(fallbackTimer);
+    currentPlayer = player;
+    // Respects whatever play/pause state the feed is already in
+    // (e.g. the viewer had paused before swiping here) rather than
+    // always forcing playback, even though the embed URL autoplays.
+    if(feed.classList.contains('paused')) player.pause();
+    else player.play();
+  });
+}
+
 function renderEmptyFeed(){
   bgvideo.innerHTML = '';
+  bgvideo.classList.remove('has-video');
+  currentPlayer = null;
+  currentVideoSlideId = null;
+  renderedMediaSlideId = null;
   spine.innerHTML = '';
   pager.innerHTML = '';
   epBadge.textContent = '';
@@ -154,7 +239,7 @@ function render(){
   ctaRow.classList.remove('hidden');
 
   const s = slides[idx];
-  setArt(s.art);
+  renderMedia(s);
   epBadge.textContent = s.epBadge;
   titleEl.innerHTML = s.title.replace('\n','<br>');
   synopsisEl.textContent = s.synopsis;
@@ -204,8 +289,15 @@ feed.addEventListener('wheel', e=>{
   setTimeout(()=>wheelLock=false, 500);
 });
 
+// The single play/pause control: the visible "resume" pulse icon when
+// paused, and (opacity 0, per styles.css) the tap-to-pause target
+// covering the video the rest of the time — same element, same handler.
 playToggle.addEventListener('click', ()=>{
-  feed.classList.toggle('paused');
+  const nowPaused = feed.classList.toggle('paused');
+  if(currentPlayer){
+    if(nowPaused) currentPlayer.pause();
+    else currentPlayer.play();
+  }
 });
 
 likeBtn.addEventListener('click', ()=>{

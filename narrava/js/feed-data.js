@@ -58,6 +58,7 @@ async function fetchSlides() {
           id: series.id,
           createdAt: series.created_at,
           featuredAt: series.featured_at,
+          bunnyVideoId: firstEpisode.bunny_video_id || null,
           title: series.title,
           synopsis: series.description || '',
           epBadge: 'EP ' + currentEp + ' · ' + totalEp,

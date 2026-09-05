@@ -82,6 +82,20 @@
     0%{transform:scale(1.04) translate(0,0);}
     100%{transform:scale(1.12) translate(-1.5%,-1%);}
   }
+  /* Real video fills the frame exactly — the slow "drift" zoom/pan only
+     ever existed to make static cover art feel less static, a real
+     playing video doesn't need it and it would look like unwanted
+     camera shake layered on top of real footage. */
+  .bgvideo.has-video{
+    inset:0;
+    animation:none;
+  }
+  .bgvideo iframe{
+    width:100%;
+    height:100%;
+    border:0;
+    display:block;
+  }
   .vignette{
     position:absolute;inset:0;
     background:

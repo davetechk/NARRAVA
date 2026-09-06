@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ReelShort — Home</title>
+<style>
+  :root{
+    --bg:#0b0b0d;
+    --border:#26262a;
+    --text:#f5f5f5;
+    --text-dim:#a8a8ad;
+    --text-faint:#6f6f75;
+    --red:#e8384f;
+    --red-dark:#c72d41;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-size:14px;
+  }
+  a{color:inherit;text-decoration:none;}
+  button{font-family:inherit;cursor:pointer;}
+  img{display:block;}
+
+  /* ---------------- HEADER (overlay on top of hero, not a separate block) ---------------- */
+  header{
+    position:absolute;top:0;left:0;right:0;z-index:20;
+    background:linear-gradient(180deg, rgba(0,0,0,.6) 0%, rgba(0,0,0,.25) 55%, rgba(0,0,0,0) 100%);
+  }
+  .header-inner{display:flex;align-items:center;gap:36px;padding:18px 40px;}
+  .logo{display:flex;align-items:center;gap:9px;flex-shrink:0;}
+  .logo-badge{
+    width:32px;height:32px;border-radius:8px;
+    background:linear-gradient(135deg,var(--red),#a4203a);
+    display:flex;align-items:center;justify-content:center;
+    font-weight:800;font-size:16px;color:#fff;
+  }
+  .logo-name{font-weight:800;font-size:20px;letter-spacing:.1px;}
+
+  .main-nav{display:flex;align-items:center;gap:32px;flex:1;}
+  .main-nav a{font-weight:700;font-size:16px;color:#fff;}
+  .main-nav a:not(.active){color:var(--text-dim);}
+  .main-nav a.active{color:var(--red);}
+  .main-nav a:hover{color:#fff;}
+
+  .header-right{display:flex;align-items:center;gap:4px;flex-shrink:0;}
+  .icon-btn{
+    width:36px;height:36px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    background:transparent;border:none;color:var(--text);
+    transition:background .15s ease;
+  }
+  .icon-btn:hover{background:#ffffff14;}
+  .lang-btn{
+    display:flex;align-items:center;gap:6px;
+    padding:8px 6px;border-radius:20px;
+    background:transparent;border:none;color:var(--text);font-size:14.5px;font-weight:500;
+  }
+  .lang-btn:hover{background:#ffffff14;}
+  .avatar-btn{
+    width:32px;height:32px;border-radius:50%;
+    background:#2c2c30;display:flex;align-items:center;justify-content:center;
+    border:none;color:#ccc;margin-left:6px;
+  }
+  .topup-btn{
+    background:var(--red);color:#fff;font-weight:700;font-size:14.5px;
+    padding:10px 24px;border-radius:22px;border:none;margin-left:10px;
+    transition:background .15s ease;
+  }
+  .topup-btn:hover{background:var(--red-dark);}
+
+  /* ---------------- SEARCH PANEL ---------------- */
+  .search-panel{max-height:0;overflow:hidden;transition:max-height .3s ease;background:#101012;border-bottom:1px solid var(--border);position:relative;z-index:20;}
+  .search-panel.open{max-height:340px;}
+  .search-panel-inner{padding:18px 40px 22px 40px;}
+  .search-input-wrap{display:flex;align-items:center;gap:10px;background:#1c1c1f;border:1px solid var(--border);border-radius:10px;padding:12px 16px;max-width:640px;}
+  .search-input-wrap svg{flex-shrink:0;color:var(--text-faint);}
+  .search-input-wrap input{flex:1;background:none;border:none;outline:none;color:var(--text);font-size:15px;}
+  .search-input-wrap input::placeholder{color:var(--text-faint);}
+  .search-clear{background:none;border:none;color:var(--text-faint);display:none;}
+  .search-input-wrap.has-text .search-clear{display:block;}
+  .suggest-label{font-size:12px;color:var(--text-faint);margin:18px 0 10px 0;font-weight:600;letter-spacing:.3px;}
+  .suggest-row{display:flex;flex-wrap:wrap;gap:10px;max-width:640px;}
+  .suggest-pill{padding:8px 16px;border-radius:20px;background:#1c1c1f;border:1px solid var(--border);color:var(--text-dim);font-size:13px;transition:all .15s ease;}
+  .suggest-pill:hover{border-color:var(--red);color:#fff;}
+  .suggest-results{margin-top:16px;display:none;flex-direction:column;gap:2px;max-width:640px;}
+  .suggest-results.show{display:flex;}
+  .suggest-row.hide{display:none;}
+  .result-row{display:flex;align-items:center;gap:12px;padding:9px 8px;border-radius:8px;color:var(--text-dim);font-size:14px;}
+  .result-row:hover{background:#1c1c1f;color:#fff;}
+  .result-row svg{color:var(--text-faint);flex-shrink:0;}
+
+  /* ---------------- HERO ---------------- */
+  .hero{
+    position:relative;
+    height:560px;
+    overflow:hidden;
+  }
+  .hero-bg{
+    position:absolute;inset:0;
+    background-size:cover;background-position:center 22%;
+    transition:opacity .35s ease;
+  }
+  .hero::after{
+    content:"";position:absolute;inset:0;
+    background:linear-gradient(90deg, rgba(0,0,0,.94) 0%, rgba(0,0,0,.6) 36%, rgba(0,0,0,.1) 62%, rgba(0,0,0,.55) 100%),
+               linear-gradient(0deg, rgba(0,0,0,.9) 0%, rgba(0,0,0,0) 42%);
+    pointer-events:none;
+  }
+  .hero-content{
+    position:absolute;left:0;right:0;bottom:0;z-index:2;
+    display:flex;justify-content:space-between;align-items:flex-end;
+    padding:0 40px 42px 40px;gap:30px;
+  }
+  .hero-left{max-width:560px;transition:opacity .25s ease;}
+  .hero-title{font-size:38px;font-weight:800;line-height:1.16;margin:0 0 14px 0;text-shadow:0 2px 10px rgba(0,0,0,.5);}
+  .hero-tags{display:flex;gap:10px;margin-bottom:14px;}
+  .tag-pill{padding:6px 14px;border-radius:6px;font-size:12px;font-weight:700;}
+  .tag-pill.trending{background:var(--red);color:#fff;}
+  .tag-pill.female{background:#2c2c30cc;color:#fff;border:1px solid #4a4a50;}
+  .hero-desc{color:#d8d8da;font-size:14px;line-height:1.55;margin-bottom:22px;max-width:520px;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+  .play-btn{
+    display:inline-flex;align-items:center;gap:9px;
+    background:#fff;color:#111;font-weight:700;font-size:15px;
+    padding:13px 30px;border-radius:26px;border:none;
+    transition:transform .12s ease, background .15s ease;
+  }
+  .play-btn:hover{background:#eee;transform:scale(1.03);}
+
+  /* hero thumbnail carousel = drives the hero above */
+  .hero-carousel-wrap{position:relative;display:flex;align-items:center;gap:8px;flex-shrink:0;}
+  .hero-carousel-viewport{width:544px;overflow:hidden;}
+  .hero-carousel-track{display:flex;gap:12px;transition:transform .4s cubic-bezier(.4,0,.2,1);}
+  .poster-card{
+    width:98px;flex-shrink:0;cursor:pointer;border-radius:8px;overflow:hidden;
+    border:2px solid transparent;position:relative;background:#1a1a1c;
+    transition:transform .2s ease, border-color .2s ease, box-shadow .2s ease;
+  }
+  .poster-card img{width:100%;height:140px;object-fit:cover;}
+  .poster-card .poster-title{
+    position:absolute;left:0;right:0;bottom:0;padding:7px 6px 6px 6px;
+    font-size:10px;font-weight:700;line-height:1.25;color:#fff;
+    background:linear-gradient(0deg, rgba(0,0,0,.88), rgba(0,0,0,0));
+  }
+  .poster-card.active{border-color:#fff;transform:translateY(-3px);box-shadow:0 8px 20px rgba(0,0,0,.5);}
+  .poster-card:hover{transform:translateY(-5px) scale(1.04);box-shadow:0 10px 24px rgba(0,0,0,.55);z-index:3;}
+
+  .carousel-arrow{
+    width:34px;height:34px;border-radius:50%;
+    background:#000000aa;border:1px solid #ffffff33;color:#fff;
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;
+    transition:background .15s ease;
+  }
+  .carousel-arrow:hover{background:#000000dd;}
+
+  /* ---------------- SECTIONS ---------------- */
+  .section{padding:40px 40px;}
+  .section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;}
+  .section-title{display:flex;align-items:center;gap:10px;font-size:23px;font-weight:800;color:#c9c9cc;}
+  .section-title .globe{font-size:19px;}
+  .view-all{font-size:14px;color:var(--text-dim);display:flex;align-items:center;gap:4px;}
+  .view-all:hover{color:#fff;}
+
+  .grid-row{display:flex;gap:16px;overflow-x:auto;padding-bottom:10px;scrollbar-width:none;}
+  .grid-row::-webkit-scrollbar{display:none;}
+  .grid-card{
+    position:relative;flex-shrink:0;width:200px;border-radius:10px;overflow:hidden;
+    cursor:pointer;background:#1a1a1c;
+    transition:transform .22s ease, box-shadow .22s ease;
+  }
+  .grid-card img{width:100%;height:280px;object-fit:cover;display:block;}
+  .grid-card:hover{transform:translateY(-8px) scale(1.06);box-shadow:0 16px 34px rgba(0,0,0,.6);z-index:5;}
+  .grid-card .hot-badge{
+    position:absolute;top:10px;left:10px;background:var(--red);color:#fff;
+    font-size:11px;font-weight:800;padding:3px 9px;border-radius:5px;z-index:2;
+  }
+  .grid-card .card-overlay{
+    position:absolute;left:0;right:0;bottom:0;top:60%;
+    background:linear-gradient(0deg, rgba(0,0,0,.92), rgba(0,0,0,0));
+    opacity:0;transition:opacity .22s ease;display:flex;align-items:flex-end;padding:12px;
+  }
+  .grid-card:hover .card-overlay{opacity:1;}
+  .grid-card .card-title{color:#fff;font-size:13px;font-weight:700;line-height:1.3;}
+
+  @media (max-width: 1100px){
+    .hero{height:auto;min-height:640px;}
+    .hero-content{flex-direction:column;align-items:flex-start;padding-top:30px;}
+    .hero-carousel-viewport{width:100%;max-width:544px;}
+  }
+  @media (max-width: 640px){
+    .header-inner{padding:12px 16px;gap:16px;}
+    .main-nav{display:none;}
+    .section{padding:28px 16px;}
+    .hero-content{padding:0 16px 30px 16px;}
+    .hero-title{font-size:28px;}
+  }
+</style>
+</head>
+<body>
+
+<!-- HERO: header overlays this section transparently; background + copy driven by the thumbnail carousel below -->
+<section class="hero">
+  <div class="hero-bg" id="heroBg"></div>
+
+  <header>
+  <div class="header-inner">
+    <div class="logo">
+      <div class="logo-badge">R</div>
+      <div class="logo-name">ReelShort</div>
+    </div>
+    <nav class="main-nav">
+      <a class="active" href="#">Home</a>
+      <a href="#">Categories</a>
+      <a href="#">Fandom</a>
+      <a href="#">Brand</a>
+    </nav>
+    <div class="header-right">
+      <button class="icon-btn" id="searchToggle" title="Search">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.8"/><path d="M20 20l-3.5-3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </button>
+      <button class="icon-btn" title="Get the app">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="6" y="2" width="12" height="20" rx="2" stroke="currentColor" stroke-width="1.7"/><path d="M10 19h4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+      </button>
+      <button class="icon-btn" title="History">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.7"/><path d="M12 7v5l3.2 2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+      </button>
+      <button class="lang-btn" title="Language">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M3 12h18M12 3c2.5 2.6 2.5 15.4 0 18M12 3c-2.5 2.6-2.5 15.4 0 18" stroke="currentColor" stroke-width="1.4"/></svg>
+        English
+      </button>
+      <button class="avatar-btn" title="Account">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="3.4" stroke="currentColor" stroke-width="1.8"/><path d="M4.5 20c1.4-4 4.2-6 7.5-6s6.1 2 7.5 6" stroke="currentColor" stroke-width="1.8"/></svg>
+      </button>
+      <button class="topup-btn">Top Up</button>
+    </div>
+  </div>
+
+  <div class="search-panel" id="searchPanel">
+    <div class="search-panel-inner">
+      <div class="search-input-wrap" id="searchInputWrap">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.8"/><path d="M20 20l-3.5-3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <input type="text" id="searchInput" placeholder="Search titles, tags, or actors...">
+        <button class="search-clear" id="searchClear">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div class="suggest-label">Trending searches</div>
+      <div class="suggest-row" id="suggestRow"></div>
+      <div class="suggest-results" id="suggestResults"></div>
+    </div>
+  </div>
+  </header>
+
+  <div class="hero-content">
+    <div class="hero-left" id="heroLeft">
+      <h1 class="hero-title" id="heroTitle"></h1>
+      <div class="hero-tags" id="heroTags"></div>
+      <p class="hero-desc" id="heroDesc"></p>
+      <button class="play-btn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4l14 8-14 8V4z"/></svg>
+        Play
+      </button>
+    </div>
+
+    <div class="hero-carousel-wrap">
+      <div class="hero-carousel-viewport">
+        <div class="hero-carousel-track" id="heroTrack"></div>
+      </div>
+      <button class="carousel-arrow" id="heroNext">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+  </div>
+</section>
+
+<!-- REEL ORIGINAL -->
+<section class="section">
+  <div class="section-head">
+    <div class="section-title">Reel Original <span class="globe">🌎</span></div>
+    <a class="view-all" href="#">View all <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+  </div>
+  <div class="grid-row" id="originalRow"></div>
+</section>
+
+<script>
+  // ---------------- DATA ----------------
+  // Each entry drives BOTH a hero slide and its thumbnail in the carousel.
+  const slides = [
+    {
+      title: "The Great and Powerful Genie",
+      tags: ["Fantasy"],
+      desc: "A struggling magician frees a genie bound for centuries — and gets far more than three wishes in return.",
+      bg: "https://images.unsplash.com/photo-1618172193763-c511deb635ca?w=1600&q=80",
+      thumb: "https://images.unsplash.com/photo-1618172193763-c511deb635ca?w=300&q=80"
+    },
+    {
+      title: "Abandoned Pawn, Unrivaled Dragon King",
+      tags: ["Fantasy", "Romance"],
+      desc: "Cast aside by her clan, she's rescued by the last dragon king — and becomes the one thing his enemies fear most.",
+      bg: "https://images.unsplash.com/photo-1618172193622-ae2d025f4032?w=1600&q=80",
+      thumb: "https://images.unsplash.com/photo-1618172193622-ae2d025f4032?w=300&q=80"
+    },
+    {
+      title: "In Bed with My Brother-in-Law",
+      tags: ["Trending", "Female"],
+      desc: "Bella's arranged marriage becomes a nightmare when she catches her fianc\u00e9 cheating. Seeking revenge, she sleeps with a stranger, unwittingl...",
+      bg: "https://images.unsplash.com/photo-1519741497674-611481863552?w=1600&q=80",
+      thumb: "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=300&q=80",
+      active: true
+    },
+    {
+      title: "The Alpha Princess Is Gone for Good",
+      tags: ["Werewolf", "Romance"],
+      desc: "She was the pack's forgotten princess. Now she's back, and the alpha who cast her out can't look away.",
+      bg: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=1600&q=80",
+      thumb: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=300&q=80"
+    },
+    {
+      title: "Wasteland Sovereign",
+      tags: ["Action", "Survival"],
+      desc: "In a world burned to ash, one exiled heir gathers an army from the ruins to reclaim a throne that no longer exists.",
+      bg: "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=1600&q=80",
+      thumb: "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=300&q=80"
+    },
+    {
+      title: "Marked by the Moon King",
+      tags: ["Werewolf", "Romance"],
+      desc: "A single bite ties her fate to the most feared king in the northern packs — and there's no undoing it.",
+      bg: "https://images.unsplash.com/photo-1531259683007-016a7b628fc3?w=1600&q=80",
+      thumb: "https://images.unsplash.com/photo-1531259683007-016a7b628fc3?w=300&q=80"
+    }
+  ];
+
+  const originals = [
+    { title: "The Priest's Redemption", img: "https://images.unsplash.com/photo-1543269865-cbf427effbad?w=400&q=80" },
+    { title: "Dinner With a Stranger", img: "https://images.unsplash.com/photo-1529333166437-7750a6dd5a70?w=400&q=80" },
+    { title: "Hero Academy: Rise", img: "https://images.unsplash.com/photo-1531482615713-2afd69097998?w=400&q=80", hot: true },
+    { title: "Neon Heartbreak", img: "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=400&q=80", hot: true },
+    { title: "The Sheriff's Daughter", img: "https://images.unsplash.com/photo-1499744937866-d7e566a20a61?w=400&q=80" },
+    { title: "Last Call at Midnight", img: "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=400&q=80" },
+  ];
+
+  // ---------------- BUILD THUMBNAIL CAROUSEL ----------------
+  const heroTrack = document.getElementById('heroTrack');
+  const heroBg = document.getElementById('heroBg');
+  const heroTitle = document.getElementById('heroTitle');
+  const heroTags = document.getElementById('heroTags');
+  const heroDesc = document.getElementById('heroDesc');
+  const heroLeft = document.getElementById('heroLeft');
+
+  let activeIndex = slides.findIndex(s => s.active);
+  if (activeIndex < 0) activeIndex = 0;
+
+  const cardEls = slides.map((s, i) => {
+    const el = document.createElement('div');
+    el.className = 'poster-card' + (i === activeIndex ? ' active' : '');
+    el.innerHTML = `<img src="${s.thumb}" alt="${s.title}"><div class="poster-title">${s.title}</div>`;
+    el.addEventListener('click', () => setActive(i));
+    heroTrack.appendChild(el);
+    return el;
+  });
+
+  function renderHero(i){
+    const s = slides[i];
+    heroLeft.style.opacity = 0;
+    setTimeout(() => {
+      heroBg.style.backgroundImage = `url('${s.bg}')`;
+      heroTitle.textContent = s.title;
+      heroTags.innerHTML = s.tags.map((t, idx) =>
+        `<span class="tag-pill ${idx === 0 ? 'trending' : 'female'}">${t}</span>`
+      ).join('');
+      heroDesc.textContent = s.desc;
+      heroLeft.style.opacity = 1;
+    }, 150);
+  }
+
+  function setActive(i){
+    activeIndex = i;
+    cardEls.forEach((el, idx) => el.classList.toggle('active', idx === i));
+    renderHero(i);
+    scrollTrackTo(i);
+    if (autoplayTimer) startAutoplay(); // reset countdown after any change
+  }
+
+  const CARD_W = 98 + 12; // width + gap
+  const VISIBLE = 5;
+  function scrollTrackTo(i){
+    let offset = i - Math.floor(VISIBLE / 2);
+    offset = Math.max(0, Math.min(offset, slides.length - VISIBLE));
+    heroTrack.style.transform = `translateX(-${offset * CARD_W}px)`;
+  }
+
+  document.getElementById('heroNext').addEventListener('click', () => {
+    setActive((activeIndex + 1) % slides.length);
+  });
+
+  // ---------------- AUTOPLAY ----------------
+  let autoplayTimer = null;
+  const AUTOPLAY_MS = 4500;
+  function startAutoplay(){
+    stopAutoplay();
+    autoplayTimer = setInterval(() => {
+      setActive((activeIndex + 1) % slides.length);
+    }, AUTOPLAY_MS);
+  }
+  function stopAutoplay(){
+    if (autoplayTimer) clearInterval(autoplayTimer);
+  }
+  const carouselWrap = document.querySelector('.hero-carousel-wrap');
+  carouselWrap.addEventListener('mouseenter', stopAutoplay);
+  carouselWrap.addEventListener('mouseleave', startAutoplay);
+
+  renderHero(activeIndex);
+  scrollTrackTo(activeIndex);
+  heroLeft.style.opacity = 1; // skip fade-in on first paint
+  startAutoplay();
+
+  // ---------------- REEL ORIGINAL ROW ----------------
+  const originalRow = document.getElementById('originalRow');
+  originals.forEach(o => {
+    const el = document.createElement('div');
+    el.className = 'grid-card';
+    el.innerHTML = `
+      ${o.hot ? '<span class="hot-badge">Hot</span>' : ''}
+      <img src="${o.img}" alt="${o.title}">
+      <div class="card-overlay"><span class="card-title">${o.title}</span></div>
+    `;
+    originalRow.appendChild(el);
+  });
+
+  // ---------------- SEARCH PANEL ----------------
+  const searchToggle = document.getElementById('searchToggle');
+  const searchPanel = document.getElementById('searchPanel');
+  const searchInput = document.getElementById('searchInput');
+  const searchInputWrap = document.getElementById('searchInputWrap');
+  const searchClear = document.getElementById('searchClear');
+  const suggestRow = document.getElementById('suggestRow');
+  const suggestResults = document.getElementById('suggestResults');
+
+  const searchableTitles = [...new Set([...slides, ...originals].map(x => x.title))];
+  suggestRow.innerHTML = searchableTitles.slice(0, 5).map(t => `<span class="suggest-pill">${t}</span>`).join('');
+
+  searchToggle.addEventListener('click', () => {
+    searchPanel.classList.toggle('open');
+    if (searchPanel.classList.contains('open')) setTimeout(() => searchInput.focus(), 150);
+  });
+
+  function renderResults(query){
+    const q = query.trim().toLowerCase();
+    if (!q){
+      suggestRow.classList.remove('hide');
+      suggestResults.classList.remove('show');
+      suggestResults.innerHTML = '';
+      return;
+    }
+    const matches = searchableTitles.filter(t => t.toLowerCase().includes(q));
+    suggestRow.classList.add('hide');
+    suggestResults.classList.add('show');
+    suggestResults.innerHTML = matches.length
+      ? matches.map(t => `<div class="result-row"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.8"/><path d="M20 20l-3.5-3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>${t}</div>`).join('')
+      : `<div class="result-row">No matches for "${query}"</div>`;
+  }
+
+  searchInput.addEventListener('input', () => {
+    searchInputWrap.classList.toggle('has-text', !!searchInput.value);
+    renderResults(searchInput.value);
+  });
+  searchClear.addEventListener('click', () => {
+    searchInput.value = '';
+    searchInputWrap.classList.remove('has-text');
+    renderResults('');
+    searchInput.focus();
+  });
+  suggestRow.addEventListener('click', (e) => {
+    if (e.target.classList.contains('suggest-pill')){
+      searchInput.value = e.target.textContent;
+      searchInputWrap.classList.add('has-text');
+      renderResults(e.target.textContent);
+    }
+  });
+</script>
+
+</body>
+</html>

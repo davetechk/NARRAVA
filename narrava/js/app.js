@@ -73,14 +73,19 @@ const profileScreen = document.getElementById('profileScreen');
 const navHome = document.getElementById('navHome');
 const navForYou = document.getElementById('navForYou');
 const navProfile = document.getElementById('navProfile');
-// Desktop-only sidebar nav (>=900px, Discover screen's own layout — see
+// Desktop-only top bar nav (>=900px, replaces the old left sidebar — see
 // styles.css). Same destinations as navHome/navForYou/navProfile above,
 // just a second set of clickable elements for the wide-screen layout;
 // they call the exact same showScreen() function, no separate
 // navigation logic.
-const sidebarHome = document.getElementById('sidebarHome');
-const sidebarForYou = document.getElementById('sidebarForYou');
-const sidebarProfile = document.getElementById('sidebarProfile');
+const topbarHome = document.getElementById('topbarHome');
+const topbarForYou = document.getElementById('topbarForYou');
+const topbarProfile = document.getElementById('topbarProfile');
+const topbarSearchBtn = document.getElementById('topbarSearchBtn');
+const topbarProfileBtn = document.getElementById('topbarProfileBtn');
+const topbarTopUpBtn = document.getElementById('topbarTopUpBtn');
+const topbarSearchPanel = document.getElementById('topbarSearchPanel');
+const topbarSearchInput = document.getElementById('topbarSearchInput');
 
 // Screen switching between the "Home" (Discover) grid and the "For You"
 // swipe feed. Both screens stay mounted and populated at all times —
@@ -89,7 +94,7 @@ const sidebarProfile = document.getElementById('sidebarProfile');
 //
 // Also toggles `discover-active` / `feed-active` on <body>: above the
 // desktop breakpoint, styles.css uses these to switch each screen into
-// its own desktop layout (sidebar + grid for Discover, sidebar + centered
+// its own desktop layout (top bar + grid for Discover, top bar + centered
 // video + beside-video info/actions for For You) instead of the mobile
 // phone-frame presentation. Below the breakpoint neither class does
 // anything — mobile stays exactly as it was.
@@ -100,9 +105,9 @@ function showScreen(name){
   navHome.classList.toggle('active', name === 'discover');
   navForYou.classList.toggle('active', name === 'feed');
   navProfile.classList.toggle('active', name === 'profile');
-  sidebarHome.classList.toggle('active', name === 'discover');
-  sidebarForYou.classList.toggle('active', name === 'feed');
-  sidebarProfile.classList.toggle('active', name === 'profile');
+  topbarHome.classList.toggle('active', name === 'discover');
+  topbarForYou.classList.toggle('active', name === 'feed');
+  topbarProfile.classList.toggle('active', name === 'profile');
   document.body.classList.toggle('discover-active', name === 'discover');
   document.body.classList.toggle('feed-active', name === 'feed');
 }
@@ -121,15 +126,34 @@ function openSeriesInFeed(i){
 
 navHome.addEventListener('click', ()=> showScreen('discover'));
 navForYou.addEventListener('click', ()=> showScreen('feed'));
-sidebarHome.addEventListener('click', ()=> showScreen('discover'));
-sidebarForYou.addEventListener('click', ()=> showScreen('feed'));
+topbarHome.addEventListener('click', ()=> showScreen('discover'));
+topbarForYou.addEventListener('click', ()=> showScreen('feed'));
 
 // Profile: check the current Supabase Auth session each time the tab is
 // opened (renderProfileScreen, defined in auth.js) rather than tracking
 // it continuously — simple, and sufficient since nothing else on screen
 // depends on auth state while the user is on a different tab.
 navProfile.addEventListener('click', ()=> { showScreen('profile'); renderProfileScreen(); });
-sidebarProfile.addEventListener('click', ()=> { showScreen('profile'); renderProfileScreen(); });
+topbarProfile.addEventListener('click', ()=> { showScreen('profile'); renderProfileScreen(); });
+topbarProfileBtn.addEventListener('click', ()=> { showScreen('profile'); renderProfileScreen(); });
+
+// Top bar "Top Up" pill: leads to the same real Profile screen, where
+// My Wallet already shows a logged-in user's actual coin balance and
+// the Top Up row already has its own honest "coming soon" toast (see
+// profile.js) — not a second, invented top-up flow.
+topbarTopUpBtn.addEventListener('click', ()=> { showScreen('profile'); renderProfileScreen(); });
+
+// Top bar search icon: opens the sliding panel under the top bar
+// (see discover.js for the panel's own input/results wiring, which
+// reuses the exact same searchQuery/matchesSearch logic the mobile
+// search bar already has — no second search implementation). Always
+// switches to Discover first since the panel only makes visual sense
+// over that screen's hero.
+topbarSearchBtn.addEventListener('click', ()=> {
+  showScreen('discover');
+  const isOpen = topbarSearchPanel.classList.toggle('open');
+  if(isOpen) setTimeout(()=> topbarSearchInput.focus(), 150);
+});
 
 function buildSpine(currentEp,totalEp){
   const count = 14;

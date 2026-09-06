@@ -11,10 +11,16 @@
     --gold-deep:#C99A3E;
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  /* Form controls don't inherit font-family by default in any browser
+     (a well-known UA-stylesheet quirk) — without this, any button/input
+     text that doesn't set its own font-family falls back to the
+     browser's system font instead of Montserrat, everywhere in the app
+     including admin. */
+  button,input,select,textarea{font-family:inherit;}
   html,body{margin:0;padding:0;overflow-x:hidden;}
   body{
     background:transparent;
-    font-family:'Manrope',sans-serif;
+    font-family:'Montserrat',sans-serif;
     color:var(--text);
     display:flex;
     align-items:center;
@@ -200,7 +206,8 @@
   }
   .brand img{width:22px;height:22px;object-fit:contain;display:block;}
   .logo{
-    font-family:'Anton',sans-serif;
+    font-family:'Montserrat',sans-serif;
+    font-weight:800;
     font-size:19px;
     letter-spacing:1px;
     color:#fff;
@@ -291,7 +298,8 @@
     margin-bottom:9px;
   }
   .title{
-    font-family:'Anton',sans-serif;
+    font-family:'Montserrat',sans-serif;
+    font-weight:800;
     font-size:26px;
     line-height:1.03;
     letter-spacing:0.5px;
@@ -324,7 +332,7 @@
     background:var(--leaf);
     color:#0D130E;
     border:none;
-    font-family:'Manrope',sans-serif;
+    font-family:'Montserrat',sans-serif;
     font-weight:800;
     font-size:13px;
     padding:10px 16px;
@@ -337,7 +345,7 @@
     background:rgba(232,184,92,0.14);
     border:1px solid rgba(232,184,92,0.55);
     color:var(--gold);
-    font-family:'Manrope',sans-serif;
+    font-family:'Montserrat',sans-serif;
     font-weight:700;
     font-size:12px;
     padding:10px 12px;
@@ -411,8 +419,8 @@
     margin-bottom:12px;
   }
   .sheet-header h3{
-    font-family:'Anton',sans-serif;
-    font-weight:400;
+    font-family:'Montserrat',sans-serif;
+    font-weight:800;
     font-size:18px;
     letter-spacing:0.5px;
     margin:0;
@@ -433,7 +441,7 @@
     background:rgba(255,255,255,0.05);
     border:1px solid rgba(255,255,255,0.1);
     color:var(--muted);
-    font-family:'Manrope',sans-serif;
+    font-family:'Montserrat',sans-serif;
     font-weight:700;
     font-size:12px;
     padding:9px 6px;
@@ -492,7 +500,7 @@
     background:rgba(255,255,255,0.05);
     border:1px solid rgba(255,255,255,0.1);
     color:var(--text);
-    font-family:'Manrope',sans-serif;
+    font-family:'Montserrat',sans-serif;
     font-weight:600;font-size:12px;
     padding:8px 12px;border-radius:999px;
     cursor:pointer;
@@ -507,7 +515,7 @@
     background:var(--leaf);
     color:#0D130E;
     border:none;
-    font-family:'Manrope',sans-serif;
+    font-family:'Montserrat',sans-serif;
     font-weight:800;
     font-size:14.5px;
     padding:13px;
@@ -577,7 +585,7 @@
     flex:1;min-width:0;
     background:none;border:none;outline:none;
     color:var(--text);
-    font-family:'Manrope',sans-serif;font-size:13px;
+    font-family:'Montserrat',sans-serif;font-size:13px;
   }
   .discover-search input::placeholder{color:var(--muted);}
 
@@ -599,7 +607,7 @@
     background:rgba(255,255,255,0.05);
     border:1px solid rgba(255,255,255,0.1);
     color:var(--muted);
-    font-family:'Manrope',sans-serif;
+    font-family:'Montserrat',sans-serif;
     font-weight:700;font-size:12px;
     padding:8px 14px;border-radius:999px;
     cursor:pointer;
@@ -632,7 +640,7 @@
     background:rgba(255,255,255,0.05);
     border:1px solid rgba(255,255,255,0.1);
     color:var(--muted);
-    font-family:'Manrope',sans-serif;
+    font-family:'Montserrat',sans-serif;
     font-weight:600;font-size:12px;
     padding:7px 12px;border-radius:999px;
     cursor:pointer;
@@ -682,6 +690,17 @@
     padding:40px 20px;
   }
 
+  /* Desktop-only shelf stack and its "back to shelves" control — see
+     the discover-active block below. Hidden by default so neither ever
+     appears on mobile, which keeps the existing tabs+grid exactly as
+     it already was there. */
+  .discover-shelves{
+    display:none;
+  }
+  .shelf-back-btn{
+    display:none;
+  }
+
   /* Profile screen: always the same menu, logged in or out (DramaBox-
      style) — signing in happens through the popup below, opened from
      inside this screen, instead of replacing it. profile-panel is
@@ -727,7 +746,7 @@
     display:flex;align-items:center;gap:6px;
     background:none;border:none;
     color:var(--text);
-    font-family:'Manrope',sans-serif;
+    font-family:'Montserrat',sans-serif;
     font-weight:800;font-size:16px;
     padding:0;cursor:pointer;
   }
@@ -786,7 +805,7 @@
     background:none;border:none;
     border-bottom:1px solid rgba(255,255,255,0.06);
     color:var(--text);
-    font-family:'Manrope',sans-serif;
+    font-family:'Montserrat',sans-serif;
     font-weight:700;font-size:13.5px;
     padding:14px 16px;
     cursor:pointer;
@@ -853,7 +872,8 @@
     padding:24px 22px;
   }
   .auth-title{
-    font-family:'Anton',sans-serif;
+    font-family:'Montserrat',sans-serif;
+    font-weight:800;
     font-size:22px;
     letter-spacing:0.5px;
     color:#fff;
@@ -894,7 +914,7 @@
     padding:10px 12px;
     margin-bottom:14px;
     color:var(--text);
-    font-family:'Manrope',sans-serif;
+    font-family:'Montserrat',sans-serif;
     font-size:14px;
     box-sizing:border-box;
   }
@@ -907,7 +927,7 @@
     background:var(--leaf);
     color:#0D130E;
     border:none;
-    font-family:'Manrope',sans-serif;
+    font-family:'Montserrat',sans-serif;
     font-weight:800;
     font-size:14px;
     padding:12px;
@@ -933,7 +953,7 @@
     border:none;
     padding:0;
     color:var(--leaf-light);
-    font-family:'Manrope',sans-serif;
+    font-family:'Montserrat',sans-serif;
     font-weight:700;
     font-size:12.5px;
     cursor:pointer;
@@ -967,48 +987,157 @@
     }
   }
 
-  /* Desktop sidebar (hidden everywhere except the Discover screen's
-     wide layout below). */
-  .sidebar{
+  /* Desktop top bar (hidden everywhere except >=900px, both screens —
+     see below; replaces the old left sidebar). */
+  .topbar-desktop{
     display:none;
   }
-  .sidebar-logo{
-    font-family:'Anton',sans-serif;
+  .topbar-logo{
+    font-family:'Montserrat',sans-serif;
+    font-weight:800;
     font-size:20px;
     letter-spacing:1px;
     color:#fff;
-    padding:4px 12px 28px;
+    flex-shrink:0;
   }
-  .sidebar-nav{
+  .topbar-nav{
     display:flex;
-    flex-direction:column;
-    gap:4px;
+    align-items:center;
+    gap:28px;
   }
-  .sidebar-item{
-    display:flex;align-items:center;gap:12px;
+  .topbar-link{
     background:none;
     border:none;
     color:var(--muted);
-    font-family:'Manrope',sans-serif;
+    font-family:'Montserrat',sans-serif;
     font-weight:700;
     font-size:14px;
-    padding:11px 12px;
-    border-radius:10px;
+    padding:8px 0;
     cursor:pointer;
+  }
+  .topbar-link:hover{color:var(--text);}
+  .topbar-link.active{color:var(--leaf-light);}
+  .topbar-link:disabled{cursor:default;opacity:0.45;}
+  .topbar-link:disabled:hover{color:var(--muted);}
+  .topbar-actions{
+    display:flex;
+    align-items:center;
+    gap:14px;
+    margin-left:auto;
+  }
+  .topbar-icon-btn{
+    display:flex;align-items:center;justify-content:center;
+    width:36px;height:36px;
+    flex-shrink:0;
+    background:rgba(255,255,255,0.05);
+    border:1px solid rgba(255,255,255,0.1);
+    border-radius:50%;
+    color:var(--text);
+    cursor:pointer;
+  }
+  .topbar-icon-btn svg{width:18px;height:18px;}
+  .topbar-icon-btn:hover{background:rgba(255,255,255,0.1);}
+  .topbar-topup-btn{
+    background:var(--leaf);
+    color:#0D130E;
+    font-family:'Montserrat',sans-serif;
+    font-weight:800;
+    font-size:13.5px;
+    padding:9px 20px;
+    border-radius:22px;
+    border:none;
+    cursor:pointer;
+    flex-shrink:0;
+  }
+  .topbar-topup-btn:hover{background:var(--leaf-light);}
+
+  /* Search icon in the top bar opens this panel underneath it — no
+     separate always-visible search bar on desktop (that's
+     `.discover-search`, mobile-only there — see below). Reuses the same
+     `slides` data and `matchesSearch()` predicate discover.js already
+     built for the mobile/expanded grid search, just rendered here as a
+     sliding panel with suggestion pills + a live results list instead
+     of filtering an on-page grid. */
+  .topbar-search-panel{
+    max-height:0;
+    overflow:hidden;
+    transition:max-height 0.3s ease;
+    background:var(--panel);
+    border-bottom:1px solid rgba(255,255,255,0.06);
+  }
+  .topbar-search-panel.open{
+    max-height:360px;
+  }
+  .topbar-search-panel-inner{
+    padding:18px 32px 22px;
+  }
+  .topbar-search-input-wrap{
+    display:flex;align-items:center;gap:10px;
+    background:rgba(255,255,255,0.06);
+    border:1px solid rgba(255,255,255,0.12);
+    border-radius:10px;
+    padding:12px 16px;
+    max-width:520px;
+  }
+  .topbar-search-input-wrap svg{flex-shrink:0;color:var(--muted);}
+  .topbar-search-input-wrap input{
+    flex:1;background:none;border:none;outline:none;
+    color:var(--text);font-family:'Montserrat',sans-serif;font-size:15px;
+  }
+  .topbar-search-input-wrap input::placeholder{color:var(--muted);}
+  .topbar-search-clear{
+    display:none;
+    background:none;border:none;color:var(--muted);cursor:pointer;
+  }
+  .topbar-search-input-wrap.has-text .topbar-search-clear{display:flex;}
+  .topbar-suggest-label{
+    font-family:'Montserrat',sans-serif;
+    font-weight:700;
+    font-size:12px;
+    color:var(--muted);
+    margin:18px 0 10px;
+  }
+  .topbar-suggest-row{
+    display:flex;flex-wrap:wrap;gap:10px;max-width:640px;
+  }
+  .topbar-suggest-row.hide{display:none;}
+  .topbar-suggest-pill{
+    background:rgba(255,255,255,0.06);
+    border:1px solid rgba(255,255,255,0.12);
+    color:var(--muted);
+    font-family:'Montserrat',sans-serif;
+    font-size:13px;
+    padding:8px 16px;
+    border-radius:20px;
+    cursor:pointer;
+    transition:border-color 0.15s ease, color 0.15s ease;
+  }
+  .topbar-suggest-pill:hover{border-color:var(--leaf);color:#fff;}
+  .topbar-suggest-results{
+    display:none;
+    flex-direction:column;
+    gap:2px;
+    max-width:640px;
+    margin-top:16px;
+  }
+  .topbar-suggest-results.show{display:flex;}
+  .topbar-result-row{
+    display:flex;align-items:center;gap:12px;
+    padding:9px 8px;
+    border-radius:8px;
+    color:var(--muted);
+    font-family:'Montserrat',sans-serif;
+    font-size:14px;
+    cursor:pointer;
+    background:none;
+    border:none;
     text-align:left;
     width:100%;
   }
-  .sidebar-item svg{width:20px;height:20px;flex-shrink:0;}
-  .sidebar-item:hover{background:rgba(255,255,255,0.05);}
-  .sidebar-item.active{
-    background:rgba(125,179,89,0.14);
-    color:var(--leaf-light);
-  }
-  .sidebar-item:disabled{
-    cursor:default;
-    opacity:0.45;
-  }
-  .sidebar-item:disabled:hover{background:none;}
+  .topbar-result-row:hover{background:rgba(255,255,255,0.06);color:#fff;}
+  .topbar-result-row svg{color:var(--muted);flex-shrink:0;}
+  .topbar-result-row:disabled{cursor:default;}
+  .topbar-result-row:disabled:hover{background:none;color:var(--muted);}
 
   /* `.feed-stage` groups the elements that render ON TOP of the video
      (the video itself, vignette, play/pause pulse, episode-progress
@@ -1022,19 +1151,28 @@
     display:contents;
   }
 
-  /* Chrome shared by both screens at the desktop breakpoint: the
-     sidebar, and stripping the illustrated phone-frame chrome (notch,
-     fake status bar, bottom nav — the sidebar replaces bottom-nav's
-     job). This used to be scoped to body.discover-active only; both
-     screens now get this same shell, and each screen's own block below
+  /* Chrome shared by both screens at the desktop breakpoint: the top
+     bar, and stripping the illustrated phone-frame chrome (notch, fake
+     status bar, bottom nav — the top bar replaces bottom-nav's job).
+     This used to be scoped to body.discover-active only; both screens
+     now get this same shell, and each screen's own block below
      (`body.discover-active …` / `body.feed-active …`) only styles what
-     goes *inside* it. */
+     goes *inside* it.
+
+     `.stage` stacks the top bar above the content instead of beside it
+     (the old row layout put the sidebar to the left of `.phone`), so
+     `.phone` is a flex:1 second row and just naturally gets whatever
+     height is left under the bar — `.feed`/`.discover`/`.profile`
+     inside it are already `position:absolute; inset:0`, sized off
+     `.phone`'s own box, not the viewport, so nothing inside needed to
+     change for the shrunk height. */
   @media (min-width: 900px){
     body{
       padding:0;
     }
     .stage{
-      flex-direction:row;
+      position:relative;
+      flex-direction:column;
       align-items:stretch;
       justify-content:flex-start;
       gap:0;
@@ -1042,15 +1180,42 @@
       height:100vh;
       height:100dvh;
     }
-    .sidebar{
+    .topbar-desktop{
       display:flex;
       flex-direction:column;
-      width:230px;
+      width:100%;
       flex-shrink:0;
-      padding:28px 14px;
       background:var(--panel);
-      border-right:1px solid rgba(255,255,255,0.06);
+      border-bottom:1px solid rgba(255,255,255,0.06);
       box-sizing:border-box;
+      z-index:20;
+    }
+    .topbar-desktop-inner{
+      display:flex;
+      align-items:center;
+      gap:32px;
+      width:100%;
+      height:64px;
+      flex-shrink:0;
+      padding:0 32px;
+      box-sizing:border-box;
+    }
+    /* The Discover ("Home") screen's header sits directly on top of the
+       hero image instead of pushing it down — matching the reference
+       mockup's overlay treatment. Taking the bar out of flow here is
+       what makes `.phone` (and the hero inside it) reclaim the full
+       stage height; the search panel still opens the exact same way,
+       it just now slides down over the hero image instead of over a
+       solid panel background. The For You screen keeps the plain
+       in-flow solid bar above (no hero to overlay there). */
+    body.discover-active .topbar-desktop{
+      position:absolute;
+      top:0;left:0;right:0;
+      background:linear-gradient(180deg, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.25) 55%, rgba(0,0,0,0) 100%);
+      border-bottom:none;
+    }
+    body.discover-active .topbar-search-panel.open{
+      background:rgba(10,14,11,0.97);
     }
     .caption{
       display:none;
@@ -1060,8 +1225,8 @@
       max-width:none;
       flex:1;
       min-width:0;
-      height:100vh;
-      height:100dvh;
+      min-height:0;
+      height:auto;
       aspect-ratio:auto;
       border:none;
       border-radius:0;
@@ -1083,8 +1248,6 @@
        window widths; narrower than that it just fills the available
        space as it already did, wider than that it stops growing and
        centers instead of stretching the grid painfully thin. */
-    body.discover-active .discover-header,
-    body.discover-active .discover-hero,
     body.discover-active .discover-tabs,
     body.discover-active .discover-body{
       width:100%;
@@ -1092,134 +1255,169 @@
       margin:0 auto;
       box-sizing:border-box;
     }
+
+    /* The always-visible search bar is mobile-only now — desktop search
+       lives in the top bar's icon + sliding panel instead (see
+       .topbar-search-panel above), matching the reference mockup: no
+       visible, always-present search bar on this screen. */
     body.discover-active .discover-header{
-      padding:36px 44px 0;
+      display:none;
     }
-    body.discover-active .discover-search{
-      max-width:480px;
-      padding:12px 16px;
-    }
-    body.discover-active .discover-search input{
-      font-size:14px;
-    }
+
+    /* ----- Hero: full-bleed banner (deliberately NOT capped at 1400px
+       like the column below it — matches the reference's edge-to-edge
+       treatment), header overlays its top (see .topbar-desktop above),
+       content driven by the thumbnail filmstrip carousel on the right
+       instead of the old arrows/dots (see discover.js renderHero()). ----- */
     body.discover-active .discover-hero{
       display:block;
       position:relative;
-      height:320px;
-      margin-top:28px;
-      padding:0 44px;
+      width:100%;
+      height:560px;
       overflow:hidden;
     }
-    body.discover-active .hero-slide{
+    body.discover-active .discover-hero-bg{
       position:absolute;
       inset:0;
-      opacity:0;
-      pointer-events:none;
-      transition:opacity 0.5s ease;
+      background-size:cover;
+      background-position:center 22%;
     }
-    body.discover-active .hero-slide.active{
-      opacity:1;
-      pointer-events:auto;
-    }
-    body.discover-active .hero-media{
-      position:absolute;
-      inset:0;
-      border-radius:16px;
-      overflow:hidden;
-    }
-    body.discover-active .hero-media img{
-      width:100%;height:100%;object-fit:cover;display:block;
-    }
-    body.discover-active .hero-gradient{
+    body.discover-active .discover-hero::after{
+      content:"";
       position:absolute;inset:0;
       background:
-        linear-gradient(100deg, rgba(13,19,14,0.95) 0%, rgba(13,19,14,0.6) 42%, rgba(13,19,14,0.05) 78%),
-        linear-gradient(0deg, rgba(13,19,14,0.75) 0%, rgba(13,19,14,0) 45%);
+        linear-gradient(90deg, rgba(13,19,14,0.95) 0%, rgba(13,19,14,0.6) 36%, rgba(13,19,14,0.1) 62%, rgba(13,19,14,0.55) 100%),
+        linear-gradient(0deg, rgba(13,19,14,0.9) 0%, rgba(13,19,14,0) 42%);
+      pointer-events:none;
     }
-    body.discover-active .hero-content{
-      position:relative;
-      height:100%;
+    body.discover-active .discover-hero-content{
+      position:absolute;
+      left:0;right:0;bottom:0;
+      z-index:2;
       display:flex;
-      flex-direction:column;
-      justify-content:flex-end;
-      max-width:480px;
-      padding:0 0 32px 40px;
+      justify-content:space-between;
+      align-items:flex-end;
+      padding:0 44px 40px;
+      gap:30px;
+    }
+    body.discover-active .discover-hero-left{
+      max-width:560px;
+      transition:opacity 0.25s ease;
     }
     body.discover-active .hero-title{
-      font-family:'Anton',sans-serif;
+      font-family:'Montserrat',sans-serif;
+      font-weight:800;
       font-size:36px;
-      letter-spacing:0.5px;
+      line-height:1.16;
+      letter-spacing:0.3px;
       color:#fff;
-      margin:0 0 10px;
+      margin:0 0 14px;
       text-shadow:0 2px 14px rgba(0,0,0,0.5);
+    }
+    body.discover-active .hero-tags{
+      display:flex;gap:10px;margin-bottom:14px;
+    }
+    body.discover-active .hero-tag{
+      background:var(--leaf);
+      color:#0D130E;
+      font-family:'Montserrat',sans-serif;
+      font-weight:700;
+      font-size:12px;
+      padding:6px 14px;
+      border-radius:6px;
     }
     body.discover-active .hero-synopsis{
       font-size:14px;
-      line-height:1.5;
+      line-height:1.55;
       color:var(--muted);
-      margin:0 0 18px;
+      margin:0 0 22px;
+      max-width:520px;
       display:-webkit-box;
       -webkit-line-clamp:2;
       -webkit-box-orient:vertical;
       overflow:hidden;
     }
     body.discover-active .hero-play{
-      align-self:flex-start;
       display:flex;align-items:center;gap:8px;
       background:var(--leaf);
       color:#0D130E;
       border:none;
-      font-family:'Manrope',sans-serif;
+      font-family:'Montserrat',sans-serif;
       font-weight:800;
       font-size:14px;
       padding:12px 22px;
-      border-radius:10px;
+      border-radius:26px;
       cursor:pointer;
+      transition:background 0.15s ease;
     }
-    body.discover-active .hero-play:active{
-      background:var(--leaf-deep);
-      color:#fff;
-    }
-    body.discover-active .hero-arrow{
-      position:absolute;
-      top:50%;
-      transform:translateY(-50%);
-      z-index:5;
-      width:36px;height:36px;
-      border-radius:50%;
-      background:rgba(4,7,5,0.5);
-      border:1px solid rgba(255,255,255,0.18);
-      color:#fff;
-      font-size:20px;
-      line-height:1;
-      display:flex;align-items:center;justify-content:center;
-      cursor:pointer;
-    }
-    body.discover-active .hero-arrow:hover{
-      background:rgba(4,7,5,0.75);
-    }
-    body.discover-active .hero-arrow-prev{left:60px;}
-    body.discover-active .hero-arrow-next{right:60px;}
-    body.discover-active .hero-dots{
-      position:absolute;
-      z-index:5;
-      right:60px;
-      bottom:16px;
-      display:flex;
-      gap:6px;
-    }
-    body.discover-active .hero-dot{
-      width:8px;height:8px;
-      border-radius:50%;
-      background:rgba(255,255,255,0.35);
-      border:none;
-      padding:0;
-      cursor:pointer;
-    }
-    body.discover-active .hero-dot.active{
+    body.discover-active .hero-play:hover{
       background:var(--leaf-light);
-      width:22px;
-      border-radius:4px;
+    }
+
+    /* Thumbnail filmstrip: clicking a thumbnail (or autoplay advancing
+       on its own) swaps the hero bg/title/tags/synopsis above in place —
+       it doesn't navigate by itself. "Watch Now" is the real
+       destination, via openSeriesInFeed(), same as every poster card. */
+    body.discover-active .hero-carousel-wrap{
+      position:relative;
+      display:flex;align-items:center;gap:8px;
+      flex-shrink:0;
+    }
+    body.discover-active .hero-carousel-viewport{
+      width:544px;
+      overflow:hidden;
+    }
+    body.discover-active .hero-carousel-track{
+      display:flex;gap:12px;
+      transition:transform 0.4s cubic-bezier(0.4,0,0.2,1);
+    }
+    body.discover-active .hero-thumb{
+      width:98px;
+      flex-shrink:0;
+      cursor:pointer;
+      border-radius:8px;
+      overflow:hidden;
+      border:2px solid transparent;
+      position:relative;
+      background:var(--panel-2);
+      transition:transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    body.discover-active .hero-thumb img{
+      width:100%;height:140px;object-fit:cover;display:block;
+    }
+    body.discover-active .hero-thumb .hero-thumb-title{
+      position:absolute;left:0;right:0;bottom:0;
+      padding:7px 6px 6px;
+      font-family:'Montserrat',sans-serif;
+      font-weight:700;
+      font-size:10px;
+      line-height:1.25;
+      color:#fff;
+      background:linear-gradient(0deg, rgba(0,0,0,0.88), rgba(0,0,0,0));
+    }
+    body.discover-active .hero-thumb.active{
+      border-color:var(--leaf-light);
+      transform:translateY(-3px);
+      box-shadow:0 8px 20px rgba(0,0,0,0.5);
+    }
+    body.discover-active .hero-thumb:hover{
+      transform:translateY(-5px) scale(1.04);
+      box-shadow:0 10px 24px rgba(0,0,0,0.55);
+      z-index:3;
+    }
+    body.discover-active .hero-carousel-next{
+      width:34px;height:34px;
+      border-radius:50%;
+      background:rgba(0,0,0,0.65);
+      border:1px solid rgba(255,255,255,0.2);
+      color:#fff;
+      display:flex;align-items:center;justify-content:center;
+      flex-shrink:0;
+      cursor:pointer;
+      transition:background 0.15s ease;
+    }
+    body.discover-active .hero-carousel-next:hover{
+      background:rgba(0,0,0,0.85);
     }
     body.discover-active .discover-tabs{
       padding:22px 44px 16px;
@@ -1246,6 +1444,126 @@
     body.discover-active .poster-card .poster-title{
       font-size:13px;
       padding:26px 10px 10px;
+    }
+
+    /* Desktop replaces the mobile tabs+grid with a stack of named
+       shelves by default; "View all" on a shelf flips a screen-level
+       state instead of building a second grid renderer — the plain
+       tabs+grid reused as-is, made to fill the desktop column, with a
+       back link above it that only exists in this expanded state. */
+    body.discover-active .discover-shelves{
+      display:flex;
+      flex-direction:column;
+      gap:36px;
+      width:100%;
+      max-width:1400px;
+      margin:0 auto;
+      padding:24px 44px 60px;
+      box-sizing:border-box;
+      flex:1;
+      min-height:0;
+      overflow-y:auto;
+    }
+    body.discover-active .discover-tabs,
+    body.discover-active .discover-body{
+      display:none;
+    }
+    body.discover-active.discover-expanded .discover-shelves{
+      display:none;
+    }
+    body.discover-active.discover-expanded .discover-tabs{
+      display:flex;
+    }
+    body.discover-active.discover-expanded .discover-body{
+      display:block;
+    }
+    body.discover-active.discover-expanded .shelf-back-btn{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      width:fit-content;
+      margin:20px 0 0 44px;
+      padding:9px 16px;
+      background:rgba(255,255,255,0.05);
+      border:1px solid rgba(255,255,255,0.12);
+      border-radius:999px;
+      color:var(--text);
+      font-family:'Montserrat',sans-serif;
+      font-weight:700;
+      font-size:13px;
+      cursor:pointer;
+    }
+    body.discover-active.discover-expanded .shelf-back-btn:hover{
+      border-color:rgba(255,255,255,0.3);
+    }
+
+    .shelf-head{
+      display:flex;
+      align-items:baseline;
+      justify-content:space-between;
+      gap:16px;
+      margin-bottom:14px;
+    }
+    .shelf-title-group{
+      display:flex;
+      align-items:baseline;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+    .shelf-title{
+      font-family:'Montserrat',sans-serif;
+      font-weight:800;
+      font-size:21px;
+      letter-spacing:0.3px;
+      color:#fff;
+      margin:0;
+    }
+    .shelf-caption{
+      font-size:12px;
+      color:var(--muted);
+    }
+    .shelf-viewall{
+      font-size:13px;
+      font-weight:700;
+      color:var(--leaf-light);
+      cursor:pointer;
+      background:none;
+      border:none;
+      white-space:nowrap;
+      font-family:'Montserrat',sans-serif;
+      padding:0;
+      flex-shrink:0;
+    }
+    .shelf-viewall:hover{
+      text-decoration:underline;
+    }
+    .shelf-row{
+      display:flex;
+      gap:16px;
+      overflow-x:auto;
+      padding-bottom:8px;
+      scrollbar-width:thin;
+    }
+    .shelf-row .poster-card{
+      flex:0 0 170px;
+      width:170px;
+      transition:transform 0.22s ease, box-shadow 0.22s ease;
+    }
+    .shelf-row .poster-card:hover{
+      transform:translateY(-8px) scale(1.06);
+      box-shadow:0 16px 34px rgba(0,0,0,0.6);
+      z-index:5;
+    }
+    /* Title is hidden until hover here, matching the reference's shelf
+       cards — the mobile/expanded-grid poster cards below keep their
+       title always visible (touch has no hover), this only changes the
+       desktop shelf rows. */
+    .shelf-row .poster-card .poster-title{
+      opacity:0;
+      transition:opacity 0.22s ease;
+    }
+    .shelf-row .poster-card:hover .poster-title{
+      opacity:1;
     }
 
     /* ----- For You screen's own desktop layout -----

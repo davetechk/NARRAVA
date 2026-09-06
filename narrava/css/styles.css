@@ -96,6 +96,40 @@
     border:0;
     display:block;
   }
+
+  /* Off-screen home for the *next* slide's video, warming up quietly
+     while the current slide is showing — a real, rendered iframe (not
+     display:none, which some browsers throttle/pause), just clipped to
+     nothing and never interactive. Its own iframe keeps a normal video
+     frame size so Bunny doesn't pick a low-quality rendition for it. */
+  .preload-host{
+    position:fixed;
+    top:0;left:0;
+    width:1px;height:1px;
+    overflow:hidden;
+    opacity:0;
+    pointer-events:none;
+  }
+  .preload-host iframe{
+    width:340px;height:706px;
+    border:0;
+  }
+
+  /* Watching: committed to this one slide, chrome clears away entirely
+     for a clean video. Browsing (the default, no class) keeps every one
+     of these visible, same as before video existed at all. The tap
+     target itself (.playpulse) is deliberately NOT hidden here — it's
+     still how play/pause works once watching (see playToggle's click
+     handler in app.js). */
+  .feed.watching .topbar,
+  .feed.watching .spine,
+  .feed.watching .pager,
+  .feed.watching .vignette,
+  .feed.watching .info,
+  .feed.watching .actionrail{
+    display:none;
+  }
+
   .vignette{
     position:absolute;inset:0;
     background:
@@ -104,22 +138,32 @@
     pointer-events:none;
   }
 
+  /* Covers the entire video, not just a small center circle — it's the
+     single tap target for "commit to watching this" (browsing) and
+     "play/pause" (watching), and it doubles as a same-origin shield
+     sitting above the video iframe: without it, taps/swipes/wheel
+     scrolls that land directly on the cross-origin iframe never reach
+     this page's touch/wheel listeners at all (a separate browsing
+     context swallows them), which is what broke feed swiping once real
+     video was added. */
   .playpulse{
     position:absolute;
-    top:50%;left:50%;
-    transform:translate(-50%,-50%);
+    inset:0;
+    display:flex;align-items:center;justify-content:center;
+    cursor:pointer;
+    z-index:30;
+  }
+  .playpulse-icon{
     width:64px;height:64px;
     border-radius:50%;
     background:rgba(13,19,14,0.35);
     border:1.5px solid rgba(245,247,241,0.55);
     display:flex;align-items:center;justify-content:center;
-    cursor:pointer;
     opacity:0;
     transition:opacity 0.25s ease;
-    z-index:30;
   }
-  .feed.paused .playpulse{opacity:1;}
-  .playpulse svg{width:22px;height:22px;fill:#fff;margin-left:3px;}
+  .feed.paused .playpulse-icon{opacity:1;}
+  .playpulse-icon svg{width:22px;height:22px;fill:#fff;margin-left:3px;}
 
   .spine{
     position:absolute;

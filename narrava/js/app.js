@@ -28,11 +28,19 @@ let slides = [];
 let idx = 0;
 let coins = 3;
 
-// Real video playback state (Bunny's player.js). At most one of these
-// is ever wired to a live iframe at a time — see renderMedia() below.
-let currentPlayer = null;        // playerjs.Player for the active slide's video, or null (no video / not ready yet)
-let currentVideoSlideId = null;  // slide.id the most recent player.js instance was created for
+// Real video playback state (Bunny's player.js).
+let currentPlayer = null;        // playerjs.Player for the active, visible slide's video, or null
+let currentVideoSlideId = null;  // slide.id currentPlayer belongs to
 let renderedMediaSlideId = null; // slide.id whose media (video or art) is currently in #bgvideo, so unrelated re-renders (unlock, continue) don't restart a playing video
+
+// slide.id -> { iframe, player, ready } for a video warming up off-screen
+// ahead of time (see preloadSlide/promotePreload). Bunny's player takes a
+// genuinely long time to become interactive after an iframe first loads —
+// confirmed live, well over 30 seconds is normal, not a bug — so the only
+// way to make a video feel like it "just starts" is to have been loading
+// it already, quietly, while the previous slide was still on screen.
+const preloadCache = {};
+const preloadHost = document.getElementById('preloadHost');
 let region = 'NG';
 let selectedPkg = 1;
 let selectedMethod = 0;
@@ -102,9 +110,12 @@ function showScreen(name){
 // Used by discover.js: open a specific series (by its index in `slides`)
 // directly into its first episode in the For You feed. `goTo` already
 // supports jumping to an arbitrary slide, so entering the feed from a
-// poster tap reuses exactly the same navigation the feed itself uses.
+// poster tap reuses exactly the same navigation the feed itself uses —
+// landing straight in the watching state (clean video, no overlay),
+// since tapping in from Discover already means this one specifically.
 function openSeriesInFeed(i){
   goTo(i);
+  feed.classList.add('watching');
   showScreen('feed');
 }
 
@@ -140,17 +151,137 @@ function setArt(art){
   }
 }
 
-// Renders whichever media the current slide should show — a real,
-// playing video when its episode has a bunny_video_id, the existing
-// static art otherwise (no video yet, still processing, or anything
-// else not resolved — same honest fallback as before this feature).
+function bunnyEmbedSrc(bunnyVideoId){
+  // No loop=true: a looped <video> never fires a real 'ended' event per
+  // the HTML5 spec, which would silently break auto-advance-on-finish.
+  // Playing once and advancing to the next slide (real content) is also
+  // just the better behavior here than looping the same clip forever.
+  return 'https://iframe.mediadelivery.net/embed/' + BUNNY_LIBRARY_ID + '/' + bunnyVideoId +
+    '?autoplay=true&muted=true&preload=true&responsive=false';
+}
+
+// Starts loading a slide's video off-screen, in .preload-host, well
+// before it's ever shown — confirmed live that Bunny's player can take
+// 30+ seconds to become interactive after its iframe first loads, so
+// preloading during the *previous* slide's viewing time is the only
+// realistic way for a swipe to ever land on an already-playing video.
+// No-ops if there's nothing to preload or it's already in flight.
+function preloadSlide(s){
+  if(!s || !s.bunnyVideoId || preloadCache[s.id]) return;
+
+  const iframe = document.createElement('iframe');
+  iframe.src = bunnyEmbedSrc(s.bunnyVideoId);
+  iframe.setAttribute('allow', 'autoplay');
+  preloadHost.appendChild(iframe);
+
+  const entry = { iframe, player: null, ready: false };
+  preloadCache[s.id] = entry;
+
+  const player = new playerjs.Player(iframe);
+  entry.player = player;
+
+  player.on('ready', () => {
+    // Confirmed live: player.js's "ready" broadcast isn't reliably
+    // scoped to the one iframe it actually came from once more than one
+    // Player() instance exists on the page at a time (exactly what
+    // preloading needs) — a real video's genuine ready broadcast was
+    // observed firing this *other*, unrelated preload's 'ready'
+    // callback too. player.isReady, set only by player.js's own
+    // internal src-matched handling, is the one place that check is
+    // still done correctly — so re-check it here rather than trusting
+    // that this callback firing means *this* video is actually ready.
+    if(!player.isReady) return;
+    entry.ready = true;
+    // If the feed is sitting on this exact slide right now (it loaded
+    // faster than the viewer swiped away), promote it immediately
+    // instead of leaving it preloaded and unused. Checked against
+    // currentPlayer itself (this exact instance), not currentVideoSlideId
+    // — that gets set to the new slide's id as soon as navigation
+    // happens, before any promotion, so comparing slide ids here would
+    // wrongly conclude "already promoted" the instant you arrive.
+    if(s.id === renderedMediaSlideId && currentPlayer !== player) promotePreload(s);
+  });
+}
+
+// Moves an already-warmed preload from the off-screen host into #bgvideo
+// and makes it the real, controlling player — the "instant start" case.
+function promotePreload(s){
+  const entry = preloadCache[s.id];
+  if(!entry) return;
+  delete preloadCache[s.id];
+
+  bgvideo.innerHTML = '';
+  bgvideo.classList.add('has-video');
+  bgvideo.appendChild(entry.iframe);
+  currentPlayer = entry.player;
+  currentVideoSlideId = s.id;
+
+  // 'ended' is wired here, once, only on the player that's actually
+  // becoming active — never during preload. Guards against the same
+  // cross-instance broadcast issue as the isReady check above (a
+  // previously-active, now-stale player's own lingering registration
+  // firing on someone else's real 'ended'): checking that *this* slide
+  // is still the current one is enough, since a stale instance belongs
+  // to a slide that's no longer current by the time it could fire.
+  // (An earlier version also re-confirmed via getDuration/getCurrentTime
+  // before advancing — cut after live testing showed the player's own
+  // reported currentTime can already have moved on by the time that
+  // round-trip resolves, which silently swallowed the real 'ended'.)
+  entry.player.on('ended', () => {
+    if(s.id !== currentVideoSlideId || s.id !== renderedMediaSlideId) return;
+    goTo(idx + 1);
+  });
+
+  // A short clip can finish playing during Bunny's own (often 30+
+  // second, confirmed live) startup delay, entirely before the 'ended'
+  // listener above ever existed to catch it — checked once, right here,
+  // since that real gap only matters for a clip shorter than the
+  // startup delay itself, not for genuine episode-length video.
+  entry.player.getDuration((duration) => {
+    entry.player.getCurrentTime((current) => {
+      if(s.id !== currentVideoSlideId || s.id !== renderedMediaSlideId) return;
+      if(duration && current >= duration - 0.5) goTo(idx + 1);
+    });
+  });
+
+  if(feed.classList.contains('paused')) entry.player.pause();
+  else entry.player.play();
+}
+
+// Kicks off preloading the slide after the current one, and tears down
+// any preload that's neither the current slide nor that next one — so
+// there's never more than one silent, warming-up video sitting in the
+// background at a time, on top of whatever's actually on screen.
+function maintainPreload(){
+  const nextSlide = slides[(idx + 1) % slides.length];
+  if(nextSlide && nextSlide.id !== renderedMediaSlideId) preloadSlide(nextSlide);
+
+  const keepIds = [renderedMediaSlideId, nextSlide ? nextSlide.id : null];
+  Object.keys(preloadCache).forEach(id => {
+    if(keepIds.indexOf(id) === -1){
+      preloadCache[id].iframe.remove();
+      delete preloadCache[id];
+    }
+  });
+}
+
+// Renders whichever media the current slide should show. Default is
+// always the existing static art — honest, no regression, identical to
+// a slide with no video at all — and it *upgrades* to the real video
+// the moment that video is actually ready, whenever that turns out to
+// be: instantly if it was already preloaded, later if it just started
+// loading now, or never if bunny_video_id doesn't point at a real video
+// (Bunny's own 404 page for a bad id never sends a 'ready' at all, so
+// this deliberately never times out and gives up — there's no reliable
+// way to tell "still loading" and "genuinely broken" apart from out
+// here, and wrongly giving up on a real, just-slow video would be worse
+// than staying on art a little longer than strictly necessary).
 //
-// Replacing #bgvideo's content (for a new slide, or for the fallback
-// art) removes any iframe that was already inside it, and removing an
-// iframe from the DOM is what actually stops its video — the browser
-// tears down the whole embedded document, not just hides it — so at
-// most one video is ever active, without needing to explicitly ask the
-// old player to pause first.
+// Replacing #bgvideo's content removes any iframe that was already
+// inside it, and removing an iframe from the DOM is what actually stops
+// its video — the browser tears down the whole embedded document, not
+// just hides it — so at most one *active* video is ever playing,
+// without needing to explicitly ask the old player to pause first.
 //
 // Guarded by renderedMediaSlideId so re-rendering the *same* slide
 // (unlocking an episode, tapping Continue) only updates the surrounding
@@ -165,54 +296,25 @@ function renderMedia(s){
   if(!s.bunnyVideoId){
     bgvideo.classList.remove('has-video');
     setArt(s.art);
+    maintainPreload();
     return;
   }
 
-  bgvideo.classList.add('has-video');
-  const src = 'https://iframe.mediadelivery.net/embed/' + BUNNY_LIBRARY_ID + '/' + s.bunnyVideoId +
-    '?autoplay=true&loop=true&muted=true&preload=true&responsive=false';
-  bgvideo.innerHTML = '<iframe src="' + src + '" allow="autoplay" allowfullscreen></iframe>';
+  const existing = preloadCache[s.id];
+  if(existing && existing.ready){
+    promotePreload(s);
+    maintainPreload();
+    return;
+  }
 
-  const iframe = bgvideo.querySelector('iframe');
-  const player = new playerjs.Player(iframe);
-
-  // A bunny_video_id that doesn't correspond to a real video (e.g. bad
-  // data) doesn't reliably tell us so through player.js — Bunny just
-  // serves its own plain 404 page inside the iframe, which never attaches
-  // a real player, so 'ready' simply never fires. A plain timeout catches
-  // that, falling back to the same static art a video-less slide shows.
-  //
-  // Deliberately NOT also listening for player.js's 'error' event here:
-  // in testing, once a second Player() instance had been created later
-  // in the same page session, 'error' fired spuriously on a video that
-  // was actually loading and playing fine — a real player.js quirk with
-  // more than one instance alive across a session, not a real failure.
-  // The timeout alone already covers the one failure case that actually
-  // happens with this data (a bad bunny_video_id), without that false
-  // positive.
-  let settled = false;
-  const fallbackTimer = setTimeout(() => {
-    if(settled || currentVideoSlideId !== s.id) return;
-    settled = true;
-    bgvideo.classList.remove('has-video');
-    setArt(s.art);
-  }, 5000);
-
-  player.on('ready', () => {
-    // The feed may have already swiped past this slide while player.js
-    // was still connecting, or the fallback timer already fired — if so
-    // this player belongs to an iframe that isn't on screen (or isn't
-    // showing) anymore, don't resurrect it.
-    if(settled || currentVideoSlideId !== s.id) return;
-    settled = true;
-    clearTimeout(fallbackTimer);
-    currentPlayer = player;
-    // Respects whatever play/pause state the feed is already in
-    // (e.g. the viewer had paused before swiping here) rather than
-    // always forcing playback, even though the embed URL autoplays.
-    if(feed.classList.contains('paused')) player.pause();
-    else player.play();
-  });
+  // Not preloaded yet (or still warming up) — show the same static art
+  // a video-less slide would, and let preloadSlide's own 'ready' handler
+  // (registered below, or already registered if `existing` is truthy)
+  // promote it the moment it's actually ready.
+  bgvideo.classList.remove('has-video');
+  setArt(s.art);
+  if(!existing) preloadSlide(s);
+  maintainPreload();
 }
 
 function renderEmptyFeed(){
@@ -221,6 +323,7 @@ function renderEmptyFeed(){
   currentPlayer = null;
   currentVideoSlideId = null;
   renderedMediaSlideId = null;
+  Object.keys(preloadCache).forEach(id => { preloadCache[id].iframe.remove(); delete preloadCache[id]; });
   spine.innerHTML = '';
   pager.innerHTML = '';
   epBadge.textContent = '';
@@ -261,9 +364,16 @@ function render(){
   Array.from(pager.children).forEach((d,i)=>d.classList.toggle('active', i===idx));
 }
 
+// Scrolling/swiping to a (possibly new) slide always lands back in the
+// default browsing state — overlay visible, autoplaying, not paused —
+// even if the slide you're leaving was in watching or paused. Callers
+// that want to land directly in watching (openSeriesInFeed) explicitly
+// add that back right after calling this.
 function goTo(i){
   if(slides.length === 0) return;
   idx = (i + slides.length) % slides.length;
+  feed.classList.remove('watching');
+  feed.classList.remove('paused');
   render();
 }
 
@@ -289,10 +399,25 @@ feed.addEventListener('wheel', e=>{
   setTimeout(()=>wheelLock=false, 500);
 });
 
-// The single play/pause control: the visible "resume" pulse icon when
-// paused, and (opacity 0, per styles.css) the tap-to-pause target
-// covering the video the rest of the time — same element, same handler.
+// The single tap target covering the whole video, with two different
+// jobs depending on state:
+//   - Browsing (the default): tapping commits to watching this slide —
+//     the overlay clears, the video keeps playing exactly as it was,
+//     untouched. It does not also pause — those are deliberately two
+//     separate ideas here.
+//   - Watching: tapping just controls play/pause, the same way tapping
+//     a real video player normally does — it does NOT bring the overlay
+//     back. That only happens by swiping/scrolling to a new slide
+//     (goTo already resets to browsing there). Chosen over "tap toggles
+//     the overlay back" because once committed to watching, the natural
+//     next thing to want from a tap is play/pause, not to undo the
+//     choice you just made — bringing the overlay back has its own,
+//     already-specified trigger (leaving the slide).
 playToggle.addEventListener('click', ()=>{
+  if(!feed.classList.contains('watching')){
+    feed.classList.add('watching');
+    return;
+  }
   const nowPaused = feed.classList.toggle('paused');
   if(currentPlayer){
     if(nowPaused) currentPlayer.pause();

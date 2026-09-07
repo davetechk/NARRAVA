@@ -595,6 +595,62 @@
     display:none;
   }
 
+  /* Continue Watching strip — unlike the hero/shelves above/below, this
+     one shows on BOTH layouts (see discover.js's renderContinueWatching()
+     and the desktop override further down). Hidden by default, and
+     whenever JS removes .has-items (signed out, or no real watch history
+     yet), so there's never an empty placeholder taking up space. */
+  .cw-strip{
+    display:none;
+  }
+  .cw-strip.has-items{
+    display:block;
+    padding:16px 18px 4px;
+  }
+  .cw-head{
+    margin-bottom:10px;
+  }
+  .cw-title{
+    font-family:'Montserrat',sans-serif;
+    font-weight:800;
+    font-size:15px;
+    color:#fff;
+    margin:0;
+  }
+  .cw-row-wrap{
+    position:relative;
+  }
+  .cw-row{
+    display:flex;
+    gap:10px;
+    overflow-x:auto;
+    scrollbar-width:none;
+    padding-bottom:4px;
+  }
+  .cw-row::-webkit-scrollbar{display:none;}
+  .cw-card{
+    flex:0 0 104px;
+    width:104px;
+    aspect-ratio:2/3;
+  }
+  .cw-play-badge{
+    position:absolute;
+    top:6px;left:6px;
+    width:22px;height:22px;
+    border-radius:50%;
+    background:rgba(0,0,0,0.6);
+    color:#fff;
+    font-size:10px;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .cw-ep-label{
+    display:block;
+    font-size:10px;
+    font-weight:700;
+    color:var(--leaf-light);
+    margin-top:2px;
+  }
+
   .discover-tabs{
     display:flex;gap:8px;
     padding:14px 18px 10px;
@@ -1673,13 +1729,54 @@
     .shelf-viewall:hover{
       text-decoration:underline;
     }
+    /* Wraps the row so the arrow buttons below can sit absolutely
+       positioned over its left/right edges without taking up their
+       own layout space or shifting the row's own width/scroll math. */
+    .shelf-row-wrap{
+      position:relative;
+    }
     .shelf-row{
       display:flex;
       gap:24px;
       overflow-x:auto;
       padding-bottom:8px;
-      scrollbar-width:thin;
+      /* Same pair the tabs row already uses (.discover-tabs above) —
+         scrollbar-width:thin only slims Firefox's scrollbar, it never
+         hides it, and there was no ::-webkit-scrollbar rule at all
+         here, which is the one that actually hides it in Chrome. */
+      scrollbar-width:none;
     }
+    .shelf-row::-webkit-scrollbar{display:none;}
+    /* Same visual treatment as the hero carousel's own arrow
+       (body.discover-active .hero-carousel-next below) — a small dark
+       circle, not a new style invented for this. Hidden until the
+       shelf itself is hovered, and further hidden at either end once
+       there's nothing left to scroll that direction. */
+    .shelf-arrow{
+      position:absolute;
+      top:50%;
+      transform:translateY(-50%);
+      width:34px;height:34px;
+      border-radius:50%;
+      background:rgba(0,0,0,0.65);
+      border:1px solid rgba(255,255,255,0.2);
+      color:#fff;
+      display:flex;align-items:center;justify-content:center;
+      cursor:pointer;
+      z-index:2;
+      opacity:0;
+      transition:background 0.15s ease, opacity 0.15s ease;
+      pointer-events:none;
+    }
+    .shelf-row-wrap:hover .shelf-arrow{
+      opacity:1;
+      pointer-events:auto;
+    }
+    .shelf-arrow:hover{background:rgba(0,0,0,0.85);}
+    .shelf-arrow.hide{display:none;}
+    .shelf-arrow-left{left:-6px;}
+    .shelf-arrow-right{right:-6px;}
+    .shelf-arrow svg{width:16px;height:16px;}
     /* Measured directly off reelshort.com's own shelf cards (a real
        image element in its "Reel Original" row): 259px wide, 345px
        tall, 24px gap — about 6 cards visible across a 1920px window,
@@ -1705,6 +1802,36 @@
     }
     .shelf-row .poster-card:hover .poster-title{
       opacity:1;
+    }
+
+    /* Continue Watching strip's desktop sizing — same column width/gap
+       as the shelves below it (.shelf-row .poster-card above) so it
+       reads as one consistent row style, not a mismatched one-off. */
+    body.discover-active .cw-strip.has-items{
+      width:100%;
+      max-width:1400px;
+      margin:0 auto;
+      padding:36px 44px 0;
+      box-sizing:border-box;
+    }
+    body.discover-active .cw-title{
+      font-size:21px;
+      letter-spacing:0.3px;
+    }
+    body.discover-active .cw-row{
+      gap:24px;
+      padding-bottom:8px;
+    }
+    body.discover-active .cw-card{
+      flex:0 0 259px;
+      width:259px;
+      aspect-ratio:259/345;
+      transition:transform 0.22s ease, box-shadow 0.22s ease;
+    }
+    body.discover-active .cw-card:hover{
+      transform:translateY(-8px) scale(1.06);
+      box-shadow:0 16px 34px rgba(0,0,0,0.6);
+      z-index:5;
     }
 
     /* ----- For You screen's own desktop layout -----

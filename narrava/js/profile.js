@@ -148,6 +148,7 @@ function wireProfileRows(loggedIn){
       currentSession = null;
       isAdmin = false;
       renderProfileMenu();
+      renderContinueWatching(); // discover.js: nobody's signed in now, so the strip must go away too
     });
   }
 }

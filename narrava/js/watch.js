@@ -36,6 +36,7 @@ let watchSlide = null;
 let watchEpisodes = [];
 let watchActiveEpisodeId = null;
 let watchActiveRange = 0; // index into the RANGE_SIZE-sized chunks of watchEpisodes
+let watchPlayer = null;   // playerjs.Player wrapping the active episode's iframe, or null
 
 const watchBackBtn = document.getElementById('watchBackBtn');
 const watchPlayerHost = document.getElementById('watchPlayerHost');
@@ -57,15 +58,82 @@ const watchEpisodeGrid = document.getElementById('watchEpisodeGrid');
 // the DOM is what stops the video), not just hide it — called from
 // showScreen() whenever the target screen isn't 'watch'.
 function stopWatchPlayback(){
+  saveCurrentWatchProgress();
   watchPlayerHost.innerHTML = '';
+  watchPlayer = null;
   watchActiveEpisodeId = null;
   closeWatchComments();
 }
 
-function watchPlayEpisode(ep){
+// Reads the real position off the actual playing player (never assumed)
+// and upserts it via watch-progress.js. No-ops quietly if nothing is
+// playing right now, or if nobody's signed in (saveWatchProgress's own
+// job). Called periodically, on pause, and whenever this screen leaves
+// the current episode (stopWatchPlayback, switching episodes).
+function saveCurrentWatchProgress(){
+  if(!watchPlayer || !watchActiveEpisodeId || !watchSlide) return;
+  const player = watchPlayer;
+  const episodeId = watchActiveEpisodeId;
+  const seriesId = watchSlide.id;
+  player.getCurrentTime((seconds) => {
+    if(watchPlayer !== player || watchActiveEpisodeId !== episodeId) return;
+    saveWatchProgress(episodeId, seriesId, seconds);
+  });
+}
+
+// Same 15s cadence as the mobile feed (app.js) — frequent enough that a
+// refresh/crash never loses more than a few seconds of real progress.
+setInterval(saveCurrentWatchProgress, 15000);
+
+// player.js's 'ready' event only means the postMessage bridge to the
+// iframe is up — NOT that the underlying video's own duration/seekable
+// range has loaded yet. Confirmed live: calling setCurrentTime right on
+// 'ready' is silently ignored (tested with a target far past anything
+// that could've naturally played by then — it landed nowhere near it).
+// getDuration reporting a real, non-zero value is what's actually
+// confirmed live to mean the seek will stick, so this polls for that
+// first. Gives up after ~10s of polling rather than looping forever if
+// a duration genuinely never arrives.
+function seekWhenSeekable(player, episodeId, seconds, attemptsLeft){
+  if(watchActiveEpisodeId !== episodeId) return; // navigated away
+  player.getDuration((duration) => {
+    if(watchActiveEpisodeId !== episodeId) return;
+    if(duration && duration > 0){
+      player.setCurrentTime(seconds);
+      return;
+    }
+    if(attemptsLeft <= 0) return;
+    setTimeout(() => seekWhenSeekable(player, episodeId, seconds, attemptsLeft - 1), 400);
+  });
+}
+
+// resumeSeconds, when given, seeks the real player to that exact
+// position — see seekWhenSeekable above for why that's more than just
+// calling setCurrentTime once on 'ready'.
+function watchPlayEpisode(ep, resumeSeconds){
   if(!ep || !ep.bunny_video_id) return;
+  saveCurrentWatchProgress();
+
   watchActiveEpisodeId = ep.id;
-  watchPlayerHost.innerHTML = '<iframe src="' + bunnyEmbedSrc(ep.bunny_video_id) + '" allow="autoplay" allowfullscreen></iframe>';
+  watchPlayer = null;
+  const iframe = document.createElement('iframe');
+  iframe.src = bunnyEmbedSrc(ep.bunny_video_id);
+  iframe.setAttribute('allow', 'autoplay');
+  iframe.setAttribute('allowfullscreen', '');
+  watchPlayerHost.innerHTML = '';
+  watchPlayerHost.appendChild(iframe);
+
+  const player = new playerjs.Player(iframe);
+  const episodeId = ep.id;
+  player.on('ready', () => {
+    if(watchActiveEpisodeId !== episodeId) return; // navigated away before ready
+    watchPlayer = player;
+    if(resumeSeconds && resumeSeconds > 0.5) seekWhenSeekable(player, episodeId, resumeSeconds, 25);
+  });
+  player.on('pause', () => {
+    if(watchPlayer !== player) return;
+    saveCurrentWatchProgress();
+  });
 
   // The breadcrumb and heading are per-episode (the real site's own
   // heading is literally "Episode N - <title>"), so they update with
@@ -147,13 +215,17 @@ function renderWatchEpisodes(){
 }
 
 // slideIndex is `slides`' own index, same as every other openSeriesInFeed
-// caller already passes in.
-async function openWatchScreen(slideIndex){
+// caller already passes in. `resume`, when given ({episodeId,
+// positionSeconds}), is Continue Watching's jump-back-in — it plays that
+// exact episode (falling back to the first episode if it's somehow no
+// longer in this series' episode list) at that exact saved position.
+async function openWatchScreen(slideIndex, resume){
   const slide = slides[slideIndex];
   if(!slide) return;
 
   watchSlide = slide;
   watchActiveEpisodeId = null;
+  watchPlayer = null;
   watchActiveRange = 0;
   watchPlayerHost.innerHTML = '';
   watchBreadcrumbEl.innerHTML = 'Home / ' + escapeWatchHtml(slide.title) + ' / <span>…</span>';
@@ -170,7 +242,10 @@ async function openWatchScreen(slideIndex){
   const episodes = await fetchEpisodesForSeries(slide.id);
   if(watchSlide !== slide) return; // navigated to a different series (or away) before this resolved
   watchEpisodes = episodes;
-  watchPlayEpisode(watchEpisodes[0]);
+
+  const resumeEp = resume ? watchEpisodes.find(e => e.id === resume.episodeId) : null;
+  if(resumeEp) watchPlayEpisode(resumeEp, resume.positionSeconds);
+  else watchPlayEpisode(watchEpisodes[0]);
 }
 
 watchBackBtn.addEventListener('click', () => showScreen('discover'));

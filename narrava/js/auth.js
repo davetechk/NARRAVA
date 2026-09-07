@@ -105,6 +105,7 @@ async function handleAuthSubmit(e){
 
     closeAuthModal();
     renderProfileScreen(); // profile.js: re-check session, re-render the menu logged in
+    renderContinueWatching(); // discover.js: this viewer may now have real watch history to show
   } catch(err){
     console.error('Narrava: auth request failed', err);
     errorEl.textContent = 'Something went wrong. Please try again.';

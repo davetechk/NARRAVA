@@ -31,6 +31,8 @@ let coins = 3;
 // Real video playback state (Bunny's player.js).
 let currentPlayer = null;        // playerjs.Player for the active, visible slide's video, or null
 let currentVideoSlideId = null;  // slide.id currentPlayer belongs to
+let pendingResumeSlideId = null; // slide.id Continue Watching wants seeked once its player is ready (see openContinueWatchingItem)
+let pendingResumeSeconds = 0;
 let renderedMediaSlideId = null; // slide.id whose media (video or art) is currently in #bgvideo, so unrelated re-renders (unlock, continue) don't restart a playing video
 
 // slide.id -> { iframe, player, ready } for a video warming up off-screen
@@ -102,6 +104,24 @@ const topbarSearchInput = document.getElementById('topbarSearchInput');
 // phone-frame presentation. Below the breakpoint neither class does
 // anything — mobile stays exactly as it was.
 function showScreen(name){
+  // Screen/nav classes are switched FIRST, before anything below reacts
+  // to them — render()'s own "is the feed actually visible" check (see
+  // its guard around renderMedia) reads feed's screen-hidden class, so
+  // that class has to already reflect the screen being switched TO by
+  // the time render() runs, not the one being left.
+  feed.classList.toggle('screen-hidden', name !== 'feed');
+  discoverScreen.classList.toggle('screen-hidden', name !== 'discover');
+  profileScreen.classList.toggle('screen-hidden', name !== 'profile');
+  watchScreen.classList.toggle('screen-hidden', name !== 'watch');
+  navHome.classList.toggle('active', name === 'discover');
+  navForYou.classList.toggle('active', name === 'feed');
+  navProfile.classList.toggle('active', name === 'profile');
+  topbarHome.classList.toggle('active', name === 'discover');
+  topbarForYou.classList.toggle('active', name === 'feed');
+  topbarProfile.classList.toggle('active', name === 'profile');
+  document.body.classList.toggle('discover-active', name === 'discover');
+  document.body.classList.toggle('feed-active', name === 'feed');
+
   if(name !== 'feed'){
     stopFeedPlayback();
   } else if(slides.length && renderedMediaSlideId !== slides[idx].id){
@@ -118,18 +138,6 @@ function showScreen(name){
   // itself calls showScreen('discover') before opening it, so this
   // no-ops harmlessly in that order rather than fighting it.
   closeTopbarSearch();
-  feed.classList.toggle('screen-hidden', name !== 'feed');
-  discoverScreen.classList.toggle('screen-hidden', name !== 'discover');
-  profileScreen.classList.toggle('screen-hidden', name !== 'profile');
-  watchScreen.classList.toggle('screen-hidden', name !== 'watch');
-  navHome.classList.toggle('active', name === 'discover');
-  navForYou.classList.toggle('active', name === 'feed');
-  navProfile.classList.toggle('active', name === 'profile');
-  topbarHome.classList.toggle('active', name === 'discover');
-  topbarForYou.classList.toggle('active', name === 'feed');
-  topbarProfile.classList.toggle('active', name === 'profile');
-  document.body.classList.toggle('discover-active', name === 'discover');
-  document.body.classList.toggle('feed-active', name === 'feed');
 }
 
 // Used by discover.js: open a specific series (by its index in `slides`).
@@ -154,9 +162,47 @@ function openSeriesInFeed(i){
   showScreen('feed');
 }
 
-navHome.addEventListener('click', ()=> showScreen('discover'));
+// Continue Watching's jump-back-in (see discover.js's strip and
+// get_continue_watching's rows: {series_id, episode_id,
+// position_seconds, ...}). Finds the matching slide and opens it exactly
+// like any other poster tap, then resumes at the exact saved position —
+// on desktop that's always accurate (watch.js plays whichever real
+// episode is asked for). On mobile, the swipe feed only ever plays a
+// series' first episode's real video (see feed-data.js/fetchSlides) —
+// there's no mobile mechanism to load an arbitrary later episode's
+// video — so a genuine resume-to-position is only possible here when
+// the saved progress is actually on that same first episode; otherwise
+// this still opens the right series (the closest the mobile feed can
+// honestly do) without pretending to resume anywhere but the start.
+function openContinueWatchingItem(item){
+  if(!item || !item.series_id) return;
+  const slideIndex = slides.findIndex(s => s.id === item.series_id);
+  if(slideIndex === -1) return;
+
+  if(window.matchMedia('(min-width: 900px)').matches){
+    openWatchScreen(slideIndex, { episodeId: item.episode_id, positionSeconds: item.position_seconds });
+    return;
+  }
+
+  const slide = slides[slideIndex];
+  if(slide && slide.episodeId === item.episode_id && item.position_seconds > 0.5){
+    pendingResumeSlideId = slide.id;
+    pendingResumeSeconds = item.position_seconds;
+  } else {
+    pendingResumeSlideId = null;
+  }
+  goTo(slideIndex);
+  feed.classList.add('watching');
+  showScreen('feed');
+}
+
+// Re-checked every time Home is opened (rather than only once at
+// startup) so a strip that appeared/disappeared/changed since — just
+// signed in, just watched something, just resumed elsewhere — is always
+// current, not a stale snapshot from page load.
+navHome.addEventListener('click', ()=> { showScreen('discover'); renderContinueWatching(); });
 navForYou.addEventListener('click', ()=> showScreen('feed'));
-topbarHome.addEventListener('click', ()=> showScreen('discover'));
+topbarHome.addEventListener('click', ()=> { showScreen('discover'); renderContinueWatching(); });
 topbarForYou.addEventListener('click', ()=> showScreen('feed'));
 
 // Profile: check the current Supabase Auth session each time the tab is
@@ -273,6 +319,27 @@ function preloadSlide(s){
   });
 }
 
+// Continue Watching's resume-seek (see promotePreload/openContinueWatchingItem).
+// player.js's 'ready'/promotion only means the postMessage bridge to the
+// iframe is up — not that the underlying video's own duration/seekable
+// range has loaded. Confirmed live (desktop watch page, same player.js
+// library): calling setCurrentTime that early is silently ignored.
+// Polling getDuration until it reports a real value is what's confirmed
+// to make the seek actually stick. Gives up after ~10s rather than
+// looping forever if a duration genuinely never arrives.
+function seekWhenSeekable(player, slideId, seconds, attemptsLeft){
+  if(currentVideoSlideId !== slideId || currentPlayer !== player) return; // navigated away
+  player.getDuration((duration) => {
+    if(currentVideoSlideId !== slideId || currentPlayer !== player) return;
+    if(duration && duration > 0){
+      player.setCurrentTime(seconds);
+      return;
+    }
+    if(attemptsLeft <= 0) return;
+    setTimeout(() => seekWhenSeekable(player, slideId, seconds, attemptsLeft - 1), 400);
+  });
+}
+
 // Moves an already-warmed preload from the off-screen host into #bgvideo
 // and makes it the real, controlling player — the "instant start" case.
 function promotePreload(s){
@@ -285,6 +352,21 @@ function promotePreload(s){
   bgvideo.appendChild(entry.iframe);
   currentPlayer = entry.player;
   currentVideoSlideId = s.id;
+
+  // Continue Watching's jump-back-in (see openContinueWatchingItem):
+  // this slide's video has just genuinely become the active player for
+  // the first time, so if a resume was queued for exactly this slide,
+  // this is when to seek it. Confirmed live (see watch.js's
+  // seekWhenSeekable) that calling setCurrentTime this early — right as
+  // the player becomes active — is silently ignored: 'ready'/promotion
+  // only means the postMessage bridge is up, not that the video's own
+  // duration/seekable range has loaded. Polling getDuration first is
+  // what's actually confirmed to make the seek stick.
+  if(pendingResumeSlideId === s.id){
+    const resumeSeconds = pendingResumeSeconds;
+    pendingResumeSlideId = null;
+    seekWhenSeekable(entry.player, s.id, resumeSeconds, 25);
+  }
 
   // 'ended' is wired here, once, only on the player that's actually
   // becoming active — never during preload. Guards against the same
@@ -398,6 +480,7 @@ function renderMedia(s){
 // current slide's video is already showing.
 function stopFeedPlayback(){
   if(renderedMediaSlideId === null && Object.keys(preloadCache).length === 0) return;
+  saveCurrentFeedProgress();
   bgvideo.innerHTML = '';
   bgvideo.classList.remove('has-video');
   currentPlayer = null;
@@ -405,6 +488,33 @@ function stopFeedPlayback(){
   renderedMediaSlideId = null;
   Object.keys(preloadCache).forEach(id => { preloadCache[id].iframe.remove(); delete preloadCache[id]; });
 }
+
+// Reads the currently-playing slide's real position from its actual
+// player (never assumed/estimated) and upserts it via watch-progress.js.
+// No-ops quietly if there's no real video playing right now, or the
+// slide has no episodeId (e.g. bunny_video_id was never set) — same
+// silent-no-op-when-signed-out behavior lives in saveWatchProgress
+// itself. Called periodically, on pause, and whenever the feed leaves
+// the current slide/episode (goTo, stopFeedPlayback).
+function saveCurrentFeedProgress(){
+  if(!currentPlayer || !currentVideoSlideId) return;
+  const s = slides.find(sl => sl.id === currentVideoSlideId);
+  if(!s || !s.episodeId) return;
+  const player = currentPlayer;
+  const slideId = s.id;
+  player.getCurrentTime((seconds) => {
+    // A stale callback can land after the slide/player has already
+    // moved on (e.g. a fast swipe right after this fired) — recheck
+    // before writing so a leftover read never overwrites newer progress.
+    if(currentPlayer !== player || currentVideoSlideId !== slideId) return;
+    saveWatchProgress(s.episodeId, s.id, seconds);
+  });
+}
+
+// 15s: frequent enough that a crash/refresh never loses more than a few
+// seconds of real progress, infrequent enough not to spam the DB with
+// upserts for something the user isn't actively pausing/leaving anyway.
+setInterval(saveCurrentFeedProgress, 15000);
 
 function renderEmptyFeed(){
   bgvideo.innerHTML = '';
@@ -431,7 +541,19 @@ function render(){
   ctaRow.classList.remove('hidden');
 
   const s = slides[idx];
-  renderMedia(s);
+  // Only actually load/play media while the feed is the visible screen.
+  // render() also runs at startup (init(), before the user has ever
+  // navigated anywhere — Discover is the default screen) and gets
+  // called by like/save/unlock while already on the feed; in both of
+  // those cases skipping this is either correct (startup: nothing
+  // should be preloading or playing yet) or a harmless no-op
+  // (renderMedia is itself guarded against re-running for a slide
+  // that's already loaded). Without this, a fresh page load on
+  // Discover was creating a real Bunny iframe and promoting it into
+  // #bgvideo — invisible (the feed is display:none) but still actually
+  // playing — never something a shelf poster caused, purely this
+  // startup path running before any navigation happened.
+  if(!feed.classList.contains('screen-hidden')) renderMedia(s);
   epBadge.textContent = s.epBadge;
   titleEl.innerHTML = s.title.replace('\n','<br>');
   synopsisEl.textContent = s.synopsis;
@@ -460,14 +582,23 @@ function render(){
 // add that back right after calling this.
 function goTo(i){
   if(slides.length === 0) return;
+  saveCurrentFeedProgress();
   idx = (i + slides.length) % slides.length;
   feed.classList.remove('watching');
   feed.classList.remove('paused');
   render();
 }
 
+// A manual navigation always supersedes any still-pending Continue
+// Watching seek (see openContinueWatchingItem/promotePreload) — without
+// this, swiping away and later swiping back onto the same slide could
+// replay a stale resume-seek the viewer never asked for this time.
+function clearPendingResume(){
+  pendingResumeSlideId = null;
+}
+
 pager.addEventListener('click', e=>{
-  if(e.target.dataset.i !== undefined) goTo(parseInt(e.target.dataset.i));
+  if(e.target.dataset.i !== undefined){ clearPendingResume(); goTo(parseInt(e.target.dataset.i)); }
 });
 
 let touchStartY = null;
@@ -475,16 +606,16 @@ feed.addEventListener('touchstart', e=>{ touchStartY = e.touches[0].clientY; });
 feed.addEventListener('touchend', e=>{
   if(touchStartY===null) return;
   const dy = e.changedTouches[0].clientY - touchStartY;
-  if(dy < -40) goTo(idx+1);
-  else if(dy > 40) goTo(idx-1);
+  if(dy < -40){ clearPendingResume(); goTo(idx+1); }
+  else if(dy > 40){ clearPendingResume(); goTo(idx-1); }
   touchStartY = null;
 });
 let wheelLock = false;
 feed.addEventListener('wheel', e=>{
   if(wheelLock) return;
   wheelLock = true;
-  if(e.deltaY > 8) goTo(idx+1);
-  else if(e.deltaY < -8) goTo(idx-1);
+  if(e.deltaY > 8){ clearPendingResume(); goTo(idx+1); }
+  else if(e.deltaY < -8){ clearPendingResume(); goTo(idx-1); }
   setTimeout(()=>wheelLock=false, 500);
 });
 
@@ -509,8 +640,12 @@ playToggle.addEventListener('click', ()=>{
   }
   const nowPaused = feed.classList.toggle('paused');
   if(currentPlayer){
-    if(nowPaused) currentPlayer.pause();
-    else currentPlayer.play();
+    if(nowPaused){
+      currentPlayer.pause();
+      saveCurrentFeedProgress();
+    } else {
+      currentPlayer.play();
+    }
   }
 });
 

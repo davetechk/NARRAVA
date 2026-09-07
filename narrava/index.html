@@ -161,6 +161,14 @@
 
       <div class="discover-hero" id="discoverHero"></div>
 
+      <!-- Shown on both layouts (unlike the hero/shelves below, which are
+           desktop-only) whenever get_continue_watching actually returns
+           rows for the signed-in viewer — see discover.js's
+           renderContinueWatching(). Left empty and unstyled otherwise, so
+           it takes up no space for a signed-out viewer or one with no
+           watch history yet. -->
+      <div class="cw-strip" id="continueWatchingStrip"></div>
+
       <!-- Desktop-only: named horizontal shelves (New Release / Top /
            genres) instead of the mobile tabs+grid below. "View all" on
            a shelf switches to that same tabs+grid, expanded, with a way
@@ -289,6 +297,7 @@
 <script src="https://assets.mediadelivery.net/playerjs/playerjs-latest.min.js"></script>
 <script src="js/supabase-client.js"></script>
 <script src="js/shared-utils.js"></script>
+<script src="js/watch-progress.js"></script>
 <script src="js/feed-data.js"></script>
 <script src="js/app.js"></script>
 <script src="js/discover.js"></script>

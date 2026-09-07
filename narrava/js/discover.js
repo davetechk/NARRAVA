@@ -191,6 +191,11 @@ function shelvesData(){
   return shelves;
 }
 
+// Same arrow markup/style as the hero carousel's own next button — see
+// .shelf-arrow / body.discover-active .hero-carousel-next in styles.css.
+const SHELF_ARROW_LEFT_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>';
+const SHELF_ARROW_RIGHT_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>';
+
 function shelfHtml(shelf){
   return '<div class="shelf">' +
     '<div class="shelf-head">' +
@@ -200,8 +205,34 @@ function shelfHtml(shelf){
       '</div>' +
       '<button type="button" class="shelf-viewall" data-shelf-key="' + shelf.key + '">View all ›</button>' +
     '</div>' +
-    '<div class="shelf-row">' + shelf.items.map(s => posterCardHtml(s, false)).join('') + '</div>' +
+    '<div class="shelf-row-wrap">' +
+      '<button type="button" class="shelf-arrow shelf-arrow-left hide" aria-label="Scroll left">' + SHELF_ARROW_LEFT_SVG + '</button>' +
+      '<div class="shelf-row">' + shelf.items.map(s => posterCardHtml(s, false)).join('') + '</div>' +
+      '<button type="button" class="shelf-arrow shelf-arrow-right" aria-label="Scroll right">' + SHELF_ARROW_RIGHT_SVG + '</button>' +
+    '</div>' +
   '</div>';
+}
+
+// One shelf's worth of cards scrolled per click — plain scrollBy, no
+// second carousel mechanism invented for this (the hero filmstrip's own
+// autoplay/drag logic is unrelated and untouched). Arrows hide
+// themselves at whichever end there's genuinely nothing left to scroll.
+function wireShelfArrows(wrap){
+  const row = wrap.querySelector('.shelf-row');
+  const leftBtn = wrap.querySelector('.shelf-arrow-left');
+  const rightBtn = wrap.querySelector('.shelf-arrow-right');
+  if(!row || !leftBtn || !rightBtn) return;
+
+  function updateArrowVisibility(){
+    const maxScroll = row.scrollWidth - row.clientWidth;
+    leftBtn.classList.toggle('hide', row.scrollLeft <= 4);
+    rightBtn.classList.toggle('hide', row.scrollLeft >= maxScroll - 4);
+  }
+
+  leftBtn.addEventListener('click', () => row.scrollBy({ left: -row.clientWidth * 0.8, behavior: 'smooth' }));
+  rightBtn.addEventListener('click', () => row.scrollBy({ left: row.clientWidth * 0.8, behavior: 'smooth' }));
+  row.addEventListener('scroll', updateArrowVisibility);
+  updateArrowVisibility();
 }
 
 function renderShelves(){
@@ -219,6 +250,8 @@ function renderShelves(){
   discoverShelves.querySelectorAll('.shelf-viewall').forEach(btn => {
     btn.addEventListener('click', () => expandShelf(btn.dataset.shelfKey));
   });
+
+  discoverShelves.querySelectorAll('.shelf-row-wrap').forEach(wireShelfArrows);
 }
 
 // "View all" doesn't build a second grid — it reuses the exact same
@@ -492,6 +525,65 @@ topbarSearchClear.addEventListener('click', () => {
   topbarSearchInput.focus();
 });
 
+// Continue Watching: shown on both mobile and desktop layouts (it sits
+// between the hero and the shelves in index.html, and both of those are
+// display:none on mobile, so this is the only thing in that slot there).
+// get_continue_watching (an existing RPC — see watch-progress.js) already
+// does the real signed-in-viewer + "has anyone actually watched anything"
+// filtering server-side: an empty result here means exactly what it says,
+// never "still loading", so the strip is removed entirely rather than
+// left as an empty placeholder.
+//
+// Real column names, confirmed against the live function: series_id,
+// episode_id, episode_number, position_seconds, updated_at — no title or
+// cover art, so those come from `slides` (already fetched) by series_id;
+// a row whose series isn't in `slides` (unpublished since, etc.) is
+// dropped rather than shown broken.
+let continueWatchingItems = [];
+
+function cwCardHtml(item, slide){
+  const art = posterArtSrc(slide);
+  return '<button type="button" class="poster-card cw-card" data-series-id="' + slide.id + '">' +
+    (art ? '<img src="' + art + '" alt="">' : '') +
+    '<div class="cw-play-badge">▶</div>' +
+    '<div class="poster-title">' + escapeHtml(slide.title) +
+      '<span class="cw-ep-label">Continue · Ep ' + item.episode_number + '</span></div>' +
+  '</button>';
+}
+
+async function renderContinueWatching(){
+  const strip = document.getElementById('continueWatchingStrip');
+  if(!strip) return;
+
+  continueWatchingItems = await fetchContinueWatching();
+
+  const cards = continueWatchingItems
+    .map(item => {
+      const slide = slides.find(s => s.id === item.series_id);
+      return slide ? cwCardHtml(item, slide) : '';
+    })
+    .filter(Boolean)
+    .join('');
+
+  if(!cards){
+    strip.innerHTML = '';
+    strip.classList.remove('has-items');
+    return;
+  }
+
+  strip.classList.add('has-items');
+  strip.innerHTML =
+    '<div class="cw-head"><h3 class="cw-title">Continue Watching</h3></div>' +
+    '<div class="cw-row-wrap"><div class="cw-row">' + cards + '</div></div>';
+
+  strip.querySelectorAll('.cw-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const item = continueWatchingItems.find(it => it.series_id === card.dataset.seriesId);
+      if(item) openContinueWatchingItem(item);
+    });
+  });
+}
+
 async function initDiscover(){
   const [genreRows, links] = await Promise.all([fetchGenres(), fetchSeriesGenres()]);
   genres = genreRows;
@@ -505,6 +597,7 @@ async function initDiscover(){
   renderShelves();
   renderDiscoverBody();
   renderTopbarSearchGrid(); // unfiltered by default — every real series, no invented ranking
+  renderContinueWatching();
 }
 
 initDiscover();

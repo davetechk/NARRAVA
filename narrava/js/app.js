@@ -85,7 +85,9 @@ const topbarProfile = document.getElementById('topbarProfile');
 const topbarSearchBtn = document.getElementById('topbarSearchBtn');
 const topbarProfileBtn = document.getElementById('topbarProfileBtn');
 const topbarTopUpBtn = document.getElementById('topbarTopUpBtn');
-const topbarSearchPanel = document.getElementById('topbarSearchPanel');
+const topbarDesktopInner = document.getElementById('topbarDesktopInner');
+const topbarSearchBar = document.getElementById('topbarSearchBar');
+const topbarSearchBackdrop = document.getElementById('topbarSearchBackdrop');
 const topbarSearchInput = document.getElementById('topbarSearchInput');
 
 // Screen switching between the "Home" (Discover) grid and the "For You"
@@ -112,6 +114,10 @@ function showScreen(name){
   // separate video (see watch.js) — leaving it for any other screen
   // must actually tear its iframe down too.
   if(name !== 'watch') stopWatchPlayback();
+  // Any navigation closes the search takeover — openTopbarSearch()
+  // itself calls showScreen('discover') before opening it, so this
+  // no-ops harmlessly in that order rather than fighting it.
+  closeTopbarSearch();
   feed.classList.toggle('screen-hidden', name !== 'feed');
   discoverScreen.classList.toggle('screen-hidden', name !== 'discover');
   profileScreen.classList.toggle('screen-hidden', name !== 'profile');
@@ -167,16 +173,32 @@ topbarProfileBtn.addEventListener('click', ()=> { showScreen('profile'); renderP
 // profile.js) — not a second, invented top-up flow.
 topbarTopUpBtn.addEventListener('click', ()=> { showScreen('profile'); renderProfileScreen(); });
 
-// Top bar search icon: opens the sliding panel under the top bar
-// (see discover.js for the panel's own input/results wiring, which
-// reuses the exact same searchQuery/matchesSearch logic the mobile
-// search bar already has — no second search implementation). Always
-// switches to Discover first since the panel only makes visual sense
-// over that screen's hero.
-topbarSearchBtn.addEventListener('click', ()=> {
+// Top bar search icon: takes over the whole nav row with a full search
+// input and dims the rest of the page behind it — checked directly
+// against reelshort.com's own search behaviour (see discover.js for the
+// close/input/results wiring, which reuses the exact same
+// searchQuery/matchesSearch logic the mobile search bar already has —
+// no second search implementation). Always switches to Discover first
+// since the results panel only makes visual sense over that screen.
+function openTopbarSearch(){
   showScreen('discover');
-  const isOpen = topbarSearchPanel.classList.toggle('open');
-  if(isOpen) setTimeout(()=> topbarSearchInput.focus(), 150);
+  topbarDesktopInner.classList.add('search-hidden');
+  topbarSearchBar.classList.add('open');
+  topbarSearchBackdrop.classList.add('open');
+  setTimeout(()=> topbarSearchInput.focus(), 150);
+}
+function closeTopbarSearch(){
+  topbarDesktopInner.classList.remove('search-hidden');
+  topbarSearchBar.classList.remove('open');
+  topbarSearchBackdrop.classList.remove('open');
+}
+topbarSearchBtn.addEventListener('click', openTopbarSearch);
+// Clicking anywhere on the dimmed backdrop outside the results panel
+// closes search, same as clicking outside it on the real site. The
+// listener is on the backdrop itself, not the panel inside it, so
+// clicks on real results/inputs never bubble into a false close.
+topbarSearchBackdrop.addEventListener('click', (e)=> {
+  if(e.target === topbarSearchBackdrop) closeTopbarSearch();
 });
 
 function buildSpine(currentEp,totalEp){

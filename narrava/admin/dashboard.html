@@ -7,7 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../css/styles.css">
-<link rel="stylesheet" href="../css/admin.css">
+<link rel="stylesheet
+" href="../css/admin.css">
 </head>
 <body class="admin-page" data-page="dashboard">
 
@@ -39,7 +40,14 @@
             <div class="admin-field-row">
               <div class="admin-field"><label for="adminTitle">Title</label><input type="text" id="adminTitle" required></div>
               <div class="admin-field"><label for="adminDescription">Description</label><textarea id="adminDescription" rows="1" required></textarea></div>
-              <div class="admin-field"><label for="adminCoverUrl">Cover Image URL</label><input type="text" id="adminCoverUrl" placeholder="https://…"></div>
+              <div class="admin-field">
+                <label for="adminCoverFile">Cover Image</label>
+                <div class="admin-cover-picker">
+                  <div class="admin-cover-preview" id="adminCoverPreview"></div>
+                  <button type="button" class="admin-btn-link" id="adminCoverFileBtn">Choose Image</button>
+                  <input type="file" id="adminCoverFile" accept="image/*" hidden>
+                </div>
+              </div>
             </div>
             <div class="admin-helper-text">New series start as a draft — publish it from the Series List page when it's ready.</div>
             <div class="admin-field-row" style="grid-template-columns:1fr 1fr auto;align-items:end;">

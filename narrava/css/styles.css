@@ -656,6 +656,29 @@
     grid-template-columns:1fr 1fr;
     gap:12px;
   }
+  /* Mobile-only Popular tab layout (see discover.js renderPopularGrid):
+     two larger feature cards, a tight 3-column grid for the next nine,
+     then a roomier 2-column grid for the rest — matches the real
+     reference screenshots. Desktop collapses all three back to the
+     same uniform grid `.poster-grid` already uses there (see the
+     body.discover-active override below), so desktop is unaffected. */
+  .discover-feature-row{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:12px;
+    margin-bottom:14px;
+  }
+  .discover-grid-tight{
+    display:grid;
+    grid-template-columns:repeat(3, 1fr);
+    gap:7px;
+    margin-bottom:14px;
+  }
+  .discover-grid-roomy{
+    display:grid;
+    grid-template-columns:repeat(2, 1fr);
+    gap:14px;
+  }
   .poster-card{
     position:relative;
     border-radius:12px;
@@ -831,16 +854,24 @@
 
   /* Desktop-only watch page for a single series (see watch.js) — opened
      instead of the mobile swipe feed when a series is opened from the
-     desktop layout. Base rule just makes it a normal scrollable screen
-     like .profile; the real two-column layout only exists at the
-     desktop breakpoint below, since this screen is never shown on
-     mobile in the first place. */
+     desktop layout. Base rule just sizes the screen; the real layout
+     only exists at the desktop breakpoint below, since this screen is
+     never shown on mobile in the first place. The screen itself does
+     NOT scroll — measured off a real reelshort.com episode page, only
+     its right-hand info column scrolls internally while the video and
+     back button stay put, so that's the structure here too. */
   .watch{
     position:absolute;
     inset:0;
-    overflow-y:auto;
-    box-sizing:border-box;
-    padding:24px 18px 60px;
+    overflow:hidden;
+  }
+
+  /* Comment panel on the watch page: a fixed drawer over the existing
+     layout (position:fixed, not part of the normal document flow), so
+     opening it never pushes the episode grid down — see watch.js. Base
+     rule hides it entirely outside the desktop watch page. */
+  .watch-comments-backdrop{
+    display:none;
   }
 
   /* Sign Up / Log In popup, opened from inside the Profile screen above
@@ -1065,39 +1096,25 @@
   }
   .topbar-topup-btn:hover{background:var(--leaf-light);}
 
-  /* Search icon in the top bar opens this panel underneath it — no
-     separate always-visible search bar on desktop (that's
-     `.discover-search`, mobile-only there — see below). Reuses the same
-     `slides` data and `matchesSearch()` predicate discover.js already
-     built for the mobile/expanded grid search, just rendered here as a
-     sliding panel with suggestion pills + a live results list instead
-     of filtering an on-page grid. */
-  .topbar-search-panel{
-    max-height:0;
-    overflow:hidden;
-    transition:max-height 0.3s ease;
-    background:var(--panel);
-  }
-  .topbar-search-panel.open{
-    max-height:620px;
-    /* Only shown while the panel is actually open — a border on the
-       collapsed (max-height:0) panel still paints as a 1px line even at
-       zero content height, since border isn't part of what max-height
-       clips, which was the stray line always visible under the bar. */
-    border-bottom:1px solid rgba(255,255,255,0.06);
-  }
-  .topbar-search-panel-inner{
-    padding:18px 32px 22px;
+  /* Search icon in the top bar replaces the whole nav row with this
+     input, and dims the rest of the page behind a backdrop (see
+     .topbar-search-backdrop below) — checked directly against
+     reelshort.com's own search behaviour rather than assumed: it is
+     NOT a small dropdown tucked under a still-visible nav bar, clicking
+     the icon takes over the header entirely. Reuses the same `slides`
+     data and `matchesSearch()` predicate discover.js already built for
+     the mobile/expanded grid search. */
+  .topbar-search-bar{
+    display:none;
   }
   .topbar-search-input-wrap{
     display:flex;align-items:center;gap:10px;
-    background:rgba(255,255,255,0.06);
-    border:1px solid rgba(255,255,255,0.12);
+    background:rgba(255,255,255,0.08);
+    border:1px solid rgba(255,255,255,0.18);
     border-radius:10px;
     padding:12px 16px;
-    max-width:520px;
+    width:100%;
   }
-  .topbar-search-input-wrap svg{flex-shrink:0;color:var(--muted);}
   .topbar-search-input-wrap input{
     flex:1;background:none;border:none;outline:none;
     color:var(--text);font-family:'Montserrat',sans-serif;font-size:15px;
@@ -1108,24 +1125,32 @@
     background:none;border:none;color:var(--muted);cursor:pointer;
   }
   .topbar-search-input-wrap.has-text .topbar-search-clear{display:flex;}
-  /* Real thumbnail grid, shown by default (unfiltered, via matchesSearch
-     with an empty query — see discover.js renderTopbarSearchGrid) and
-     live-filtered as you type, same underlying search logic the mobile
-     bar and Discover screen already use. Real cover art, real titles,
-     real genre tags where a series has any — no view counts or rankings,
-     since there's no real data behind those (same honesty rule as the
-     Discover "Top" shelf's own caption). */
+  .topbar-search-bar-icon{
+    display:flex;flex-shrink:0;color:var(--muted);
+  }
+  /* The full-page dimming overlay behind the results panel — hidden
+     entirely outside the desktop breakpoint/open state so it can never
+     leak onto mobile even if toggled. */
+  .topbar-search-backdrop{
+    display:none;
+  }
+  /* Real thumbnail-row grid, shown by default (unfiltered, via
+     matchesSearch with an empty query — see discover.js
+     renderTopbarSearchGrid) and live-filtered as you type, same
+     underlying search logic the mobile bar and Discover screen already
+     use. Real cover art, real titles, real genre tags where a series
+     has any — no view counts or rankings, since there's no real data
+     behind those (same honesty rule as the Discover "Top" shelf's own
+     caption) — the real site shows both, this deliberately doesn't. */
   .topbar-search-grid{
     display:grid;
-    grid-template-columns:repeat(auto-fill, minmax(130px, 1fr));
-    gap:18px;
-    max-width:900px;
-    margin-top:18px;
-    max-height:400px;
-    overflow-y:auto;
+    grid-template-columns:repeat(2, 1fr);
+    gap:22px 32px;
   }
   .search-grid-card{
-    display:block;
+    display:flex;
+    gap:14px;
+    align-items:flex-start;
     background:none;
     border:none;
     padding:0;
@@ -1139,25 +1164,31 @@
      matter what proportions the source cover art happens to be. */
   .search-grid-thumb{
     position:relative;
-    width:100%;
+    width:84px;
+    flex-shrink:0;
     aspect-ratio:2/3;
-    border-radius:10px;
+    border-radius:8px;
     overflow:hidden;
     background:var(--panel-2);
   }
   .search-grid-thumb img{
     width:100%;height:100%;object-fit:cover;display:block;
   }
-  .search-grid-card .search-grid-title{
-    margin-top:8px;
-    font-size:13px;
+  .search-grid-info{
+    display:flex;
+    flex-direction:column;
+    gap:7px;
+    min-width:0;
+    padding-top:2px;
+  }
+  .search-grid-title{
+    font-size:14px;
     font-weight:700;
     color:var(--text);
     line-height:1.3;
   }
   .search-grid-tags{
-    display:flex;flex-wrap:wrap;gap:5px;
-    margin-top:5px;
+    display:flex;flex-wrap:wrap;gap:6px;
   }
   .search-grid-tag{
     background:rgba(255,255,255,0.08);
@@ -1259,8 +1290,44 @@
       background:var(--panel);
       border-bottom:1px solid rgba(255,255,255,0.06);
     }
-    body.discover-active .topbar-search-panel.open{
-      background:rgba(10,14,11,0.97);
+    /* Search takeover: the input row REPLACES the nav row (matching the
+       real site's own behaviour, checked directly) while the backdrop
+       dims everything below the bar — clicking the backdrop (outside
+       the results panel) closes it, same as clicking outside on the
+       real site. */
+    .topbar-desktop-inner.search-hidden{
+      display:none;
+    }
+    .topbar-search-bar.open{
+      display:flex;
+      align-items:center;
+      width:100%;
+      height:64px;
+      padding:0 32px;
+      box-sizing:border-box;
+    }
+    .topbar-search-bar .topbar-search-input-wrap{
+      max-width:640px;
+      margin:0 auto;
+    }
+    .topbar-search-backdrop.open{
+      display:block;
+      position:fixed;
+      inset:0;
+      z-index:15;
+      background:rgba(4,7,5,0.75);
+    }
+    .topbar-search-results-panel{
+      margin:64px auto 0;
+      width:100%;
+      max-width:900px;
+      max-height:calc(100vh - 64px);
+      max-height:calc(100dvh - 64px);
+      overflow-y:auto;
+      background:var(--panel);
+      padding:28px 32px 40px;
+      box-sizing:border-box;
+      border-radius:0 0 14px 14px;
     }
     .caption{
       display:none;
@@ -1489,9 +1556,18 @@
     body.discover-active .genre-chips{
       margin-bottom:20px;
     }
-    body.discover-active .poster-grid{
+    body.discover-active .poster-grid,
+    /* Desktop-only: neutralizes the mobile-only Popular tab's tiered
+       layout (see .discover-feature-row/-grid-tight/-grid-roomy above)
+       back to the same uniform grid every other tab already uses in
+       the desktop "View all" expanded view — this task is mobile-only,
+       so desktop must render identically to before. */
+    body.discover-active .discover-feature-row,
+    body.discover-active .discover-grid-tight,
+    body.discover-active .discover-grid-roomy{
       grid-template-columns:repeat(auto-fill, minmax(170px, 1fr));
       gap:22px;
+      margin-bottom:0;
     }
     body.discover-active .poster-card .poster-title{
       font-size:13px;
@@ -1599,14 +1675,19 @@
     }
     .shelf-row{
       display:flex;
-      gap:16px;
+      gap:24px;
       overflow-x:auto;
       padding-bottom:8px;
       scrollbar-width:thin;
     }
+    /* Measured directly off reelshort.com's own shelf cards (a real
+       image element in its "Reel Original" row): 259px wide, 345px
+       tall, 24px gap — about 6 cards visible across a 1920px window,
+       matching what the real site actually shows, not a guess. */
     .shelf-row .poster-card{
-      flex:0 0 170px;
-      width:170px;
+      flex:0 0 259px;
+      width:259px;
+      aspect-ratio:259/345;
       transition:transform 0.22s ease, box-shadow 0.22s ease;
     }
     .shelf-row .poster-card:hover{
@@ -1678,28 +1759,45 @@
     }
 
     /* ----- Watch page (single-series desktop screen, see watch.js) -----
-       A normal two-column page: a moderately-sized video panel on the
-       left (the app's real videos are all vertical drama clips — same
-       340/706 shape the feed already uses, just at a much smaller,
-       "sits in a page" size instead of near-fullscreen), title/tags/
-       actions beside it, then the real episode grid and full list below,
-       both capped at the same 1400px column every other Discover
-       section already uses. */
-    .watch{
-      padding:40px 44px 80px;
+       Rebuilt against real measurements taken directly off a live
+       reelshort.com episode page (see watch.js's own header comment for
+       the numbers): a fixed back button top-left, a large video filling
+       the full height of the left column (not a small boxed player —
+       the video keeps Narrava's own real 340/706 clip shape, just sized
+       tall instead of "moderate"), and a fixed-width right info column
+       that scrolls independently while the video and back button stay
+       put — the real site's own structure, not a single scrolling page. */
+    .watch-back{
+      position:absolute;
+      top:24px;left:24px;
+      z-index:5;
+      width:44px;height:44px;
+      display:flex;align-items:center;justify-content:center;
+      background:rgba(0,0,0,0.5);
+      border:1px solid rgba(255,255,255,0.15);
+      border-radius:50%;
+      color:#fff;
+      cursor:pointer;
     }
-    .watch-content{
+    .watch-back:hover{background:rgba(0,0,0,0.7);}
+    .watch-back svg{width:22px;height:22px;}
+
+    .watch-layout{
       display:flex;
-      gap:40px;
-      width:100%;
-      max-width:1400px;
-      margin:0 auto 48px;
+      height:100%;
+      padding:0 44px;
+      box-sizing:border-box;
     }
     .watch-player{
-      flex-shrink:0;
-      width:340px;
+      flex:1;
+      min-width:0;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+    .watch-player-box{
+      height:100%;
       aspect-ratio:340/706;
-      border-radius:14px;
       overflow:hidden;
       background:#000;
     }
@@ -1722,20 +1820,36 @@
       padding:0 20px;
       box-sizing:border-box;
     }
+
+    /* 480px measured directly off the real site's own info panel
+       (a literal `w-480px` utility class in its markup, on a 1920px
+       screen) — this is the column that scrolls, not the whole page. */
     .watch-info{
-      flex:1;
-      min-width:0;
-      padding-top:8px;
+      flex-shrink:0;
+      width:480px;
+      height:100%;
+      overflow-y:auto;
+      box-sizing:border-box;
+      padding:32px 8px 60px 40px;
     }
+    .watch-breadcrumb{
+      font-family:'Montserrat',sans-serif;
+      font-weight:600;
+      font-size:12px;
+      color:var(--muted);
+      margin-bottom:18px;
+    }
+    .watch-breadcrumb span{color:var(--text);}
     .watch-title{
       font-family:'Montserrat',sans-serif;
       font-weight:800;
-      font-size:30px;
+      font-size:20px;
       color:#fff;
-      margin:0 0 12px;
+      margin:0 0 18px;
+      line-height:1.3;
     }
     .watch-tags{
-      display:flex;gap:10px;margin-bottom:24px;
+      display:flex;flex-wrap:wrap;gap:8px;margin-bottom:22px;
     }
     .watch-tag{
       background:var(--leaf);
@@ -1746,48 +1860,67 @@
       padding:5px 12px;
       border-radius:999px;
     }
+    /* Centered, evenly-spaced icon+label row, matching the real site's
+       own like/bookmark/share row proportions — no counts next to any
+       of them, since nothing here is persisted yet (see watch.js). */
     .watch-actions{
-      display:flex;gap:14px;
+      display:flex;
+      justify-content:space-around;
+      padding:16px 0;
+      margin-bottom:22px;
+      border-top:1px solid rgba(255,255,255,0.08);
+      border-bottom:1px solid rgba(255,255,255,0.08);
     }
     .watch-action{
       display:flex;flex-direction:column;align-items:center;gap:6px;
-      background:rgba(255,255,255,0.05);
-      border:1px solid rgba(255,255,255,0.1);
-      border-radius:12px;
-      padding:12px 20px;
+      background:none;
+      border:none;
       color:var(--muted);
       font-family:'Montserrat',sans-serif;
-      font-weight:700;
+      font-weight:600;
       font-size:12px;
       cursor:pointer;
     }
-    .watch-action svg{width:19px;height:19px;}
-    .watch-action:hover{color:var(--text);border-color:rgba(255,255,255,0.25);}
-    .watch-action.active{color:var(--leaf-light);border-color:var(--leaf);}
+    .watch-action svg{width:22px;height:22px;}
+    .watch-action:hover{color:var(--text);}
+    .watch-action.active{color:var(--leaf-light);}
 
-    .watch-section{
-      width:100%;
-      max-width:1400px;
-      margin:0 auto 48px;
+    /* Range tabs — only rendered at all once a series actually has
+       enough episodes to need grouping (see watch.js); a 2-3 episode
+       series never shows this, matching the real site's own behaviour
+       of only grouping "when there are many episodes" rather than
+       always showing a pagination control. */
+    .watch-ep-ranges{
+      display:flex;gap:18px;
+      margin-bottom:16px;
     }
-    .watch-section-title{
+    .watch-ep-ranges:empty{display:none;margin:0;}
+    .watch-range-tab{
+      background:none;border:none;
+      color:var(--muted);
       font-family:'Montserrat',sans-serif;
-      font-weight:800;
-      font-size:18px;
-      color:#fff;
-      margin:0 0 18px;
+      font-weight:700;
+      font-size:13px;
+      padding:0 0 6px;
+      cursor:pointer;
+      border-bottom:2px solid transparent;
     }
+    .watch-range-tab.active{color:var(--leaf-light);border-bottom-color:var(--leaf);}
+
+    /* 6 columns, ~62x46 cells, 6px gaps — measured directly off the
+       real site's own episode grid rather than approximated. */
     .watch-episode-grid{
       display:grid;
-      grid-template-columns:repeat(auto-fill, minmax(52px, 1fr));
-      gap:10px;
+      grid-template-columns:repeat(6, 1fr);
+      gap:6px;
     }
     .watch-ep-card{
-      aspect-ratio:1/1;
+      position:relative;
+      height:46px;
       display:flex;align-items:center;justify-content:center;
       background:rgba(255,255,255,0.06);
       border:1px solid rgba(255,255,255,0.12);
-      border-radius:8px;
+      border-radius:6px;
       color:var(--text);
       font-family:'Montserrat',sans-serif;
       font-weight:700;
@@ -1804,43 +1937,73 @@
       cursor:default;
       color:var(--muted);
     }
-    .watch-ep-card.locked svg{width:14px;height:14px;}
     .watch-ep-card.locked:hover{border-color:rgba(255,255,255,0.12);}
-
-    .watch-episode-list{
-      display:flex;flex-direction:column;
-      max-width:640px;
-    }
-    .watch-ep-row{
-      display:flex;align-items:center;gap:14px;
-      padding:12px 8px;
-      background:none;
-      border:none;
-      border-bottom:1px solid rgba(255,255,255,0.06);
-      color:var(--text);
-      font-family:'Montserrat',sans-serif;
-      font-size:14px;
-      text-align:left;
-      cursor:pointer;
-      width:100%;
-    }
-    .watch-ep-row:hover{background:rgba(255,255,255,0.05);}
-    .watch-ep-row.active{color:var(--leaf-light);}
-    .watch-ep-row.locked{
-      cursor:default;
+    /* Small corner badge, not a full-cell replacement — the real site
+       keeps the episode number visible on a locked cell too, checked
+       directly against a live episode page. */
+    .watch-ep-card-lock{
+      position:absolute;
+      top:3px;left:4px;
+      width:10px;height:10px;
       color:var(--muted);
     }
-    .watch-ep-row.locked:hover{background:none;}
-    .watch-ep-row-num{
-      flex-shrink:0;
-      font-weight:800;
-      width:60px;
+
+    /* Comment drawer: fixed over the whole screen (its own backdrop,
+       independent of .watch-info's own scroll), sliding in from the
+       right — a real overlay, not a block that expands in place and
+       pushes the episode grid down. */
+    .watch-comments-backdrop.open{
+      display:block;
+      position:fixed;
+      inset:0;
+      z-index:30;
+      background:rgba(4,7,5,0.6);
     }
-    .watch-ep-row-title{flex:1;min-width:0;}
-    .watch-ep-row-lock{width:15px;height:15px;flex-shrink:0;color:var(--muted);}
-    .watch-episodes-loading{
+    .watch-comments-panel{
+      position:absolute;
+      top:0;right:0;bottom:0;
+      width:420px;
+      max-width:90vw;
+      background:var(--panel);
+      display:flex;
+      flex-direction:column;
+      box-shadow:-16px 0 40px rgba(0,0,0,0.5);
+    }
+    .watch-comments-header{
+      display:flex;align-items:center;justify-content:space-between;
+      flex-shrink:0;
+      padding:22px 24px;
+      border-bottom:1px solid rgba(255,255,255,0.08);
+    }
+    .watch-comments-header h3{
+      margin:0;
+      font-family:'Montserrat',sans-serif;
+      font-weight:800;
+      font-size:16px;
+      color:#fff;
+    }
+    .watch-comments-close{
+      display:flex;align-items:center;justify-content:center;
+      width:28px;height:28px;
+      background:none;
+      border:none;
+      color:var(--muted);
+      cursor:pointer;
+    }
+    .watch-comments-close:hover{color:#fff;}
+    .watch-comments-close svg{width:18px;height:18px;}
+    .watch-comments-body{
+      flex:1;
+      overflow-y:auto;
+      padding:24px;
+    }
+    /* Honest empty state — there is no real comment data anywhere in
+       this app yet, so this is the only thing this panel ever shows. */
+    .watch-comments-empty{
       color:var(--muted);
       font-family:'Montserrat',sans-serif;
       font-size:13px;
+      text-align:center;
+      padding:60px 20px;
     }
   }

@@ -7,6 +7,7 @@ let slEpisodeCounts = {}; // series_id -> number
 let slSearchQuery = '';
 let slEditingId = null;
 let slDeletingId = null;
+let slEditCoverFile = null; // File picked in the currently-open edit row, or null if unchanged
 
 function statsRowHtml(){
   const total = slSeries.length;
@@ -66,8 +67,12 @@ function editRowHtml(series){
         '</div>' +
         '<label class="auth-label" for="editDescription-' + series.id + '">Description</label>' +
         '<textarea class="auth-input" rows="3" id="editDescription-' + series.id + '" required>' + escapeHtml(series.description) + '</textarea>' +
-        '<label class="auth-label" for="editCoverUrl-' + series.id + '">Cover Image URL</label>' +
-        '<input class="auth-input" type="url" id="editCoverUrl-' + series.id + '" value="' + escapeHtml(series.cover_image_url || '') + '" placeholder="https://…">' +
+        '<label class="auth-label">Cover Image</label>' +
+        '<div class="admin-cover-picker">' +
+          '<div class="admin-cover-preview" id="editCoverPreview-' + series.id + '"' + (series.cover_image_url ? ' style="background-image:url(\'' + series.cover_image_url.replace(/'/g, '') + '\')"' : '') + '></div>' +
+          '<button type="button" class="admin-btn-link" id="editCoverFileBtn-' + series.id + '">Change Image</button>' +
+          '<input type="file" id="editCoverFile-' + series.id + '" accept="image/*" hidden>' +
+        '</div>' +
         '<div class="admin-inline-genres"><label>Genres</label><div id="editGenres-' + series.id + '">' + genreChipsEditHtml(series.id, slGenres, genreIds) + '</div></div>' +
         '<div class="admin-inline-form-actions">' +
           '<button class="auth-submit" type="submit" id="editSubmit-' + series.id + '">Save Changes</button>' +
@@ -113,8 +118,8 @@ function wireTableActions(){
   const wrap = document.getElementById('seriesListTableWrap');
   wrap.querySelectorAll('[data-action="toggle-published"]').forEach(btn => btn.addEventListener('click', () => handlePublishedToggle(btn)));
   wrap.querySelectorAll('[data-action="toggle-featured"]').forEach(btn => btn.addEventListener('click', () => handleFeaturedToggle(btn)));
-  wrap.querySelectorAll('[data-action="edit"]').forEach(btn => btn.addEventListener('click', () => { slEditingId = btn.dataset.seriesId; slDeletingId = null; renderTable(); }));
-  wrap.querySelectorAll('[data-action="cancel-edit"]').forEach(btn => btn.addEventListener('click', () => { slEditingId = null; renderTable(); }));
+  wrap.querySelectorAll('[data-action="edit"]').forEach(btn => btn.addEventListener('click', () => { slEditingId = btn.dataset.seriesId; slDeletingId = null; slEditCoverFile = null; renderTable(); }));
+  wrap.querySelectorAll('[data-action="cancel-edit"]').forEach(btn => btn.addEventListener('click', () => { slEditingId = null; slEditCoverFile = null; renderTable(); }));
   wrap.querySelectorAll('[data-action="delete"]').forEach(btn => btn.addEventListener('click', () => { slDeletingId = btn.dataset.seriesId; slEditingId = null; renderTable(); }));
   wrap.querySelectorAll('[data-action="cancel-delete"]').forEach(btn => btn.addEventListener('click', () => { slDeletingId = null; renderTable(); }));
   wrap.querySelectorAll('[data-action="confirm-delete"]').forEach(btn => btn.addEventListener('click', () => handleDelete(btn)));
@@ -122,6 +127,22 @@ function wireTableActions(){
     form.addEventListener('submit', handleEditSubmit);
     const genresMount = form.querySelector('[id^="editGenres-"]');
     if(genresMount) wireGenreChipsEdit(genresMount, slSeriesGenres);
+
+    const seriesId = form.dataset.seriesId;
+    const fileInput = document.getElementById('editCoverFile-' + seriesId);
+    const fileBtn = document.getElementById('editCoverFileBtn-' + seriesId);
+    const preview = document.getElementById('editCoverPreview-' + seriesId);
+    if(fileInput && fileBtn){
+      fileBtn.addEventListener('click', () => fileInput.click());
+      fileInput.addEventListener('change', () => {
+        const file = fileInput.files[0];
+        slEditCoverFile = file || null;
+        if(file){
+          preview.style.backgroundImage = "url('" + URL.createObjectURL(file) + "')";
+          fileBtn.textContent = '✓ ' + file.name;
+        }
+      });
+    }
   });
 }
 
@@ -178,7 +199,6 @@ async function handleEditSubmit(e){
 
   const title = document.getElementById('editTitle-' + seriesId).value.trim();
   const description = document.getElementById('editDescription-' + seriesId).value.trim();
-  const coverImageUrl = document.getElementById('editCoverUrl-' + seriesId).value.trim();
   const freeEpisodeCountRaw = document.getElementById('editFreeEpisodes-' + seriesId).value;
 
   errorEl.textContent = '';
@@ -191,14 +211,24 @@ async function handleEditSubmit(e){
   }
 
   const freeEpisodeCount = freeEpisodeCountRaw === '' ? 0 : parseInt(freeEpisodeCountRaw, 10);
+  const existing = slSeries.find(s => String(s.id) === String(seriesId));
+  const previousCoverUrl = existing ? existing.cover_image_url : null;
+  const pickedFile = slEditCoverFile;
 
   submitBtn.disabled = true;
   submitBtn.textContent = 'Saving…';
 
   try {
+    let coverImageUrl = previousCoverUrl;
+    if(pickedFile){
+      submitBtn.textContent = 'Uploading image…';
+      coverImageUrl = await uploadCoverImageFile(pickedFile);
+      submitBtn.textContent = 'Saving…';
+    }
+
     const { data, error } = await supabaseClient
       .from('series')
-      .update({ title, description, cover_image_url: coverImageUrl || null, free_episode_count: freeEpisodeCount })
+      .update({ title, description, cover_image_url: coverImageUrl, free_episode_count: freeEpisodeCount })
       .eq('id', seriesId)
       .select('id, title, description, cover_image_url, free_episode_count, featured_at, status')
       .single();
@@ -207,7 +237,17 @@ async function handleEditSubmit(e){
     const idx = slSeries.findIndex(s => String(s.id) === String(seriesId));
     if(idx !== -1) slSeries[idx] = data;
 
+    // Only after the row is safely pointing at the new image — delete the
+    // old file from storage (this bucket supports real cleanup, unlike
+    // Bunny video assets, so there's no reason to leave it orphaned).
+    // Only ever deletes a file this app itself uploaded there (see
+    // coverImageStoragePath) — a pasted external URL is left untouched.
+    if(pickedFile && previousCoverUrl && previousCoverUrl !== coverImageUrl){
+      deleteCoverImageIfOwned(previousCoverUrl);
+    }
+
     slEditingId = null;
+    slEditCoverFile = null;
     showToast('Series updated ✓');
     renderTable();
   } catch(err){

@@ -74,6 +74,30 @@ function renderPosterGrid(list, locked){
   return '<div class="poster-grid">' + list.map(s => posterCardHtml(s, locked)).join('') + '</div>';
 }
 
+// Mobile-only Popular tab layout: two larger feature cards, then a tight
+// 3-column grid for the next nine, then a roomier 2-column grid for
+// everything after that — matches the real reference screenshots.
+// Desktop is untouched: styles.css collapses all three containers back
+// to the same uniform grid `.poster-grid` already uses there, so the
+// desktop "View all" expanded view looks exactly as it did before.
+// Naturally adapts to however many real series actually exist — with
+// under 11 series (true for every series in this app today) the roomy
+// tier is simply empty, nothing invented to fill it.
+function renderPopularGrid(list, locked){
+  if(list.length === 0){
+    return '<div class="discover-empty">No series match right now.</div>';
+  }
+  const feature = list.slice(0, 2);
+  const tight = list.slice(2, 11);
+  const roomy = list.slice(11);
+
+  let html = '';
+  if(feature.length) html += '<div class="discover-feature-row">' + feature.map(s => posterCardHtml(s, locked)).join('') + '</div>';
+  if(tight.length) html += '<div class="discover-grid-tight">' + tight.map(s => posterCardHtml(s, locked)).join('') + '</div>';
+  if(roomy.length) html += '<div class="discover-grid-roomy">' + roomy.map(s => posterCardHtml(s, locked)).join('') + '</div>';
+  return html;
+}
+
 function renderDiscoverBody(){
   let html = '';
 
@@ -92,7 +116,9 @@ function renderDiscoverBody(){
   }
 
   const list = currentTabSlides();
-  html += renderPosterGrid(list, activeTab === 'vip');
+  html += (activeTab === 'popular')
+    ? renderPopularGrid(list, false)
+    : renderPosterGrid(list, activeTab === 'vip');
 
   discoverBody.innerHTML = html;
 
@@ -395,18 +421,19 @@ discoverScreen.addEventListener('scroll', () => {
   document.body.classList.toggle('discover-scrolled', discoverScreen.scrollTop > heroHeight - 80);
 });
 
-// ================= Top bar search panel (desktop) =================
+// ================= Top bar search (desktop) =================
 //
-// The icon in the top bar (see app.js) opens this sliding panel instead
-// of showing a second, always-visible search bar. It shares the exact
-// same `searchQuery` state and `matchesSearch()` predicate as
-// discoverSearchInput above — typing here also keeps the mobile/
-// expanded-grid view in sync via the same renderDiscoverBody() call —
-// this is one search implementation with two trigger elements, not two
-// separate searches.
-// topbarSearchInput and topbarSearchPanel are already declared in
-// app.js (it wires the icon that opens/closes this panel) — reused
-// here as-is, not redeclared.
+// The icon in the top bar (see app.js openTopbarSearch/closeTopbarSearch)
+// takes over the whole nav row with this input and dims the page behind
+// it — matching reelshort.com's own search behaviour, checked directly
+// rather than assumed, rather than a small dropdown under a still-
+// visible nav bar. Shares the exact same `searchQuery` state and
+// `matchesSearch()` predicate as discoverSearchInput above — typing here
+// also keeps the mobile/expanded-grid view in sync via the same
+// renderDiscoverBody() call — this is one search implementation with two
+// trigger elements, not two separate searches.
+// topbarSearchInput is already declared in app.js (it wires the icon
+// that opens/closes search) — reused here as-is, not redeclared.
 const topbarSearchInputWrap = document.getElementById('topbarSearchInputWrap');
 const topbarSearchClear = document.getElementById('topbarSearchClear');
 const topbarSearchGrid = document.getElementById('topbarSearchGrid');
@@ -415,9 +442,11 @@ const topbarSearchGrid = document.getElementById('topbarSearchGrid');
 // types (matchesSearch returns true for everything on an empty query)
 // and live-filtered down to real matches as they type — the same
 // matchesSearch() predicate the mobile bar and Categories tab already
-// use, just rendered as cards instead of a plain list. Genre tags reuse
-// heroTagsFor (real seriesGenreMap links, already used by the hero) —
-// no view counts or rankings, since there's no real data behind those.
+// use, rendered as thumbnail+title+tags rows (2 per row), matching the
+// real site's own results layout. Genre tags reuse heroTagsFor (real
+// seriesGenreMap links, already used by the hero) — no view counts or
+// rankings, since there's no real data behind those, unlike the real
+// site's own view-count/rank numbers.
 function searchGridCardHtml(slide){
   const src = posterArtSrc(slide);
   const img = src ? '<img src="' + src + '" alt="">' : '';
@@ -427,8 +456,10 @@ function searchGridCardHtml(slide){
     : '';
   return '<button type="button" class="search-grid-card" data-slide-index="' + slides.indexOf(slide) + '">' +
     '<div class="search-grid-thumb">' + img + '</div>' +
-    '<div class="search-grid-title">' + slide.title + '</div>' +
-    tagsHtml +
+    '<div class="search-grid-info">' +
+      '<div class="search-grid-title">' + slide.title + '</div>' +
+      tagsHtml +
+    '</div>' +
   '</button>';
 }
 
@@ -441,7 +472,7 @@ function renderTopbarSearchGrid(){
   topbarSearchGrid.querySelectorAll('.search-grid-card').forEach(card => {
     card.addEventListener('click', () => {
       openSeriesInFeed(parseInt(card.dataset.slideIndex, 10));
-      topbarSearchPanel.classList.remove('open');
+      closeTopbarSearch();
     });
   });
 }

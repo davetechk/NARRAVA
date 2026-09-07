@@ -288,6 +288,16 @@ table.admin-table tbody tr:hover{background:rgba(255,255,255,0.02);}
   border:1px solid rgba(255,255,255,0.08);
 }
 .admin-thumb.small{width:52px;height:32px;border-radius:6px;}
+
+/* Cover image file picker (Create Series + Series List edit forms) — a
+   real file upload to Supabase Storage's cover-images bucket in place
+   of the old plain URL text field, with a preview shown before saving. */
+.admin-cover-picker{display:flex;align-items:center;gap:12px;}
+.admin-cover-preview{
+  width:64px;height:64px;border-radius:8px;flex-shrink:0;
+  background:linear-gradient(135deg,var(--panel),var(--ink));background-size:cover;background-position:center;
+  border:1px solid rgba(255,255,255,0.12);
+}
 .admin-row-title{font-weight:800;font-size:13.5px;color:var(--text);}
 .admin-row-sub{font-size:11.5px;color:var(--muted);margin-top:2px;}
 

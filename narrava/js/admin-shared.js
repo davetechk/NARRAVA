@@ -327,3 +327,42 @@ async function uploadEpisodeToBunny({ seriesId, seriesTitle, episodeNumber, titl
       (err.message || 'please try again') + '. The video isn’t lost — retry saving, or add it manually using that video ID.');
   }
 }
+
+// Cover image uploads (Create Series + Series List edit forms) — real
+// files going to the existing `cover-images` Supabase Storage bucket
+// (admin-only write access already configured there), replacing the old
+// plain URL text field. Much simpler than the Bunny video flow above:
+// one direct upload, then the bucket's own public URL is the real
+// cover_image_url, same field a pasted URL used to fill.
+async function uploadCoverImageFile(file){
+  const rawExt = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const ext = rawExt || 'jpg';
+  const path = (crypto.randomUUID ? crypto.randomUUID() : (Date.now() + '-' + Math.random().toString(16).slice(2))) + '.' + ext;
+
+  const { error } = await supabaseClient.storage.from('cover-images').upload(path, file, { cacheControl: '3600', upsert: false });
+  if(error) throw error;
+
+  const { data } = supabaseClient.storage.from('cover-images').getPublicUrl(path);
+  return data.publicUrl;
+}
+
+// Pulls the storage path back out of one of our own cover-images public
+// URLs, so a replaced cover can actually be deleted afterward (this
+// bucket supports real cleanup, unlike Bunny video assets). Returns null
+// for anything that isn't a URL this bucket actually issued — e.g. a
+// pasted external URL saved before this feature existed — since there's
+// nothing of ours to delete there.
+function coverImageStoragePath(url){
+  if(!url) return null;
+  const marker = '/object/public/cover-images/';
+  const idx = url.indexOf(marker);
+  if(idx === -1) return null;
+  return decodeURIComponent(url.slice(idx + marker.length));
+}
+
+async function deleteCoverImageIfOwned(url){
+  const path = coverImageStoragePath(url);
+  if(!path) return;
+  const { error } = await supabaseClient.storage.from('cover-images').remove([path]);
+  if(error) console.error('Narrava: failed to delete replaced cover image', error);
+}

@@ -13,7 +13,12 @@
 
 <div class="stage">
   <nav class="topbar-desktop" id="topbarDesktop">
-    <div class="topbar-desktop-inner">
+    <!-- Two mutually-exclusive rows, toggled by topbarSearchPanel.open (see
+         discover.js): the normal nav row, or — matching reelshort.com's
+         own search behaviour, checked directly rather than assumed — a
+         full-width search input that REPLACES the nav entirely while open,
+         not a small dropdown tucked under a still-visible nav bar. -->
+    <div class="topbar-desktop-inner" id="topbarDesktopInner">
       <div class="topbar-logo">NARRAVA</div>
       <div class="topbar-nav">
         <button class="topbar-link active" id="topbarHome" type="button">Home</button>
@@ -32,19 +37,28 @@
       </div>
     </div>
 
-    <div class="topbar-search-panel" id="topbarSearchPanel">
-      <div class="topbar-search-panel-inner">
-        <div class="topbar-search-input-wrap" id="topbarSearchInputWrap">
+    <div class="topbar-search-bar" id="topbarSearchBar">
+      <div class="topbar-search-input-wrap" id="topbarSearchInputWrap">
+        <input type="text" id="topbarSearchInput" placeholder="Search anything you like" autocomplete="off">
+        <button class="topbar-search-clear" id="topbarSearchClear" type="button" aria-label="Clear">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+        <span class="topbar-search-bar-icon">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-          <input type="text" id="topbarSearchInput" placeholder="Search series titles" autocomplete="off">
-          <button class="topbar-search-clear" id="topbarSearchClear" type="button" aria-label="Clear">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>
-          </button>
-        </div>
-        <div class="topbar-search-grid" id="topbarSearchGrid"></div>
+        </span>
       </div>
     </div>
   </nav>
+
+  <!-- Sits below the bar, dims the rest of the page (hero/shelves) the
+       same way the real site's own search overlay does — clicking
+       anywhere on it outside the results panel closes search, same as
+       clicking outside on the real site. -->
+  <div class="topbar-search-backdrop" id="topbarSearchBackdrop">
+    <div class="topbar-search-results-panel">
+      <div class="topbar-search-grid" id="topbarSearchGrid"></div>
+    </div>
+  </div>
 
   <div class="phone">
     <div class="notch"></div>
@@ -178,40 +192,70 @@
 
     <!-- Desktop-only: opened instead of the mobile swipe feed when a
          series is opened from the desktop layout (see openSeriesInFeed
-         in app.js and watch.js). Never shown on mobile. -->
+         in app.js and watch.js). Never shown on mobile. Structure
+         (fixed back button + fixed video column + independently
+         scrolling info column, video large/full-height, 480px info
+         column, 6-column episode grid) measured directly off a real
+         reelshort.com episode page, not guessed. -->
     <div class="watch screen-hidden" id="watchScreen">
-      <div class="watch-content">
+      <button class="watch-back" id="watchBackBtn" type="button" aria-label="Back to Home">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      </button>
+
+      <div class="watch-layout">
         <div class="watch-player">
-          <div class="watch-player-inner" id="watchPlayerHost"></div>
+          <div class="watch-player-box">
+            <div class="watch-player-inner" id="watchPlayerHost"></div>
+          </div>
         </div>
+
         <div class="watch-info">
+          <div class="watch-breadcrumb" id="watchBreadcrumb"></div>
           <h1 class="watch-title" id="watchTitle"></h1>
           <div class="watch-tags" id="watchTags"></div>
+
           <div class="watch-actions">
             <button class="watch-action" id="watchLikeBtn" type="button">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 21s-7.5-4.6-10-9.2C.5 8.4 2.3 4.8 6 4.2c2.3-.4 4.3.9 6 3 1.7-2.1 3.7-3.4 6-3 3.7.6 5.5 4.2 4 7.6C19.5 16.4 12 21 12 21z"/></svg>
               <span>Like</span>
             </button>
-            <button class="watch-action" id="watchSaveBtn" type="button">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3h12a1 1 0 011 1v17l-7-4-7 4V4a1 1 0 011-1z"/></svg>
-              <span>Save</span>
+            <!-- Same four actions the mobile feed has always had (like,
+                 comment, share, save) — see watchCommentsBackdrop below
+                 for the comment panel this opens. -->
+            <button class="watch-action" id="watchCommentBtn" type="button">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 11.5a8.4 8.4 0 01-1 4 8.5 8.5 0 01-7.5 4.5 8.4 8.4 0 01-4-1L3 20l1-5.5a8.4 8.4 0 01-1-4A8.5 8.5 0 0111 3a8.4 8.4 0 018.4 7.5c.1.4.1.8.1 1z"/></svg>
+              <span>Comment</span>
             </button>
             <button class="watch-action" id="watchShareBtn" type="button">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 12v7a2 2 0 002 2h12a2 2 0 002-2v-7M16 6l-4-4-4 4M12 2v14"/></svg>
               <span>Share</span>
             </button>
+            <button class="watch-action" id="watchSaveBtn" type="button">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3h12a1 1 0 011 1v17l-7-4-7 4V4a1 1 0 011-1z"/></svg>
+              <span>Save</span>
+            </button>
           </div>
+
+          <div class="watch-ep-ranges" id="watchEpRanges"></div>
+          <div class="watch-episode-grid" id="watchEpisodeGrid"></div>
         </div>
       </div>
 
-      <div class="watch-section">
-        <h2 class="watch-section-title">Episodes</h2>
-        <div class="watch-episode-grid" id="watchEpisodeGrid"></div>
-      </div>
-
-      <div class="watch-section">
-        <h2 class="watch-section-title">All Episodes</h2>
-        <div class="watch-episode-list" id="watchEpisodeList"></div>
+      <!-- Fixed drawer over the existing layout (position:fixed, not part
+           of the normal document flow) — opening it never pushes the
+           episode grid down. No real comment data exists anywhere in
+           this app yet, so the body always shows the honest empty state,
+           never invented comments. -->
+      <div class="watch-comments-backdrop" id="watchCommentsBackdrop">
+        <div class="watch-comments-panel">
+          <div class="watch-comments-header">
+            <h3>Comments</h3>
+            <button class="watch-comments-close" id="watchCommentsClose" type="button" aria-label="Close">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>
+            </button>
+          </div>
+          <div class="watch-comments-body" id="watchCommentsBody"></div>
+        </div>
       </div>
     </div>
 

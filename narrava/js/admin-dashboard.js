@@ -4,6 +4,23 @@ let dashSeries = [];
 let dashGenres = [];
 let dashSeriesGenres = {};
 let dashSearchQuery = '';
+let dashCoverFile = null;
+
+function resetDashCoverPicker(){
+  dashCoverFile = null;
+  document.getElementById('adminCoverPreview').style.backgroundImage = '';
+  document.getElementById('adminCoverFileBtn').textContent = 'Choose Image';
+  document.getElementById('adminCoverFile').value = '';
+}
+document.getElementById('adminCoverFileBtn').addEventListener('click', () => {
+  document.getElementById('adminCoverFile').click();
+});
+document.getElementById('adminCoverFile').addEventListener('change', () => {
+  const file = document.getElementById('adminCoverFile').files[0];
+  dashCoverFile = file || null;
+  document.getElementById('adminCoverPreview').style.backgroundImage = file ? "url('" + URL.createObjectURL(file) + "')" : '';
+  document.getElementById('adminCoverFileBtn').textContent = file ? ('✓ ' + file.name) : 'Choose Image';
+});
 
 function statsRowHtml(totalUsers, totalRevenue){
   const totalSeries = dashSeries.length;
@@ -99,7 +116,6 @@ async function handleCreateSeriesSubmit(e){
 
   const title = document.getElementById('adminTitle').value.trim();
   const description = document.getElementById('adminDescription').value.trim();
-  const coverImageUrl = document.getElementById('adminCoverUrl').value.trim();
   const freeEpisodeCountRaw = document.getElementById('adminFreeEpisodes').value;
   const errorEl = document.getElementById('adminCreateError');
   const submitBtn = document.getElementById('adminCreateSubmit');
@@ -119,9 +135,16 @@ async function handleCreateSeriesSubmit(e){
   submitBtn.textContent = 'Creating…';
 
   try {
+    let coverImageUrl = null;
+    if(dashCoverFile){
+      submitBtn.textContent = 'Uploading image…';
+      coverImageUrl = await uploadCoverImageFile(dashCoverFile);
+      submitBtn.textContent = 'Creating…';
+    }
+
     const { data, error } = await supabaseClient
       .from('series')
-      .insert({ title, description, cover_image_url: coverImageUrl || null, free_episode_count: freeEpisodeCount })
+      .insert({ title, description, cover_image_url: coverImageUrl, free_episode_count: freeEpisodeCount })
       .select('id, title, description, cover_image_url, free_episode_count, featured_at, status')
       .single();
     if(error) throw error;
@@ -130,6 +153,7 @@ async function handleCreateSeriesSubmit(e){
     showToast('Series created ✓ — it starts as a draft, publish it from Series List when ready');
     form.reset();
     document.getElementById('adminFreeEpisodes').value = 10;
+    resetDashCoverPicker();
     renderSeriesPreview();
     populateUploadSeriesSelect();
   } catch(err){

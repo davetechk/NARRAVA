@@ -29,30 +29,27 @@
     </div>
 
     <div class="admin-panel">
-      <div class="admin-panel-head"><div><h2>Upload Episode</h2><div class="admin-panel-sub">Push a new episode to Bunny Stream</div></div></div>
+      <div class="admin-panel-head"><div><h2>Upload Episodes</h2><div class="admin-panel-sub">Push one or many episodes to Bunny Stream at once</div></div></div>
       <div class="auth-error" id="epUploadError"></div>
       <form id="epUploadForm" novalidate>
-        <div class="admin-field-row">
+        <div class="admin-field-row" style="grid-template-columns:1fr 1fr;">
           <div class="admin-field admin-select-wrap">
             <label for="epUploadSeries">Series</label>
             <select id="epUploadSeries" required><option value="">Choose a series…</option></select>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" style="top:38px;"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </div>
-          <div class="admin-field"><label for="epUploadTitle">Episode Name</label><input type="text" id="epUploadTitle" placeholder="e.g. What the Rain Knew"></div>
-          <div class="admin-field"><label for="epUploadNumber">Episode Number</label><input type="number" min="1" id="epUploadNumber" value="1" required></div>
-        </div>
-        <div class="admin-upload-progress" id="epUploadProgress">
-          <div class="admin-progress-track"><div class="admin-progress-fill" id="epUploadProgressFill"></div></div>
-          <div class="admin-upload-progress-label" id="epUploadProgressLabel">0%</div>
-        </div>
-        <div class="admin-field-row" style="grid-template-columns:1fr auto;align-items:end;">
           <div class="admin-field">
-            <label>Video File</label>
-            <button type="button" class="admin-btn-ghost" id="epUploadFileBtn">Add Video File</button>
-            <input type="file" accept="video/*" id="epUploadFile" style="display:none;" required>
+            <label>Video Files</label>
+            <button type="button" class="admin-btn-ghost" id="epUploadFileBtn">Add Video Files (select multiple at once)</button>
+            <input type="file" accept="video/*" id="epUploadFile" style="display:none;" multiple>
           </div>
-          <button class="admin-btn admin-btn-primary" type="submit" id="epUploadSubmit">Upload Episode</button>
         </div>
+        <div class="admin-helper-text">Episode numbers are assigned automatically, starting from the next real number for this series, in the order files were selected — adjust any of them below before uploading if needed.</div>
+
+        <div class="admin-batch-queue" id="epUploadQueue"></div>
+        <div class="admin-batch-summary" id="epUploadSummary"></div>
+
+        <button class="admin-btn admin-btn-primary" type="submit" id="epUploadSubmit" disabled style="width:100%;">Add video files to begin</button>
       </form>
     </div>
 

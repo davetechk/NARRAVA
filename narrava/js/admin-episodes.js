@@ -185,63 +185,197 @@ function populateSeriesSelect(preselectId){
     series.map(s => '<option value="' + s.id + '"' + (String(s.id) === String(preselectId) ? ' selected' : '') + '>' + escapeHtml(s.title) + '</option>').join('');
 }
 
+// ============ Batch upload queue ============
+//
+// Reuses uploadEpisodeToBunny (admin-shared.js) completely unchanged —
+// same bunny-upload-init permission step, same tus upload to Bunny, same
+// "only save the episode row after a genuine success" rule, per file.
+// This only adds the queueing/tracking around that one already-tested
+// function: real per-file progress (each row gets its own progressFill,
+// not one shared bar), auto-assigned consecutive episode numbers, and an
+// honest per-file result — a batch is never reported "done" if any file
+// in it actually failed.
+
+let epQueue = []; // [{file, number, title, status: 'pending'|'uploading'|'done'|'error', errorMessage}]
+
+function nextEpisodeNumberForSeries(seriesId){
+  const nums = epAllEpisodes
+    .filter(ep => String(ep.series_id) === String(seriesId))
+    .map(ep => ep.episode_number);
+  return nums.length ? Math.max(...nums) + 1 : 1;
+}
+
+function renderUploadQueue(){
+  const wrap = document.getElementById('epUploadQueue');
+  const submitBtn = document.getElementById('epUploadSubmit');
+
+  if(!epQueue.length){
+    wrap.innerHTML = '';
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Add video files to begin';
+    return;
+  }
+
+  const statusLabel = { pending: 'Pending', uploading: 'Uploading…', done: '✓ Uploaded', error: '✗ Failed' };
+
+  wrap.innerHTML = epQueue.map((item, i) => {
+    const locked = item.status === 'uploading' || item.status === 'done';
+    return '<div class="admin-batch-row' + (item.status === 'error' ? ' error' : '') + '">' +
+      '<div class="admin-batch-row-name" title="' + escapeHtml(item.file.name) + '">' + escapeHtml(item.file.name) + '</div>' +
+      '<input type="number" min="1" class="epq-number" data-index="' + i + '" value="' + item.number + '"' + (locked ? ' disabled' : '') + '>' +
+      '<input type="text" class="epq-title" data-index="' + i + '" placeholder="Episode name (optional)" value="' + escapeHtml(item.title) + '"' + (locked ? ' disabled' : '') + '>' +
+      '<div class="admin-batch-row-progress"><div class="admin-progress-track"><div class="admin-progress-fill" id="epqProgressFill-' + i + '"></div></div></div>' +
+      '<div class="admin-batch-row-status ' + item.status + '" id="epqStatus-' + i + '">' + statusLabel[item.status] + '</div>' +
+      (item.status === 'error' ? '<div class="admin-batch-row-error">' + escapeHtml(item.errorMessage || 'Upload failed.') + '</div>' : '') +
+    '</div>';
+  }).join('');
+
+  wrap.querySelectorAll('.epq-number').forEach(inp => inp.addEventListener('input', () => {
+    epQueue[parseInt(inp.dataset.index, 10)].number = parseInt(inp.value, 10) || 0;
+  }));
+  wrap.querySelectorAll('.epq-title').forEach(inp => inp.addEventListener('input', () => {
+    epQueue[parseInt(inp.dataset.index, 10)].title = inp.value;
+  }));
+
+  const eligible = epQueue.filter(it => it.status === 'pending' || it.status === 'error');
+  submitBtn.disabled = eligible.length === 0;
+  if(eligible.length === epQueue.length){
+    submitBtn.textContent = 'Upload ' + epQueue.length + ' Episode' + (epQueue.length === 1 ? '' : 's');
+  } else if(eligible.length > 0){
+    submitBtn.textContent = 'Retry ' + eligible.length + ' Remaining';
+  } else {
+    submitBtn.textContent = 'All Uploaded ✓';
+  }
+}
+
 document.getElementById('epUploadFileBtn').addEventListener('click', () => {
   document.getElementById('epUploadFile').click();
 });
 document.getElementById('epUploadFile').addEventListener('change', () => {
-  const file = document.getElementById('epUploadFile').files[0];
-  document.getElementById('epUploadFileBtn').textContent = file ? ('✓ ' + file.name) : 'Add Video File';
+  const files = Array.from(document.getElementById('epUploadFile').files);
+  if(!files.length) return;
+
+  const seriesId = document.getElementById('epUploadSeries').value;
+  let nextNum = seriesId ? nextEpisodeNumberForSeries(seriesId) : 1;
+
+  epQueue = files.map(file => ({ file, number: nextNum++, title: '', status: 'pending', errorMessage: null }));
+  document.getElementById('epUploadFileBtn').textContent = files.length + ' file' + (files.length === 1 ? '' : 's') + ' selected — choose again to replace';
+  renderUploadQueue();
 });
+
+// Re-numbers only the still-pending rows if the series is chosen (or
+// changed) after files are already queued — never touches a row that's
+// already uploading, done, or that failed (its number stays put so a
+// retry doesn't silently renumber something the admin may have already
+// fixed by hand).
+document.getElementById('epUploadSeries').addEventListener('change', () => {
+  if(!epQueue.length) return;
+  const seriesId = document.getElementById('epUploadSeries').value;
+  if(!seriesId) return;
+  let nextNum = nextEpisodeNumberForSeries(seriesId);
+  epQueue.forEach(item => {
+    if(item.status === 'pending'){ item.number = nextNum; nextNum++; }
+  });
+  renderUploadQueue();
+});
+
+// Adapts one queue row's own DOM elements into the exact {submitBtn,
+// progressWrap, progressFill, progressLabel} shape uploadEpisodeToBunny
+// already expects — submitBtn/progressLabel both point at the row's own
+// status text (only .disabled/.textContent are ever touched on it, both
+// safe on a plain <div>), progressWrap is a harmless no-op stand-in since
+// each row's progress bar is always visible, never hidden/shown.
+async function uploadOneQueuedEpisode(item, seriesId, seriesTitle){
+  const idx = epQueue.indexOf(item);
+  const statusEl = document.getElementById('epqStatus-' + idx);
+  const progressFill = document.getElementById('epqProgressFill-' + idx);
+  const els = {
+    submitBtn: statusEl,
+    progressWrap: { classList: { add(){}, remove(){} } },
+    progressFill: progressFill,
+    progressLabel: statusEl
+  };
+
+  try {
+    const epData = await uploadEpisodeToBunny({ seriesId, seriesTitle, episodeNumber: item.number, title: item.title.trim(), file: item.file }, els);
+    item.status = 'done';
+    epAllEpisodes.unshift(epData);
+  } catch(err){
+    console.error('Narrava: batch episode upload failed for ' + item.file.name, err);
+    item.status = 'error';
+    item.errorMessage = err.message || 'Upload failed.';
+    throw err;
+  }
+}
 
 async function handleUploadSubmit(e){
   e.preventDefault();
 
   const seriesId = document.getElementById('epUploadSeries').value;
   const series = epSeriesById[seriesId];
-  const episodeNumber = parseInt(document.getElementById('epUploadNumber').value, 10);
-  const title = document.getElementById('epUploadTitle').value.trim();
-  const file = document.getElementById('epUploadFile').files[0];
   const errorEl = document.getElementById('epUploadError');
+  const submitBtn = document.getElementById('epUploadSubmit');
+  const summaryEl = document.getElementById('epUploadSummary');
 
   errorEl.textContent = '';
   errorEl.classList.remove('show');
+  summaryEl.textContent = '';
+  summaryEl.className = 'admin-batch-summary';
 
   if(!series){
     errorEl.textContent = 'Choose a series first.';
     errorEl.classList.add('show');
     return;
   }
-  if(!episodeNumber || episodeNumber < 1){
-    errorEl.textContent = 'Enter a valid episode number.';
-    errorEl.classList.add('show');
-    return;
-  }
-  if(!file){
-    errorEl.textContent = 'Choose a video file to upload.';
+  if(!epQueue.length){
+    errorEl.textContent = 'Choose at least one video file to upload.';
     errorEl.classList.add('show');
     return;
   }
 
-  const els = {
-    submitBtn: document.getElementById('epUploadSubmit'),
-    progressWrap: document.getElementById('epUploadProgress'),
-    progressFill: document.getElementById('epUploadProgressFill'),
-    progressLabel: document.getElementById('epUploadProgressLabel')
-  };
+  const numbers = epQueue.map(it => it.number);
+  if(numbers.some(n => !n || n < 1)){
+    errorEl.textContent = 'Every queued file needs a valid episode number.';
+    errorEl.classList.add('show');
+    return;
+  }
+  if(new Set(numbers).size !== numbers.length){
+    errorEl.textContent = 'Two queued files share the same episode number — give each one a unique number.';
+    errorEl.classList.add('show');
+    return;
+  }
 
-  try {
-    const epData = await uploadEpisodeToBunny({ seriesId, seriesTitle: series.title, episodeNumber, title, file }, els);
-    epAllEpisodes.unshift(epData);
-    showToast('Episode uploaded ✓ — Bunny may take a few minutes to finish processing');
-    document.getElementById('epUploadForm').reset();
-    document.getElementById('epUploadFileBtn').textContent = 'Add Video File';
-    document.getElementById('epUploadNumber').value = 1;
+  const toUpload = epQueue.filter(it => it.status === 'pending' || it.status === 'error');
+  if(!toUpload.length) return;
+
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Uploading ' + toUpload.length + ' episode' + (toUpload.length === 1 ? '' : 's') + '…';
+  toUpload.forEach(item => { item.status = 'uploading'; item.errorMessage = null; });
+  renderUploadQueue();
+
+  const results = await Promise.allSettled(toUpload.map(item => uploadOneQueuedEpisode(item, seriesId, series.title)));
+  const succeeded = results.filter(r => r.status === 'fulfilled').length;
+  const failed = results.length - succeeded;
+
+  renderUploadQueue();
+  renderTable();
+
+  if(failed === 0){
+    summaryEl.textContent = 'All ' + succeeded + ' episode' + (succeeded === 1 ? '' : 's') + ' uploaded ✓';
+    summaryEl.classList.add('success');
+    showToast(succeeded + ' episode' + (succeeded === 1 ? '' : 's') + ' uploaded ✓ — Bunny may take a few minutes to finish processing');
+    epQueue = [];
+    document.getElementById('epUploadFile').value = '';
+    document.getElementById('epUploadFileBtn').textContent = 'Add Video Files (select multiple at once)';
     populateSeriesSelect(seriesId);
-    els.progressWrap.classList.remove('show');
-    renderTable();
-  } catch(err){
-    errorEl.textContent = err.message;
-    errorEl.classList.add('show');
+    renderUploadQueue();
+  } else {
+    // Never claim this batch is "done" — exactly which files failed (and
+    // why) stays visible in the queue above, each one still individually
+    // marked, not folded into a single vague error.
+    summaryEl.textContent = succeeded + ' of ' + toUpload.length + ' uploaded, ' + failed + ' failed — see below. Fix and press Upload again to retry just the failed ones.';
+    summaryEl.classList.add('partial');
+    showToast(succeeded + ' of ' + toUpload.length + ' episodes uploaded, ' + failed + ' failed — check the list below');
   }
 }
 

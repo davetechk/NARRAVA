@@ -300,6 +300,22 @@ table.admin-table tbody tr:hover{background:rgba(255,255,255,0.02);}
 }
 .admin-row-title{font-weight:800;font-size:13.5px;color:var(--text);}
 .admin-row-sub{font-size:11.5px;color:var(--muted);margin-top:2px;}
+.admin-row-sub.admin-warn-text{color:#F2A0A0;font-weight:700;}
+
+/* Zero-episode warning — a series with no real episodes never appears
+   on the live app no matter its status, so this badge sits right next
+   to the Live/Draft status itself, not tucked away as a small aside. */
+.admin-warn-badge{
+  display:inline-flex;align-items:center;gap:4px;
+  margin-left:8px;
+  padding:4px 9px;
+  border-radius:20px;
+  background:rgba(242,160,160,0.14);
+  border:1px solid rgba(242,160,160,0.4);
+  color:#F2A0A0;
+  font-size:10.5px;font-weight:800;white-space:nowrap;
+  font-family:'Montserrat',sans-serif;
+}
 
 .admin-genre-tags{display:flex;flex-wrap:wrap;gap:6px;max-width:220px;}
 .admin-tag{
@@ -377,6 +393,56 @@ table.admin-table tbody tr:hover{background:rgba(255,255,255,0.02);}
 .admin-upload-progress{display:none;align-items:center;gap:10px;margin:4px 0 14px;}
 .admin-upload-progress.show{display:flex;}
 .admin-upload-progress-label{flex-shrink:0;font-size:11.5px;font-weight:800;color:var(--leaf-light);width:38px;text-align:right;}
+
+/* ---------- Batch episode upload queue (admin/episodes.html) ---------- */
+
+.admin-batch-queue{display:flex;flex-direction:column;gap:10px;margin:10px 0 16px;}
+.admin-batch-row{
+  display:grid;
+  grid-template-columns:1.4fr 90px 1.4fr 1fr auto;
+  align-items:center;
+  gap:12px;
+  padding:10px 12px;
+  background:rgba(255,255,255,0.03);
+  border:1px solid rgba(255,255,255,0.08);
+  border-radius:8px;
+}
+.admin-batch-row-name{
+  font-size:12.5px;color:var(--text);font-weight:700;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.admin-batch-row input[type="number"],
+.admin-batch-row input[type="text"]{
+  background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);border-radius:6px;
+  padding:6px 8px;color:var(--text);font-size:12.5px;font-family:'Montserrat',sans-serif;outline:none;width:100%;
+  box-sizing:border-box;
+}
+.admin-batch-row input:disabled{opacity:0.6;}
+.admin-batch-row-progress{display:flex;align-items:center;gap:8px;min-width:0;}
+.admin-batch-row-progress .admin-progress-track{flex:1;}
+.admin-batch-row-status{
+  flex-shrink:0;font-size:11px;font-weight:800;text-align:right;white-space:nowrap;
+}
+.admin-batch-row-status.pending{color:var(--muted);}
+.admin-batch-row-status.uploading{color:var(--leaf-light);}
+.admin-batch-row-status.done{color:var(--leaf-light);}
+.admin-batch-row-status.error{color:#F2A0A0;}
+.admin-batch-row.error{border-color:rgba(242,160,160,0.35);background:rgba(242,160,160,0.06);}
+.admin-batch-row-error{
+  grid-column:1 / -1;
+  font-size:11.5px;color:#F2A0A0;
+  margin-top:-4px;
+}
+.admin-batch-summary{
+  font-size:12.5px;font-weight:700;margin:0 0 12px;
+}
+.admin-batch-summary.success{color:var(--leaf-light);}
+.admin-batch-summary.partial{color:#F2A0A0;}
+
+@media (max-width: 760px){
+  .admin-batch-row{grid-template-columns:1fr;}
+  .admin-batch-row-progress{order:5;}
+}
 
 /* ---------- Bar chart / legend (revenue analytics) ---------- */
 

@@ -37,12 +37,28 @@ function seriesRowHtml(series){
   const isPublished = series.status === 'published';
   const isFeatured = !!series.featured_at;
   const episodeCount = slEpisodeCounts[series.id] || 0;
+  const hasNoEpisodes = episodeCount === 0;
   const cover = series.cover_image_url ? 'background-image:url(\'' + series.cover_image_url.replace(/'/g, '') + '\');' : '';
 
+  // A series with zero real episodes never appears anywhere on the live
+  // app, no matter its published/featured status (fetchSlides skips it
+  // outright) — that's correct, existing behavior, but nothing in the
+  // admin used to say so. Shown twice on purpose: a quiet reminder under
+  // the title for every zero-episode series, and — right where it's
+  // truly easy to miss — an unmissable badge directly beside the Live/
+  // Draft status itself, since a "Live" badge with no episodes behind it
+  // is the exact case an admin could otherwise be misled by.
+  const noEpisodesNote = hasNoEpisodes
+    ? '<div class="admin-row-sub admin-warn-text">No episodes yet — won’t appear on the live app</div>'
+    : '';
+  const noEpisodesBadge = hasNoEpisodes
+    ? '<span class="admin-warn-badge" title="This series has no real episodes yet, so it will not appear anywhere on the live app regardless of this status.">⚠ Won’t show — no episodes</span>'
+    : '';
+
   return '<tr data-series-id="' + series.id + '">' +
-    '<td><div class="admin-row-cell"><div class="admin-thumb" style="' + cover + '"></div><span class="admin-row-title">' + escapeHtml(series.title) + '</span></div></td>' +
+    '<td><div class="admin-row-cell"><div class="admin-thumb" style="' + cover + '"></div><div><span class="admin-row-title">' + escapeHtml(series.title) + '</span>' + noEpisodesNote + '</div></div></td>' +
     '<td>' + genreTagsHtml(slGenres, genreIds) + '</td>' +
-    '<td><button type="button" class="admin-badge clickable ' + (isPublished ? 'green' : 'gray') + '" data-action="toggle-published" data-series-id="' + series.id + '">' + (isPublished ? 'Live' : 'Draft') + '</button></td>' +
+    '<td><button type="button" class="admin-badge clickable ' + (isPublished ? 'green' : 'gray') + '" data-action="toggle-published" data-series-id="' + series.id + '">' + (isPublished ? 'Live' : 'Draft') + '</button>' + noEpisodesBadge + '</td>' +
     '<td><button type="button" class="admin-switch' + (isFeatured ? ' on' : '') + '" data-action="toggle-featured" data-series-id="' + series.id + '" aria-label="Toggle featured"></button></td>' +
     '<td>' + episodeCount + '</td>' +
     '<td>' +

@@ -41,9 +41,7 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>
           </button>
         </div>
-        <div class="topbar-suggest-label">Search suggestions</div>
-        <div class="topbar-suggest-row" id="topbarSuggestRow"></div>
-        <div class="topbar-suggest-results" id="topbarSuggestResults"></div>
+        <div class="topbar-search-grid" id="topbarSearchGrid"></div>
       </div>
     </div>
   </nav>
@@ -178,6 +176,45 @@
       </div>
     </div>
 
+    <!-- Desktop-only: opened instead of the mobile swipe feed when a
+         series is opened from the desktop layout (see openSeriesInFeed
+         in app.js and watch.js). Never shown on mobile. -->
+    <div class="watch screen-hidden" id="watchScreen">
+      <div class="watch-content">
+        <div class="watch-player">
+          <div class="watch-player-inner" id="watchPlayerHost"></div>
+        </div>
+        <div class="watch-info">
+          <h1 class="watch-title" id="watchTitle"></h1>
+          <div class="watch-tags" id="watchTags"></div>
+          <div class="watch-actions">
+            <button class="watch-action" id="watchLikeBtn" type="button">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 21s-7.5-4.6-10-9.2C.5 8.4 2.3 4.8 6 4.2c2.3-.4 4.3.9 6 3 1.7-2.1 3.7-3.4 6-3 3.7.6 5.5 4.2 4 7.6C19.5 16.4 12 21 12 21z"/></svg>
+              <span>Like</span>
+            </button>
+            <button class="watch-action" id="watchSaveBtn" type="button">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3h12a1 1 0 011 1v17l-7-4-7 4V4a1 1 0 011-1z"/></svg>
+              <span>Save</span>
+            </button>
+            <button class="watch-action" id="watchShareBtn" type="button">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 12v7a2 2 0 002 2h12a2 2 0 002-2v-7M16 6l-4-4-4 4M12 2v14"/></svg>
+              <span>Share</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="watch-section">
+        <h2 class="watch-section-title">Episodes</h2>
+        <div class="watch-episode-grid" id="watchEpisodeGrid"></div>
+      </div>
+
+      <div class="watch-section">
+        <h2 class="watch-section-title">All Episodes</h2>
+        <div class="watch-episode-list" id="watchEpisodeList"></div>
+      </div>
+    </div>
+
     <div class="bottomnav">
       <div class="navitem active" id="navHome">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-7 9 7M5 10v10h5v-6h4v6h5V10"/></svg>
@@ -211,6 +248,7 @@
 <script src="js/feed-data.js"></script>
 <script src="js/app.js"></script>
 <script src="js/discover.js"></script>
+<script src="js/watch.js"></script>
 <script src="js/auth.js"></script>
 <script src="js/profile.js"></script>
 </body>

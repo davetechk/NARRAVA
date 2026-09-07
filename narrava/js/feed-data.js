@@ -70,6 +70,7 @@ async function fetchSlides() {
           saved: false,
           liked: false,
           coinCost: 2,
+          freeEpisodeCount: series.free_episode_count,
           art: series.cover_image_url
             ? { type: 'img', src: series.cover_image_url }
             : PLACEHOLDER_ART[i % PLACEHOLDER_ART.length]
@@ -80,6 +81,24 @@ async function fetchSlides() {
     return slides;
   } catch (err) {
     console.error('Narrava: failed to load feed data from Supabase', err);
+    return [];
+  }
+}
+
+// Fetches every episode for one series, in full — used by the desktop
+// watch page's episode grid/list (fetchSlides above only keeps each
+// series' first episode, which is all the feed needs).
+async function fetchEpisodesForSeries(seriesId) {
+  try {
+    const { data, error } = await supabaseClient
+      .from('episodes')
+      .select('id, series_id, episode_number, title, bunny_video_id, duration_seconds')
+      .eq('series_id', seriesId)
+      .order('episode_number', { ascending: true });
+    if (error) throw error;
+    return data || [];
+  } catch (err) {
+    console.error('Narrava: failed to load episodes for series', err);
     return [];
   }
 }

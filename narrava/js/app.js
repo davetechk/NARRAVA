@@ -70,6 +70,7 @@ const payBtn = document.getElementById('payBtn');
 const ctaRow = document.querySelector('.ctarow');
 const discoverScreen = document.getElementById('discoverScreen');
 const profileScreen = document.getElementById('profileScreen');
+const watchScreen = document.getElementById('watchScreen');
 const navHome = document.getElementById('navHome');
 const navForYou = document.getElementById('navForYou');
 const navProfile = document.getElementById('navProfile');
@@ -99,9 +100,22 @@ const topbarSearchInput = document.getElementById('topbarSearchInput');
 // phone-frame presentation. Below the breakpoint neither class does
 // anything — mobile stays exactly as it was.
 function showScreen(name){
+  if(name !== 'feed'){
+    stopFeedPlayback();
+  } else if(slides.length && renderedMediaSlideId !== slides[idx].id){
+    // Coming back into the feed after stopFeedPlayback tore its video
+    // down (or before the very first render) — reload the current
+    // slide's media the same way goTo/render always do.
+    render();
+  }
+  // Same idea as stopFeedPlayback, for the desktop watch page's own
+  // separate video (see watch.js) — leaving it for any other screen
+  // must actually tear its iframe down too.
+  if(name !== 'watch') stopWatchPlayback();
   feed.classList.toggle('screen-hidden', name !== 'feed');
   discoverScreen.classList.toggle('screen-hidden', name !== 'discover');
   profileScreen.classList.toggle('screen-hidden', name !== 'profile');
+  watchScreen.classList.toggle('screen-hidden', name !== 'watch');
   navHome.classList.toggle('active', name === 'discover');
   navForYou.classList.toggle('active', name === 'feed');
   navProfile.classList.toggle('active', name === 'profile');
@@ -112,13 +126,23 @@ function showScreen(name){
   document.body.classList.toggle('feed-active', name === 'feed');
 }
 
-// Used by discover.js: open a specific series (by its index in `slides`)
-// directly into its first episode in the For You feed. `goTo` already
-// supports jumping to an arbitrary slide, so entering the feed from a
-// poster tap reuses exactly the same navigation the feed itself uses —
-// landing straight in the watching state (clean video, no overlay),
-// since tapping in from Discover already means this one specifically.
+// Used by discover.js: open a specific series (by its index in `slides`).
+// On desktop this opens the dedicated watch page (watch.js) instead of
+// the mobile swipe feed — every poster/hero/search-result click already
+// funnels through this one function, so that's the only place this needs
+// to branch. matchesMedia mirrors the exact 900px breakpoint styles.css
+// uses everywhere else, not a separate cutoff.
+//
+// On mobile, `goTo` already supports jumping to an arbitrary slide, so
+// entering the feed from a poster tap reuses exactly the same navigation
+// the feed itself uses — landing straight in the watching state (clean
+// video, no overlay), since tapping in from Discover already means this
+// one specifically.
 function openSeriesInFeed(i){
+  if(window.matchMedia('(min-width: 900px)').matches){
+    openWatchScreen(i);
+    return;
+  }
   goTo(i);
   feed.classList.add('watching');
   showScreen('feed');
@@ -339,6 +363,25 @@ function renderMedia(s){
   setArt(s.art);
   if(!existing) preloadSlide(s);
   maintainPreload();
+}
+
+// Leaving the feed for any other screen must actually stop playback, not
+// just hide it — removing #bgvideo's iframe is what tears down the video
+// (see renderMedia above), so this does the same teardown renderMedia
+// already does on every slide switch, just triggered by navigation away
+// from the feed instead. Also clears any off-screen preload in flight,
+// since those are real videos quietly loading too. renderedMediaSlideId
+// is reset to null so coming back to the feed re-renders its media from
+// scratch via the normal render() path, instead of render() thinking the
+// current slide's video is already showing.
+function stopFeedPlayback(){
+  if(renderedMediaSlideId === null && Object.keys(preloadCache).length === 0) return;
+  bgvideo.innerHTML = '';
+  bgvideo.classList.remove('has-video');
+  currentPlayer = null;
+  currentVideoSlideId = null;
+  renderedMediaSlideId = null;
+  Object.keys(preloadCache).forEach(id => { preloadCache[id].iframe.remove(); delete preloadCache[id]; });
 }
 
 function renderEmptyFeed(){

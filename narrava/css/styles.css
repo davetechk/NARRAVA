@@ -829,6 +829,20 @@
   }
   .profile-row-chevron svg{width:15px;height:15px;}
 
+  /* Desktop-only watch page for a single series (see watch.js) — opened
+     instead of the mobile swipe feed when a series is opened from the
+     desktop layout. Base rule just makes it a normal scrollable screen
+     like .profile; the real two-column layout only exists at the
+     desktop breakpoint below, since this screen is never shown on
+     mobile in the first place. */
+  .watch{
+    position:absolute;
+    inset:0;
+    overflow-y:auto;
+    box-sizing:border-box;
+    padding:24px 18px 60px;
+  }
+
   /* Sign Up / Log In popup, opened from inside the Profile screen above
      instead of replacing it — same show/hide pattern as the Get Coins
      sheet (.sheet-backdrop), just centered instead of docked to the
@@ -1063,10 +1077,14 @@
     overflow:hidden;
     transition:max-height 0.3s ease;
     background:var(--panel);
-    border-bottom:1px solid rgba(255,255,255,0.06);
   }
   .topbar-search-panel.open{
-    max-height:360px;
+    max-height:620px;
+    /* Only shown while the panel is actually open — a border on the
+       collapsed (max-height:0) panel still paints as a 1px line even at
+       zero content height, since border isn't part of what max-height
+       clips, which was the stray line always visible under the bar. */
+    border-bottom:1px solid rgba(255,255,255,0.06);
   }
   .topbar-search-panel-inner{
     padding:18px 32px 22px;
@@ -1090,54 +1108,72 @@
     background:none;border:none;color:var(--muted);cursor:pointer;
   }
   .topbar-search-input-wrap.has-text .topbar-search-clear{display:flex;}
-  .topbar-suggest-label{
+  /* Real thumbnail grid, shown by default (unfiltered, via matchesSearch
+     with an empty query — see discover.js renderTopbarSearchGrid) and
+     live-filtered as you type, same underlying search logic the mobile
+     bar and Discover screen already use. Real cover art, real titles,
+     real genre tags where a series has any — no view counts or rankings,
+     since there's no real data behind those (same honesty rule as the
+     Discover "Top" shelf's own caption). */
+  .topbar-search-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fill, minmax(130px, 1fr));
+    gap:18px;
+    max-width:900px;
+    margin-top:18px;
+    max-height:400px;
+    overflow-y:auto;
+  }
+  .search-grid-card{
+    display:block;
+    background:none;
+    border:none;
+    padding:0;
+    text-align:left;
+    cursor:pointer;
     font-family:'Montserrat',sans-serif;
+  }
+  /* Same fixed-proportions treatment as every other poster/thumbnail
+     card in the app (.poster-card, .hero-thumb): aspect-ratio + a
+     cover-fit image keep every card in this grid the same shape no
+     matter what proportions the source cover art happens to be. */
+  .search-grid-thumb{
+    position:relative;
+    width:100%;
+    aspect-ratio:2/3;
+    border-radius:10px;
+    overflow:hidden;
+    background:var(--panel-2);
+  }
+  .search-grid-thumb img{
+    width:100%;height:100%;object-fit:cover;display:block;
+  }
+  .search-grid-card .search-grid-title{
+    margin-top:8px;
+    font-size:13px;
     font-weight:700;
-    font-size:12px;
+    color:var(--text);
+    line-height:1.3;
+  }
+  .search-grid-tags{
+    display:flex;flex-wrap:wrap;gap:5px;
+    margin-top:5px;
+  }
+  .search-grid-tag{
+    background:rgba(255,255,255,0.08);
     color:var(--muted);
-    margin:18px 0 10px;
+    font-size:10.5px;
+    font-weight:600;
+    padding:3px 8px;
+    border-radius:999px;
   }
-  .topbar-suggest-row{
-    display:flex;flex-wrap:wrap;gap:10px;max-width:640px;
-  }
-  .topbar-suggest-row.hide{display:none;}
-  .topbar-suggest-pill{
-    background:rgba(255,255,255,0.06);
-    border:1px solid rgba(255,255,255,0.12);
+  .topbar-search-empty{
     color:var(--muted);
     font-family:'Montserrat',sans-serif;
     font-size:13px;
-    padding:8px 16px;
-    border-radius:20px;
-    cursor:pointer;
-    transition:border-color 0.15s ease, color 0.15s ease;
+    padding:20px 4px;
+    grid-column:1/-1;
   }
-  .topbar-suggest-pill:hover{border-color:var(--leaf);color:#fff;}
-  .topbar-suggest-results{
-    display:none;
-    flex-direction:column;
-    gap:2px;
-    max-width:640px;
-    margin-top:16px;
-  }
-  .topbar-suggest-results.show{display:flex;}
-  .topbar-result-row{
-    display:flex;align-items:center;gap:12px;
-    padding:9px 8px;
-    border-radius:8px;
-    color:var(--muted);
-    font-family:'Montserrat',sans-serif;
-    font-size:14px;
-    cursor:pointer;
-    background:none;
-    border:none;
-    text-align:left;
-    width:100%;
-  }
-  .topbar-result-row:hover{background:rgba(255,255,255,0.06);color:#fff;}
-  .topbar-result-row svg{color:var(--muted);flex-shrink:0;}
-  .topbar-result-row:disabled{cursor:default;}
-  .topbar-result-row:disabled:hover{background:none;color:var(--muted);}
 
   /* `.feed-stage` groups the elements that render ON TOP of the video
      (the video itself, vignette, play/pause pulse, episode-progress
@@ -1209,10 +1245,19 @@
        solid panel background. The For You screen keeps the plain
        in-flow solid bar above (no hero to overlay there). */
     body.discover-active .topbar-desktop{
-      position:absolute;
+      position:fixed;
       top:0;left:0;right:0;
       background:linear-gradient(180deg, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.25) 55%, rgba(0,0,0,0) 100%);
       border-bottom:none;
+      transition:background 0.25s ease, border-color 0.25s ease;
+    }
+    /* Once scrolled far enough to have passed the hero, the bar switches
+       to a solid background (and gets its border back) instead of the
+       gradient meant to fade into the hero image — toggled by a plain
+       scroll-position listener in discover.js, not a second layout. */
+    body.discover-active.discover-scrolled .topbar-desktop{
+      background:var(--panel);
+      border-bottom:1px solid rgba(255,255,255,0.06);
     }
     body.discover-active .topbar-search-panel.open{
       background:rgba(10,14,11,0.97);
@@ -1275,6 +1320,13 @@
       width:100%;
       height:560px;
       overflow:hidden;
+      /* .discover is now a flex column that's allowed to grow taller
+         than its box and scroll (see body.discover-active .discover)
+         instead of shrinking its children to fit. Without this, the
+         hero's own overflow:hidden makes its flex automatic min-height
+         0, so the flexbox shrinks it to nothing to make room for the
+         (now unbounded) shelves below instead of actually scrolling. */
+      flex-shrink:0;
     }
     body.discover-active .discover-hero-bg{
       position:absolute;
@@ -1451,6 +1503,14 @@
        state instead of building a second grid renderer — the plain
        tabs+grid reused as-is, made to fill the desktop column, with a
        back link above it that only exists in this expanded state. */
+    /* The whole Discover screen scrolls as one normal page (hero then
+       shelves) — see body.discover-active .discover below — rather than
+       hero pinned in place with the shelves scrolling in their own box,
+       so the fixed top bar has an actual scroll position to react to. */
+    body.discover-active .discover{
+      overflow-y:auto;
+      overflow-x:hidden;
+    }
     body.discover-active .discover-shelves{
       display:flex;
       flex-direction:column;
@@ -1458,11 +1518,11 @@
       width:100%;
       max-width:1400px;
       margin:0 auto;
-      padding:24px 44px 60px;
+      /* Top padding covers the fixed bar's own height (64px) plus room
+         to spare, so the first shelf's title clears it once scrolled
+         past the hero instead of sitting right under it. */
+      padding:84px 44px 60px;
       box-sizing:border-box;
-      flex:1;
-      min-height:0;
-      overflow-y:auto;
     }
     body.discover-active .discover-tabs,
     body.discover-active .discover-body{
@@ -1615,5 +1675,172 @@
     body.feed-active .info .synopsis{
       max-width:none;
       font-size:14px;
+    }
+
+    /* ----- Watch page (single-series desktop screen, see watch.js) -----
+       A normal two-column page: a moderately-sized video panel on the
+       left (the app's real videos are all vertical drama clips — same
+       340/706 shape the feed already uses, just at a much smaller,
+       "sits in a page" size instead of near-fullscreen), title/tags/
+       actions beside it, then the real episode grid and full list below,
+       both capped at the same 1400px column every other Discover
+       section already uses. */
+    .watch{
+      padding:40px 44px 80px;
+    }
+    .watch-content{
+      display:flex;
+      gap:40px;
+      width:100%;
+      max-width:1400px;
+      margin:0 auto 48px;
+    }
+    .watch-player{
+      flex-shrink:0;
+      width:340px;
+      aspect-ratio:340/706;
+      border-radius:14px;
+      overflow:hidden;
+      background:#000;
+    }
+    .watch-player-inner{
+      width:100%;height:100%;
+    }
+    .watch-player-inner iframe{
+      width:100%;height:100%;border:none;display:block;
+    }
+    .watch-player-inner:empty::before{
+      content:"Select an episode to play";
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      height:100%;
+      color:var(--muted);
+      font-family:'Montserrat',sans-serif;
+      font-size:13px;
+      text-align:center;
+      padding:0 20px;
+      box-sizing:border-box;
+    }
+    .watch-info{
+      flex:1;
+      min-width:0;
+      padding-top:8px;
+    }
+    .watch-title{
+      font-family:'Montserrat',sans-serif;
+      font-weight:800;
+      font-size:30px;
+      color:#fff;
+      margin:0 0 12px;
+    }
+    .watch-tags{
+      display:flex;gap:10px;margin-bottom:24px;
+    }
+    .watch-tag{
+      background:var(--leaf);
+      color:#0D130E;
+      font-family:'Montserrat',sans-serif;
+      font-weight:700;
+      font-size:12px;
+      padding:5px 12px;
+      border-radius:999px;
+    }
+    .watch-actions{
+      display:flex;gap:14px;
+    }
+    .watch-action{
+      display:flex;flex-direction:column;align-items:center;gap:6px;
+      background:rgba(255,255,255,0.05);
+      border:1px solid rgba(255,255,255,0.1);
+      border-radius:12px;
+      padding:12px 20px;
+      color:var(--muted);
+      font-family:'Montserrat',sans-serif;
+      font-weight:700;
+      font-size:12px;
+      cursor:pointer;
+    }
+    .watch-action svg{width:19px;height:19px;}
+    .watch-action:hover{color:var(--text);border-color:rgba(255,255,255,0.25);}
+    .watch-action.active{color:var(--leaf-light);border-color:var(--leaf);}
+
+    .watch-section{
+      width:100%;
+      max-width:1400px;
+      margin:0 auto 48px;
+    }
+    .watch-section-title{
+      font-family:'Montserrat',sans-serif;
+      font-weight:800;
+      font-size:18px;
+      color:#fff;
+      margin:0 0 18px;
+    }
+    .watch-episode-grid{
+      display:grid;
+      grid-template-columns:repeat(auto-fill, minmax(52px, 1fr));
+      gap:10px;
+    }
+    .watch-ep-card{
+      aspect-ratio:1/1;
+      display:flex;align-items:center;justify-content:center;
+      background:rgba(255,255,255,0.06);
+      border:1px solid rgba(255,255,255,0.12);
+      border-radius:8px;
+      color:var(--text);
+      font-family:'Montserrat',sans-serif;
+      font-weight:700;
+      font-size:13px;
+      cursor:pointer;
+    }
+    .watch-ep-card:hover{border-color:var(--leaf);}
+    .watch-ep-card.active{
+      background:var(--leaf);
+      border-color:var(--leaf);
+      color:#0D130E;
+    }
+    .watch-ep-card.locked{
+      cursor:default;
+      color:var(--muted);
+    }
+    .watch-ep-card.locked svg{width:14px;height:14px;}
+    .watch-ep-card.locked:hover{border-color:rgba(255,255,255,0.12);}
+
+    .watch-episode-list{
+      display:flex;flex-direction:column;
+      max-width:640px;
+    }
+    .watch-ep-row{
+      display:flex;align-items:center;gap:14px;
+      padding:12px 8px;
+      background:none;
+      border:none;
+      border-bottom:1px solid rgba(255,255,255,0.06);
+      color:var(--text);
+      font-family:'Montserrat',sans-serif;
+      font-size:14px;
+      text-align:left;
+      cursor:pointer;
+      width:100%;
+    }
+    .watch-ep-row:hover{background:rgba(255,255,255,0.05);}
+    .watch-ep-row.active{color:var(--leaf-light);}
+    .watch-ep-row.locked{
+      cursor:default;
+      color:var(--muted);
+    }
+    .watch-ep-row.locked:hover{background:none;}
+    .watch-ep-row-num{
+      flex-shrink:0;
+      font-weight:800;
+      width:60px;
+    }
+    .watch-ep-row-title{flex:1;min-width:0;}
+    .watch-ep-row-lock{width:15px;height:15px;flex-shrink:0;color:var(--muted);}
+    .watch-episodes-loading{
+      color:var(--muted);
+      font-family:'Montserrat',sans-serif;
+      font-size:13px;
     }
   }

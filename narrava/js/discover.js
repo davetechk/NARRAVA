@@ -383,6 +383,18 @@ discoverSearchInput.addEventListener('input', () => {
   renderDiscoverBody();
 });
 
+// Desktop: the fixed top bar fades from transparent-over-the-hero to a
+// solid background once scrolled past it — one scroll listener toggling
+// one body class, not a second layout. discoverScreen (the `.discover`
+// element itself) is the thing that actually scrolls now (see styles.css
+// body.discover-active .discover); it's already declared in app.js.
+// No-ops harmlessly on mobile, where `.discover` itself never scrolls
+// (the mobile tabs+grid scrolls via .discover-body instead).
+discoverScreen.addEventListener('scroll', () => {
+  const heroHeight = discoverHero ? discoverHero.offsetHeight : 0;
+  document.body.classList.toggle('discover-scrolled', discoverScreen.scrollTop > heroHeight - 80);
+});
+
 // ================= Top bar search panel (desktop) =================
 //
 // The icon in the top bar (see app.js) opens this sliding panel instead
@@ -397,32 +409,38 @@ discoverSearchInput.addEventListener('input', () => {
 // here as-is, not redeclared.
 const topbarSearchInputWrap = document.getElementById('topbarSearchInputWrap');
 const topbarSearchClear = document.getElementById('topbarSearchClear');
-const topbarSuggestRow = document.getElementById('topbarSuggestRow');
-const topbarSuggestResults = document.getElementById('topbarSuggestResults');
+const topbarSearchGrid = document.getElementById('topbarSearchGrid');
 
-function renderTopbarSearchResults(query){
-  const q = query.trim();
-  if(!q){
-    topbarSuggestRow.classList.remove('hide');
-    topbarSuggestResults.classList.remove('show');
-    topbarSuggestResults.innerHTML = '';
-    return;
-  }
+// A real grid of series thumbnails + titles, shown as-is before anyone
+// types (matchesSearch returns true for everything on an empty query)
+// and live-filtered down to real matches as they type — the same
+// matchesSearch() predicate the mobile bar and Categories tab already
+// use, just rendered as cards instead of a plain list. Genre tags reuse
+// heroTagsFor (real seriesGenreMap links, already used by the hero) —
+// no view counts or rankings, since there's no real data behind those.
+function searchGridCardHtml(slide){
+  const src = posterArtSrc(slide);
+  const img = src ? '<img src="' + src + '" alt="">' : '';
+  const tags = heroTagsFor(slide);
+  const tagsHtml = tags.length
+    ? '<div class="search-grid-tags">' + tags.map(t => '<span class="search-grid-tag">' + t + '</span>').join('') + '</div>'
+    : '';
+  return '<button type="button" class="search-grid-card" data-slide-index="' + slides.indexOf(slide) + '">' +
+    '<div class="search-grid-thumb">' + img + '</div>' +
+    '<div class="search-grid-title">' + slide.title + '</div>' +
+    tagsHtml +
+  '</button>';
+}
+
+function renderTopbarSearchGrid(){
   const matches = slides.filter(matchesSearch);
-  topbarSuggestRow.classList.add('hide');
-  topbarSuggestResults.classList.add('show');
-  topbarSuggestResults.innerHTML = matches.length
-    ? matches.map(s =>
-        '<button type="button" class="topbar-result-row" data-slide-index="' + slides.indexOf(s) + '">' +
-          '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>' +
-          s.title +
-        '</button>'
-      ).join('')
-    : '<button type="button" class="topbar-result-row" disabled>No matches for "' + query + '"</button>';
+  topbarSearchGrid.innerHTML = matches.length
+    ? matches.map(searchGridCardHtml).join('')
+    : '<div class="topbar-search-empty">No matches' + (searchQuery ? ' for "' + searchQuery + '"' : '') + '.</div>';
 
-  topbarSuggestResults.querySelectorAll('.topbar-result-row[data-slide-index]').forEach(row => {
-    row.addEventListener('click', () => {
-      openSeriesInFeed(parseInt(row.dataset.slideIndex, 10));
+  topbarSearchGrid.querySelectorAll('.search-grid-card').forEach(card => {
+    card.addEventListener('click', () => {
+      openSeriesInFeed(parseInt(card.dataset.slideIndex, 10));
       topbarSearchPanel.classList.remove('open');
     });
   });
@@ -431,24 +449,16 @@ function renderTopbarSearchResults(query){
 topbarSearchInput.addEventListener('input', () => {
   searchQuery = topbarSearchInput.value.trim().toLowerCase();
   topbarSearchInputWrap.classList.toggle('has-text', !!topbarSearchInput.value);
-  renderTopbarSearchResults(topbarSearchInput.value);
+  renderTopbarSearchGrid();
   renderDiscoverBody();
 });
 topbarSearchClear.addEventListener('click', () => {
   topbarSearchInput.value = '';
   searchQuery = '';
   topbarSearchInputWrap.classList.remove('has-text');
-  renderTopbarSearchResults('');
+  renderTopbarSearchGrid();
   renderDiscoverBody();
   topbarSearchInput.focus();
-});
-topbarSuggestRow.addEventListener('click', e => {
-  if(!e.target.classList.contains('topbar-suggest-pill')) return;
-  topbarSearchInput.value = e.target.textContent;
-  searchQuery = e.target.textContent.trim().toLowerCase();
-  topbarSearchInputWrap.classList.add('has-text');
-  renderTopbarSearchResults(e.target.textContent);
-  renderDiscoverBody();
 });
 
 async function initDiscover(){
@@ -463,14 +473,7 @@ async function initDiscover(){
   renderHero();
   renderShelves();
   renderDiscoverBody();
-
-  // Search suggestion pills: plain real titles, in whatever order the
-  // series query returned — not a "Trending" claim, since there's no
-  // real search-volume data behind it (same honesty rule the Popular/
-  // Rankings tabs already follow for this exact gap).
-  topbarSuggestRow.innerHTML = slides.slice(0, 5)
-    .map(s => '<span class="topbar-suggest-pill">' + s.title + '</span>')
-    .join('');
+  renderTopbarSearchGrid(); // unfiltered by default — every real series, no invented ranking
 }
 
 initDiscover();

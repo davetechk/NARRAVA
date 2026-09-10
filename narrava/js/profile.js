@@ -148,7 +148,7 @@ function wireProfileRows(loggedIn){
       currentSession = null;
       isAdmin = false;
       renderProfileMenu();
-      renderContinueWatching(); // discover.js: nobody's signed in now, so the strip must go away too
+      refreshContinueWatchingMap().then(renderContinueWatchingBar); // app.js/discover.js: nobody's signed in now, so the floating bar must go away too
     });
   }
 }

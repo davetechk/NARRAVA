@@ -161,14 +161,6 @@
 
       <div class="discover-hero" id="discoverHero"></div>
 
-      <!-- Shown on both layouts (unlike the hero/shelves below, which are
-           desktop-only) whenever get_continue_watching actually returns
-           rows for the signed-in viewer — see discover.js's
-           renderContinueWatching(). Left empty and unstyled otherwise, so
-           it takes up no space for a signed-out viewer or one with no
-           watch history yet. -->
-      <div class="cw-strip" id="continueWatchingStrip"></div>
-
       <!-- Desktop-only: named horizontal shelves (New Release / Top /
            genres) instead of the mobile tabs+grid below. "View all" on
            a shelf switches to that same tabs+grid, expanded, with a way
@@ -266,6 +258,14 @@
         </div>
       </div>
     </div>
+
+    <!-- Mobile-only floating "Continue Watching" bar — fixed just above
+         the bottom nav, not part of the scrolling page. Only ever shows
+         the single most recently watched series, only on the Home
+         screen, only when there's real watch history — see
+         discover.js's renderContinueWatchingBar(). Empty/hidden
+         otherwise via the .show class, so it never reserves space. -->
+    <div class="cw-float" id="cwFloat"></div>
 
     <div class="bottomnav">
       <div class="navitem active" id="navHome">

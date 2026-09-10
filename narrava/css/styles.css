@@ -595,61 +595,69 @@
     display:none;
   }
 
-  /* Continue Watching strip — unlike the hero/shelves above/below, this
-     one shows on BOTH layouts (see discover.js's renderContinueWatching()
-     and the desktop override further down). Hidden by default, and
-     whenever JS removes .has-items (signed out, or no real watch history
-     yet), so there's never an empty placeholder taking up space. */
-  .cw-strip{
+  /* Mobile-only floating "Continue Watching" bar — fixed just above
+     .bottomnav (same 78px height + a little breathing room), NOT part
+     of the scrolling page content. Hidden by default, and whenever JS
+     removes .show (signed out, no real watch history, or dismissed —
+     see discover.js's renderContinueWatchingBar()), so it never reserves
+     space or shows an empty placeholder. Hidden outright on desktop
+     alongside .bottomnav itself, further down. */
+  .cw-float{
     display:none;
-  }
-  .cw-strip.has-items{
-    display:block;
-    padding:16px 18px 4px;
-  }
-  .cw-head{
-    margin-bottom:10px;
-  }
-  .cw-title{
-    font-family:'Montserrat',sans-serif;
-    font-weight:800;
-    font-size:15px;
-    color:#fff;
-    margin:0;
-  }
-  .cw-row-wrap{
-    position:relative;
-  }
-  .cw-row{
-    display:flex;
-    gap:10px;
-    overflow-x:auto;
-    scrollbar-width:none;
-    padding-bottom:4px;
-  }
-  .cw-row::-webkit-scrollbar{display:none;}
-  .cw-card{
-    flex:0 0 104px;
-    width:104px;
-    aspect-ratio:2/3;
-  }
-  .cw-play-badge{
     position:absolute;
-    top:6px;left:6px;
-    width:22px;height:22px;
-    border-radius:50%;
-    background:rgba(0,0,0,0.6);
-    color:#fff;
-    font-size:10px;
-    display:flex;align-items:center;justify-content:center;
+    left:12px;right:12px;
+    bottom:90px;
+    z-index:46;
+    align-items:center;
+    gap:10px;
+    padding:8px 10px;
+    border-radius:14px;
+    background:rgba(20,26,21,0.92);
+    backdrop-filter:blur(6px);
+    border:1px solid rgba(255,255,255,0.08);
+    box-shadow:0 8px 24px rgba(0,0,0,0.4);
   }
-  .cw-ep-label{
+  .cw-float.show{
+    display:flex;
+  }
+  .cw-float-thumb{
+    width:40px;height:56px;
+    border-radius:6px;
+    object-fit:cover;
+    background:var(--panel-2);
+    flex-shrink:0;
     display:block;
-    font-size:10px;
-    font-weight:700;
-    color:var(--leaf-light);
-    margin-top:2px;
   }
+  .cw-float-info{
+    flex:1;min-width:0;
+  }
+  .cw-float-title{
+    font-size:12.5px;font-weight:700;color:#fff;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .cw-float-ep{
+    font-size:11px;color:var(--muted);margin-top:2px;
+  }
+  .cw-float-continue{
+    flex-shrink:0;
+    background:rgba(255,255,255,0.12);
+    border:1px solid rgba(255,255,255,0.2);
+    color:#fff;
+    font-family:'Montserrat',sans-serif;
+    font-weight:700;font-size:12px;
+    padding:7px 14px;
+    border-radius:999px;
+    cursor:pointer;
+  }
+  .cw-float-close{
+    flex-shrink:0;
+    width:22px;height:22px;
+    display:flex;align-items:center;justify-content:center;
+    background:none;border:none;
+    color:var(--muted);
+    cursor:pointer;
+  }
+  .cw-float-close svg{width:14px;height:14px;}
 
   .discover-tabs{
     display:flex;gap:8px;
@@ -1402,7 +1410,9 @@
     }
     .notch,
     .statusbar,
-    .bottomnav{
+    .bottomnav,
+    .cw-float,
+    .cw-float.show{
       display:none;
     }
 
@@ -1802,36 +1812,6 @@
     }
     .shelf-row .poster-card:hover .poster-title{
       opacity:1;
-    }
-
-    /* Continue Watching strip's desktop sizing — same column width/gap
-       as the shelves below it (.shelf-row .poster-card above) so it
-       reads as one consistent row style, not a mismatched one-off. */
-    body.discover-active .cw-strip.has-items{
-      width:100%;
-      max-width:1400px;
-      margin:0 auto;
-      padding:36px 44px 0;
-      box-sizing:border-box;
-    }
-    body.discover-active .cw-title{
-      font-size:21px;
-      letter-spacing:0.3px;
-    }
-    body.discover-active .cw-row{
-      gap:24px;
-      padding-bottom:8px;
-    }
-    body.discover-active .cw-card{
-      flex:0 0 259px;
-      width:259px;
-      aspect-ratio:259/345;
-      transition:transform 0.22s ease, box-shadow 0.22s ease;
-    }
-    body.discover-active .cw-card:hover{
-      transform:translateY(-8px) scale(1.06);
-      box-shadow:0 16px 34px rgba(0,0,0,0.6);
-      z-index:5;
     }
 
     /* ----- For You screen's own desktop layout -----

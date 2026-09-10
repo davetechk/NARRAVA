@@ -31,7 +31,7 @@ let coins = 3;
 // Real video playback state (Bunny's player.js).
 let currentPlayer = null;        // playerjs.Player for the active, visible slide's video, or null
 let currentVideoSlideId = null;  // slide.id currentPlayer belongs to
-let pendingResumeSlideId = null; // slide.id Continue Watching wants seeked once its player is ready (see openContinueWatchingItem)
+let pendingResumeSlideId = null; // slide.id the automatic resume wants seeked once its player is ready (see openSeriesInFeed/promotePreload)
 let pendingResumeSeconds = 0;
 let renderedMediaSlideId = null; // slide.id whose media (video or art) is currently in #bgvideo, so unrelated re-renders (unlock, continue) don't restart a playing video
 
@@ -140,69 +140,75 @@ function showScreen(name){
   closeTopbarSearch();
 }
 
-// Used by discover.js: open a specific series (by its index in `slides`).
-// On desktop this opens the dedicated watch page (watch.js) instead of
-// the mobile swipe feed — every poster/hero/search-result click already
-// funnels through this one function, so that's the only place this needs
-// to branch. matchesMedia mirrors the exact 900px breakpoint styles.css
+// Continue Watching: {series_id -> latest get_continue_watching row for
+// that series}. One source of truth, read by two things — the silent
+// auto-resume inside openSeriesInFeed below (every series-open, mobile
+// and desktop) and discover.js's small floating "Continue" bar (mobile
+// Home only). Neither of those is a separate lookup; both just read
+// this map. get_continue_watching (unchanged, per the hard constraint
+// against touching watch_progress/RLS/the RPC itself) already does the
+// real signed-in-viewer + "has anyone actually watched anything"
+// filtering server-side.
+let continueWatchingMap = new Map();
+
+async function refreshContinueWatchingMap(){
+  const items = await fetchContinueWatching();
+  continueWatchingMap = new Map(items.map(item => [item.series_id, item]));
+  return continueWatchingMap;
+}
+
+// Resolved once continueWatchingMap has its first real data, same
+// pattern as slidesReady below — discover.js awaits both before its
+// first render of the floating bar, so it never renders empty just
+// because slides happened to resolve first.
+let resolveContinueWatchingReady;
+const continueWatchingReady = new Promise(resolve => { resolveContinueWatchingReady = resolve; });
+
+// Used by discover.js: open a specific series (by its index in `slides`)
+// — every poster/hero/shelf/search-result tap, and the floating bar's
+// own Continue button, all funnel through this one function. On desktop
+// this opens the dedicated watch page (watch.js) instead of the mobile
+// swipe feed. matchesMedia mirrors the exact 900px breakpoint styles.css
 // uses everywhere else, not a separate cutoff.
 //
-// On mobile, `goTo` already supports jumping to an arbitrary slide, so
-// entering the feed from a poster tap reuses exactly the same navigation
-// the feed itself uses — landing straight in the watching state (clean
-// video, no overlay), since tapping in from Discover already means this
-// one specifically.
+// Resuming is automatic and silent, not a separate action: if
+// continueWatchingMap has saved progress for this series, that's passed
+// straight into the normal open path — desktop always resumes accurately
+// (watch.js plays whichever real episode is asked for); the mobile swipe
+// feed only ever plays a series' first episode's real video (see
+// feed-data.js/fetchSlides), so a genuine resume-to-position is only
+// possible there when the saved progress is actually on that same first
+// episode — otherwise mobile still opens the right series (the closest
+// it can honestly do) without pretending to resume anywhere but the
+// start. No saved progress at all just opens from the beginning, same
+// as before this existed.
 function openSeriesInFeed(i){
+  const slide = slides[i];
+  const resume = slide ? continueWatchingMap.get(slide.id) : null;
+
   if(window.matchMedia('(min-width: 900px)').matches){
-    openWatchScreen(i);
+    openWatchScreen(i, resume ? { episodeId: resume.episode_id, positionSeconds: resume.position_seconds } : null);
     return;
+  }
+
+  if(resume && slide.episodeId === resume.episode_id && resume.position_seconds > 0.5){
+    pendingResumeSlideId = slide.id;
+    pendingResumeSeconds = resume.position_seconds;
+  } else {
+    pendingResumeSlideId = null;
   }
   goTo(i);
   feed.classList.add('watching');
   showScreen('feed');
 }
 
-// Continue Watching's jump-back-in (see discover.js's strip and
-// get_continue_watching's rows: {series_id, episode_id,
-// position_seconds, ...}). Finds the matching slide and opens it exactly
-// like any other poster tap, then resumes at the exact saved position —
-// on desktop that's always accurate (watch.js plays whichever real
-// episode is asked for). On mobile, the swipe feed only ever plays a
-// series' first episode's real video (see feed-data.js/fetchSlides) —
-// there's no mobile mechanism to load an arbitrary later episode's
-// video — so a genuine resume-to-position is only possible here when
-// the saved progress is actually on that same first episode; otherwise
-// this still opens the right series (the closest the mobile feed can
-// honestly do) without pretending to resume anywhere but the start.
-function openContinueWatchingItem(item){
-  if(!item || !item.series_id) return;
-  const slideIndex = slides.findIndex(s => s.id === item.series_id);
-  if(slideIndex === -1) return;
-
-  if(window.matchMedia('(min-width: 900px)').matches){
-    openWatchScreen(slideIndex, { episodeId: item.episode_id, positionSeconds: item.position_seconds });
-    return;
-  }
-
-  const slide = slides[slideIndex];
-  if(slide && slide.episodeId === item.episode_id && item.position_seconds > 0.5){
-    pendingResumeSlideId = slide.id;
-    pendingResumeSeconds = item.position_seconds;
-  } else {
-    pendingResumeSlideId = null;
-  }
-  goTo(slideIndex);
-  feed.classList.add('watching');
-  showScreen('feed');
-}
-
 // Re-checked every time Home is opened (rather than only once at
-// startup) so a strip that appeared/disappeared/changed since — just
-// signed in, just watched something, just resumed elsewhere — is always
-// current, not a stale snapshot from page load.
-navHome.addEventListener('click', ()=> { showScreen('discover'); renderContinueWatching(); });
+// startup) so the floating bar (see discover.js) reflects anything that
+// changed since — just signed in, just watched something, just resumed
+// elsewhere — instead of a stale snapshot from page load.
+navHome.addEventListener('click', ()=> { showScreen('discover'); refreshContinueWatchingMap().then(renderContinueWatchingBar); });
 navForYou.addEventListener('click', ()=> showScreen('feed'));
-topbarHome.addEventListener('click', ()=> { showScreen('discover'); renderContinueWatching(); });
+topbarHome.addEventListener('click', ()=> { showScreen('discover'); refreshContinueWatchingMap().then(renderContinueWatchingBar); });
 topbarForYou.addEventListener('click', ()=> showScreen('feed'));
 
 // Profile: check the current Supabase Auth session each time the tab is
@@ -319,7 +325,7 @@ function preloadSlide(s){
   });
 }
 
-// Continue Watching's resume-seek (see promotePreload/openContinueWatchingItem).
+// The automatic resume's seek (see promotePreload/openSeriesInFeed).
 // player.js's 'ready'/promotion only means the postMessage bridge to the
 // iframe is up — not that the underlying video's own duration/seekable
 // range has loaded. Confirmed live (desktop watch page, same player.js
@@ -353,7 +359,7 @@ function promotePreload(s){
   currentPlayer = entry.player;
   currentVideoSlideId = s.id;
 
-  // Continue Watching's jump-back-in (see openContinueWatchingItem):
+  // The automatic resume's jump-back-in (see openSeriesInFeed):
   // this slide's video has just genuinely become the active player for
   // the first time, so if a resume was queued for exactly this slide,
   // this is when to seek it. Confirmed live (see watch.js's
@@ -589,10 +595,10 @@ function goTo(i){
   render();
 }
 
-// A manual navigation always supersedes any still-pending Continue
-// Watching seek (see openContinueWatchingItem/promotePreload) — without
-// this, swiping away and later swiping back onto the same slide could
-// replay a stale resume-seek the viewer never asked for this time.
+// A manual navigation always supersedes any still-pending automatic
+// resume seek (see openSeriesInFeed/promotePreload) — without this,
+// swiping away and later swiping back onto the same slide could replay
+// a stale resume-seek the viewer never asked for this time.
 function clearPendingResume(){
   pendingResumeSlideId = null;
 }
@@ -782,10 +788,12 @@ let resolveSlidesReady;
 const slidesReady = new Promise(resolve => { resolveSlidesReady = resolve; });
 
 async function init(){
-  slides = await fetchSlides();
+  const [fetchedSlides] = await Promise.all([fetchSlides(), refreshContinueWatchingMap()]);
+  slides = fetchedSlides;
   pager.innerHTML = slides.map((_,i)=>'<div class="pdot ' + (i===0?'active':'') + '" data-i="' + i + '"></div>').join('');
   render();
   resolveSlidesReady();
+  resolveContinueWatchingReady();
 }
 
 init();

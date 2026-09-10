@@ -525,62 +525,80 @@ topbarSearchClear.addEventListener('click', () => {
   topbarSearchInput.focus();
 });
 
-// Continue Watching: shown on both mobile and desktop layouts (it sits
-// between the hero and the shelves in index.html, and both of those are
-// display:none on mobile, so this is the only thing in that slot there).
-// get_continue_watching (an existing RPC — see watch-progress.js) already
-// does the real signed-in-viewer + "has anyone actually watched anything"
-// filtering server-side: an empty result here means exactly what it says,
-// never "still loading", so the strip is removed entirely rather than
-// left as an empty placeholder.
+// ================= Mobile floating "Continue Watching" bar =================
 //
-// Real column names, confirmed against the live function: series_id,
-// episode_id, episode_number, position_seconds, updated_at — no title or
-// cover art, so those come from `slides` (already fetched) by series_id;
-// a row whose series isn't in `slides` (unpublished since, etc.) is
-// dropped rather than shown broken.
-let continueWatchingItems = [];
+// Small, fixed bar just above the bottom nav (see .cw-float in
+// styles.css) — NOT part of the scrolling page, unlike the row of cards
+// this replaces. Shows only the single most recently watched series
+// (highest updated_at among continueWatchingMap's rows — see app.js),
+// only on the mobile Home screen (CSS gates it to body.discover-active,
+// and hides it outright on desktop alongside .bottomnav itself), only
+// for a signed-in viewer who's actually watched something —
+// get_continue_watching (untouched, see watch-progress.js) already does
+// that filtering server-side, so an empty map here means exactly that,
+// never "still loading".
+//
+// Tapping Continue reuses openSeriesInFeed (app.js) — the exact same
+// silent-resume path any other poster/hero tap uses. There is no second
+// resume mechanism here; this bar is only ever a shortcut into it.
+const cwFloatEl = document.getElementById('cwFloat');
 
-function cwCardHtml(item, slide){
-  const art = posterArtSrc(slide);
-  return '<button type="button" class="poster-card cw-card" data-series-id="' + slide.id + '">' +
-    (art ? '<img src="' + art + '" alt="">' : '') +
-    '<div class="cw-play-badge">▶</div>' +
-    '<div class="poster-title">' + escapeHtml(slide.title) +
-      '<span class="cw-ep-label">Continue · Ep ' + item.episode_number + '</span></div>' +
-  '</button>';
+function mostRecentContinueWatchingItem(){
+  let best = null;
+  continueWatchingMap.forEach(item => {
+    if(!best || new Date(item.updated_at) > new Date(best.updated_at)) best = item;
+  });
+  return best;
 }
 
-async function renderContinueWatching(){
-  const strip = document.getElementById('continueWatchingStrip');
-  if(!strip) return;
+// Dismissing hides this one series' bar for the rest of the current
+// browser session (sessionStorage, cleared when the tab/browser closes)
+// — not permanently. Chosen because this bar is a convenience nudge, not
+// a setting: silently suppressing it forever (e.g. a DB flag) risks it
+// staying hidden long after the viewer has moved on to something else
+// entirely, while "just for this visit" still respects an explicit "not
+// now" without any lasting side effect. A different series becoming the
+// most-recently-watched one shows its own bar regardless, since that's
+// new information, not a repeat of the dismissed prompt.
+function isDismissedThisSession(seriesId){
+  try { return sessionStorage.getItem('cwDismissed:' + seriesId) === '1'; }
+  catch(e){ return false; }
+}
+function dismissForThisSession(seriesId){
+  try { sessionStorage.setItem('cwDismissed:' + seriesId, '1'); } catch(e){}
+}
 
-  continueWatchingItems = await fetchContinueWatching();
+function renderContinueWatchingBar(){
+  if(!cwFloatEl) return;
 
-  const cards = continueWatchingItems
-    .map(item => {
-      const slide = slides.find(s => s.id === item.series_id);
-      return slide ? cwCardHtml(item, slide) : '';
-    })
-    .filter(Boolean)
-    .join('');
+  const item = mostRecentContinueWatchingItem();
+  const slide = item ? slides.find(s => s.id === item.series_id) : null;
 
-  if(!cards){
-    strip.innerHTML = '';
-    strip.classList.remove('has-items');
+  if(!item || !slide || isDismissedThisSession(item.series_id)){
+    cwFloatEl.classList.remove('show');
+    cwFloatEl.innerHTML = '';
     return;
   }
 
-  strip.classList.add('has-items');
-  strip.innerHTML =
-    '<div class="cw-head"><h3 class="cw-title">Continue Watching</h3></div>' +
-    '<div class="cw-row-wrap"><div class="cw-row">' + cards + '</div></div>';
+  const art = posterArtSrc(slide);
+  cwFloatEl.innerHTML =
+    (art ? '<img class="cw-float-thumb" src="' + art + '" alt="">' : '<div class="cw-float-thumb"></div>') +
+    '<div class="cw-float-info">' +
+      '<div class="cw-float-title">' + escapeHtml(slide.title) + '</div>' +
+      '<div class="cw-float-ep">EP ' + item.episode_number + ' / EP ' + slide.totalEp + '</div>' +
+    '</div>' +
+    '<button type="button" class="cw-float-continue">Continue</button>' +
+    '<button type="button" class="cw-float-close" aria-label="Dismiss">' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>' +
+    '</button>';
+  cwFloatEl.classList.add('show');
 
-  strip.querySelectorAll('.cw-card').forEach(card => {
-    card.addEventListener('click', () => {
-      const item = continueWatchingItems.find(it => it.series_id === card.dataset.seriesId);
-      if(item) openContinueWatchingItem(item);
-    });
+  cwFloatEl.querySelector('.cw-float-continue').addEventListener('click', () => {
+    openSeriesInFeed(slides.indexOf(slide));
+  });
+  cwFloatEl.querySelector('.cw-float-close').addEventListener('click', () => {
+    dismissForThisSession(item.series_id);
+    renderContinueWatchingBar();
   });
 }
 
@@ -597,7 +615,9 @@ async function initDiscover(){
   renderShelves();
   renderDiscoverBody();
   renderTopbarSearchGrid(); // unfiltered by default — every real series, no invented ranking
-  renderContinueWatching();
+
+  await continueWatchingReady; // app.js: don't render the bar until it has real data
+  renderContinueWatchingBar();
 }
 
 initDiscover();

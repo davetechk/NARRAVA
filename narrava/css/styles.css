@@ -601,7 +601,12 @@
      removes .show (signed out, no real watch history, or dismissed —
      see discover.js's renderContinueWatchingBar()), so it never reserves
      space or shows an empty placeholder. Hidden outright on desktop
-     alongside .bottomnav itself, further down. */
+     alongside .bottomnav itself, further down.
+     Showing it also requires body.discover-active (Home screen only) —
+     .cw-float lives outside #discoverScreen (same positioning context as
+     .bottomnav), so nothing else hides it when navigating away; without
+     this it stays visibly stuck on top of the feed/watch screen after
+     tapping Continue, confirmed live. */
   .cw-float{
     display:none;
     position:absolute;
@@ -617,7 +622,7 @@
     border:1px solid rgba(255,255,255,0.08);
     box-shadow:0 8px 24px rgba(0,0,0,0.4);
   }
-  .cw-float.show{
+  body.discover-active .cw-float.show{
     display:flex;
   }
   .cw-float-thumb{
@@ -1412,7 +1417,8 @@
     .statusbar,
     .bottomnav,
     .cw-float,
-    .cw-float.show{
+    .cw-float.show,
+    body.discover-active .cw-float.show{
       display:none;
     }
 
@@ -1548,8 +1554,12 @@
       display:flex;align-items:center;gap:8px;
       flex-shrink:0;
     }
+    /* Sized to show exactly 4 thumbnails at once (4*112 + 3*12 gap =
+       484px, +6px breathing room) — the rest of a 5-item hero (see
+       HERO_VISIBLE/pickHeroItems in discover.js) are reachable only via
+       the next arrow or autoplay, never all visible together. */
     body.discover-active .hero-carousel-viewport{
-      width:544px;
+      width:490px;
       overflow:hidden;
     }
     body.discover-active .hero-carousel-track{
@@ -1557,7 +1567,7 @@
       transition:transform 0.4s cubic-bezier(0.4,0,0.2,1);
     }
     body.discover-active .hero-thumb{
-      width:98px;
+      width:112px;
       flex-shrink:0;
       cursor:pointer;
       border-radius:8px;
@@ -1568,7 +1578,7 @@
       transition:transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
     }
     body.discover-active .hero-thumb img{
-      width:100%;height:140px;object-fit:cover;display:block;
+      width:100%;height:160px;object-fit:cover;display:block;
     }
     body.discover-active .hero-thumb .hero-thumb-title{
       position:absolute;left:0;right:0;bottom:0;

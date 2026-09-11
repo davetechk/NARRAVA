@@ -296,20 +296,20 @@ let heroItems = [];
 let activeHeroIndex = 0;
 let heroAutoplayTimer = null;
 const HERO_AUTOPLAY_MS = 4500;
-const HERO_CARD_W = 98 + 12; // thumb width + track gap
-const HERO_VISIBLE = 5;
+const HERO_CARD_W = 112 + 12; // thumb width + track gap
+const HERO_VISIBLE = 4;
 
 let heroBgEl, heroTitleEl, heroTagsEl, heroDescEl, heroLeftEl, heroTrackEl;
 let heroThumbEls = [];
 
-// Up to 3 series with a non-null featured_at, most recently featured
+// Up to 5 series with a non-null featured_at, most recently featured
 // first. If none are featured yet (no admin panel exists to set this),
 // fall back to one random series so the hero never just goes blank.
 function pickHeroItems(){
   const featured = slides
     .filter(s => s.featuredAt)
     .sort((a, b) => new Date(b.featuredAt) - new Date(a.featuredAt))
-    .slice(0, 3);
+    .slice(0, 5);
 
   if(featured.length > 0) return featured;
   if(slides.length === 0) return [];
@@ -551,22 +551,14 @@ function mostRecentContinueWatchingItem(){
   return best;
 }
 
-// Dismissing hides this one series' bar for the rest of the current
-// browser session (sessionStorage, cleared when the tab/browser closes)
-// — not permanently. Chosen because this bar is a convenience nudge, not
-// a setting: silently suppressing it forever (e.g. a DB flag) risks it
-// staying hidden long after the viewer has moved on to something else
-// entirely, while "just for this visit" still respects an explicit "not
-// now" without any lasting side effect. A different series becoming the
-// most-recently-watched one shows its own bar regardless, since that's
-// new information, not a repeat of the dismissed prompt.
-function isDismissedThisSession(seriesId){
-  try { return sessionStorage.getItem('cwDismissed:' + seriesId) === '1'; }
-  catch(e){ return false; }
-}
-function dismissForThisSession(seriesId){
-  try { sessionStorage.setItem('cwDismissed:' + seriesId, '1'); } catch(e){}
-}
+// Dismissing hides this one series' bar only for right now, in this
+// page instance — plain in-memory state, nothing written to
+// localStorage/sessionStorage/the DB. A fresh reload has no memory of
+// the dismissal at all: if there's still real progress behind it,
+// get_continue_watching returns it again and the bar shows again, same
+// as if it had never been dismissed. This is a convenience nudge, not a
+// setting — there's nothing to persist.
+const dismissedThisPageLoad = new Set();
 
 function renderContinueWatchingBar(){
   if(!cwFloatEl) return;
@@ -574,7 +566,7 @@ function renderContinueWatchingBar(){
   const item = mostRecentContinueWatchingItem();
   const slide = item ? slides.find(s => s.id === item.series_id) : null;
 
-  if(!item || !slide || isDismissedThisSession(item.series_id)){
+  if(!item || !slide || dismissedThisPageLoad.has(item.series_id)){
     cwFloatEl.classList.remove('show');
     cwFloatEl.innerHTML = '';
     return;
@@ -597,7 +589,7 @@ function renderContinueWatchingBar(){
     openSeriesInFeed(slides.indexOf(slide));
   });
   cwFloatEl.querySelector('.cw-float-close').addEventListener('click', () => {
-    dismissForThisSession(item.series_id);
+    dismissedThisPageLoad.add(item.series_id);
     renderContinueWatchingBar();
   });
 }

@@ -173,16 +173,22 @@ const continueWatchingReady = new Promise(resolve => { resolveContinueWatchingRe
 //
 // Resuming is automatic and silent, not a separate action: if
 // continueWatchingMap has saved progress for this series, that's passed
-// straight into the normal open path — desktop always resumes accurately
-// (watch.js plays whichever real episode is asked for); the mobile swipe
-// feed only ever plays a series' first episode's real video (see
-// feed-data.js/fetchSlides), so a genuine resume-to-position is only
-// possible there when the saved progress is actually on that same first
-// episode — otherwise mobile still opens the right series (the closest
-// it can honestly do) without pretending to resume anywhere but the
-// start. No saved progress at all just opens from the beginning, same
-// as before this existed.
-function openSeriesInFeed(i){
+// straight into the normal open path. Desktop always resumes accurately
+// (watch.js plays whichever real episode is asked for). The mobile swipe
+// feed's slide only ever carries its series' first episode's video by
+// default (see feed-data.js/fetchSlides) — when the saved progress is on
+// that same first episode, resuming just works; when it's on a later
+// episode, this fetches that one specific episode's real row (a
+// targeted read, not a second episode list — see
+// feed-data.js/fetchEpisodeById) and swaps the slide over to its real
+// video for this one viewing, rather than silently opening episode 1.
+// This is NOT general episode swiping/a jump grid on mobile — it's a
+// single, resume-driven substitution of what one slide currently plays.
+// The slide is always reset to its true first episode first, so a
+// previous override never lingers once it no longer applies (e.g. the
+// saved episode changed, or there's no saved progress at all). No saved
+// progress just opens from the beginning, same as before this existed.
+async function openSeriesInFeed(i){
   const slide = slides[i];
   const resume = slide ? continueWatchingMap.get(slide.id) : null;
 
@@ -190,13 +196,53 @@ function openSeriesInFeed(i){
     openWatchScreen(i, resume ? { episodeId: resume.episode_id, positionSeconds: resume.position_seconds } : null);
     return;
   }
+  if(!slide) return;
+  const previousBunnyVideoId = slide.bunnyVideoId;
 
-  if(resume && slide.episodeId === resume.episode_id && resume.position_seconds > 0.5){
-    pendingResumeSlideId = slide.id;
-    pendingResumeSeconds = resume.position_seconds;
-  } else {
-    pendingResumeSlideId = null;
+  slide.bunnyVideoId = slide.firstEpisodeBunnyVideoId;
+  slide.episodeId = slide.firstEpisodeId;
+  slide.currentEp = slide.firstEpisodeNumber;
+  slide.epBadge = 'EP ' + slide.firstEpisodeNumber + ' · ' + slide.totalEp;
+  pendingResumeSlideId = null;
+
+  if(resume && resume.position_seconds > 0.5){
+    if(resume.episode_id === slide.firstEpisodeId){
+      pendingResumeSlideId = slide.id;
+      pendingResumeSeconds = resume.position_seconds;
+    } else {
+      const ep = await fetchEpisodeById(resume.episode_id);
+      if(ep && ep.bunny_video_id && ep.series_id === slide.id){
+        slide.bunnyVideoId = ep.bunny_video_id;
+        slide.episodeId = ep.id;
+        slide.currentEp = ep.episode_number;
+        slide.epBadge = 'EP ' + ep.episode_number + ' · ' + slide.totalEp;
+        pendingResumeSlideId = slide.id;
+        pendingResumeSeconds = resume.position_seconds;
+      }
+      // Fetch failed, or came back without a real video: slide already
+      // stands reset to the real first episode above — opens honestly
+      // from there instead of a half-applied mismatched state.
+    }
   }
+
+  // preloadCache is keyed by slide.id, not by which video it's actually
+  // holding — a preload warmed before this slide's effective video
+  // changed (either overridden above, or reset back off an earlier
+  // override) would otherwise be reused as-is by renderMedia/
+  // preloadSlide. Torn down here whenever the effective video actually
+  // changed, so the next preload/render genuinely loads the right one.
+  // Also clears renderedMediaSlideId's short-circuit for the rare case
+  // this exact slide was already the one on screen, so the swap isn't
+  // silently skipped.
+  if(slide.bunnyVideoId !== previousBunnyVideoId){
+    const stalePreload = preloadCache[slide.id];
+    if(stalePreload){
+      stalePreload.iframe.remove();
+      delete preloadCache[slide.id];
+    }
+    if(renderedMediaSlideId === slide.id) renderedMediaSlideId = null;
+  }
+
   goTo(i);
   feed.classList.add('watching');
   showScreen('feed');
@@ -330,15 +376,30 @@ function preloadSlide(s){
 // iframe is up — not that the underlying video's own duration/seekable
 // range has loaded. Confirmed live (desktop watch page, same player.js
 // library): calling setCurrentTime that early is silently ignored.
-// Polling getDuration until it reports a real value is what's confirmed
-// to make the seek actually stick. Gives up after ~10s rather than
-// looping forever if a duration genuinely never arrives.
+// Polling getDuration until it reports a real value is necessary, but
+// confirmed live NOT sufficient on its own: a duration being known
+// doesn't always mean the seek sticks the instant it's called (seen
+// live — currentTime stayed put after setCurrentTime, then a second
+// call moments later landed instantly). So this verifies the seek
+// actually took, and retries the same way (not a fresh getDuration
+// poll) if it didn't, rather than assuming success from one blind call.
+// Gives up after ~10s of duration-polling rather than looping forever
+// if a duration genuinely never arrives.
 function seekWhenSeekable(player, slideId, seconds, attemptsLeft){
   if(currentVideoSlideId !== slideId || currentPlayer !== player) return; // navigated away
   player.getDuration((duration) => {
     if(currentVideoSlideId !== slideId || currentPlayer !== player) return;
     if(duration && duration > 0){
       player.setCurrentTime(seconds);
+      setTimeout(() => {
+        if(currentVideoSlideId !== slideId || currentPlayer !== player) return;
+        player.getCurrentTime((landedAt) => {
+          if(currentVideoSlideId !== slideId || currentPlayer !== player) return;
+          if(Math.abs(landedAt - seconds) > 2 && attemptsLeft > 0){
+            seekWhenSeekable(player, slideId, seconds, attemptsLeft - 1);
+          }
+        });
+      }, 300);
       return;
     }
     if(attemptsLeft <= 0) return;

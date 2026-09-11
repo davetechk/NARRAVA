@@ -60,6 +60,15 @@ async function fetchSlides() {
           featuredAt: series.featured_at,
           bunnyVideoId: firstEpisode.bunny_video_id || null,
           episodeId: firstEpisode.id,
+          // Stable references to the real first episode, kept separate
+          // from bunnyVideoId/episodeId above — those two get
+          // temporarily overridden by app.js's mobile Continue Watching
+          // resume (a saved episode past the first one), and need a
+          // reliable "real default" to reset back to on the next open
+          // once that override no longer applies.
+          firstEpisodeId: firstEpisode.id,
+          firstEpisodeBunnyVideoId: firstEpisode.bunny_video_id || null,
+          firstEpisodeNumber: currentEp,
           title: series.title,
           synopsis: series.description || '',
           epBadge: 'EP ' + currentEp + ' · ' + totalEp,
@@ -101,6 +110,27 @@ async function fetchEpisodesForSeries(seriesId) {
   } catch (err) {
     console.error('Narrava: failed to load episodes for series', err);
     return [];
+  }
+}
+
+// Fetches one specific episode by id — a real, targeted read, not a
+// second episode list. Used by app.js's mobile Continue Watching resume:
+// a feed slide only ever carries its series' first episode's video (see
+// fetchSlides above), so resuming a later saved episode needs this one
+// row's own real bunny_video_id to actually play it, instead of quietly
+// substituting the first episode's video.
+async function fetchEpisodeById(episodeId) {
+  try {
+    const { data, error } = await supabaseClient
+      .from('episodes')
+      .select('id, series_id, episode_number, title, bunny_video_id, duration_seconds')
+      .eq('id', episodeId)
+      .single();
+    if (error) throw error;
+    return data || null;
+  } catch (err) {
+    console.error('Narrava: failed to load episode by id', err);
+    return null;
   }
 }
 

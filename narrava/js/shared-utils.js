@@ -11,6 +11,23 @@ function escapeHtml(str){
     .replace(/>/g, '&gt;');
 }
 
+// "6 months ago" style relative time, for real timestamps (comments,
+// replies) — not a fabricated freshness signal, just a friendlier
+// rendering of a real created_at.
+function timeAgo(iso){
+  const then = new Date(iso).getTime();
+  const diffSec = Math.max(0, Math.floor((Date.now() - then) / 1000));
+  const units = [
+    ['year', 31536000], ['month', 2592000], ['week', 604800],
+    ['day', 86400], ['hour', 3600], ['minute', 60]
+  ];
+  for(let i = 0; i < units.length; i++){
+    const val = Math.floor(diffSec / units[i][1]);
+    if(val >= 1) return val + ' ' + units[i][0] + (val === 1 ? '' : 's') + ' ago';
+  }
+  return 'just now';
+}
+
 // Looks up #toast fresh on every call (rather than caching it once at
 // load) since index.html and each admin page have their own #toast
 // element in different places in the DOM.

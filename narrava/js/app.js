@@ -1,11 +1,11 @@
 // app.js
 //
 // All the interactive behaviour of the mockup: rendering the current
-// slide, swipe/wheel navigation, like/save/unlock buttons, and the
-// "Get Coins" sheet. Coin balance, unlock state and coin cost are all
-// still fake/frontend-only here, exactly as in the original mockup —
-// only the slide content itself now comes from Supabase (via
-// feed-data.js) instead of a hardcoded array.
+// slide, swipe/wheel navigation, like/save/comment/unlock buttons, and
+// the "Get Coins" sheet. Like/save/comments are real now (series_likes/
+// series_saves/series_comments via social.js/comments-panel.js). Coin
+// balance, unlock state and coin cost are still fake/frontend-only,
+// exactly as in the original mockup.
 
 const regions = {
   NG:{ symbol:'₦', methods:['Card','Bank Transfer','Mobile Money'],
@@ -57,6 +57,10 @@ const progressFill = document.getElementById('progressFill');
 const likeCount = document.getElementById('likeCount');
 const likeBtn = document.getElementById('likeBtn');
 const bookmarkBtn = document.getElementById('bookmarkBtn');
+const commentBtn = document.getElementById('commentBtn');
+const commentsSheetBackdrop = document.getElementById('commentsSheetBackdrop');
+const commentsSheet = document.getElementById('commentsSheet');
+const commentsSheetClose = document.getElementById('commentsSheetClose');
 const unlockBtn = document.getElementById('unlockBtn');
 const unlockLabel = document.getElementById('unlockLabel');
 const coinBalance = document.getElementById('coinBalance');
@@ -628,6 +632,7 @@ function render(){
   likeCount.textContent = s.likes;
   likeBtn.classList.toggle('liked', s.liked);
   bookmarkBtn.classList.toggle('saved', s.saved);
+  if(!s.socialLoaded) loadFeedSocialState(s);
   coinBalance.textContent = coins;
   buildSpine(s.currentEp, s.totalEp);
 
@@ -640,6 +645,26 @@ function render(){
   }
 
   Array.from(pager.children).forEach((d,i)=>d.classList.toggle('active', i===idx));
+}
+
+// Real like count + this viewer's own liked/saved state (social.js),
+// fetched once per slide — not on every render() call, which happens
+// often (every swipe, every unlock) — and guarded by s.socialLoaded so
+// a second render() before this resolves doesn't kick off a duplicate
+// fetch. Applied to the DOM only if this slide is still the current one
+// by the time it resolves, so a fetch from a slide already swiped away
+// from never overwrites whatever's actually on screen now.
+async function loadFeedSocialState(s){
+  s.socialLoaded = true;
+  const state = await fetchSeriesSocialState(s.id);
+  s.likes = state.likeCount;
+  s.liked = state.liked;
+  s.saved = state.saved;
+  if(slides[idx] === s){
+    likeCount.textContent = s.likes;
+    likeBtn.classList.toggle('liked', s.liked);
+    bookmarkBtn.classList.toggle('saved', s.saved);
+  }
 }
 
 // Scrolling/swiping to a (possibly new) slide always lands back in the
@@ -716,22 +741,56 @@ playToggle.addEventListener('click', ()=>{
   }
 });
 
-likeBtn.addEventListener('click', ()=>{
+// Real like: series_likes (social.js), not a session-only toggle. A
+// signed-out tap opens the same sign-in modal every other account-gated
+// action in this app already uses (toggleSeriesLike's own job) instead
+// of silently doing nothing — returns null in that case, so the button
+// is left exactly as it was rather than flipping to a state that didn't
+// really happen. The count is re-fetched for real after a successful
+// toggle rather than guessed locally, so it can never drift from what's
+// actually in the database.
+likeBtn.addEventListener('click', async ()=>{
   if(slides.length === 0) return;
   const s = slides[idx];
-  s.liked = !s.liked;
+  const newLiked = await toggleSeriesLike(s.id, s.liked);
+  if(newLiked === null) return;
+  s.liked = newLiked;
+  s.likes = await fetchSeriesLikeCount(s.id);
   likeBtn.classList.add('pulse');
   setTimeout(()=>likeBtn.classList.remove('pulse'), 350);
-  render();
+  if(slides[idx] === s) render();
 });
 
-bookmarkBtn.addEventListener('click', ()=>{
+// Same real shape as like, against series_saves — personal only, no
+// public count.
+bookmarkBtn.addEventListener('click', async ()=>{
   if(slides.length === 0) return;
   const s = slides[idx];
-  s.saved = !s.saved;
+  const newSaved = await toggleSeriesSave(s.id, s.saved);
+  if(newSaved === null) return;
+  s.saved = newSaved;
   bookmarkBtn.classList.add('pulse');
   setTimeout(()=>bookmarkBtn.classList.remove('pulse'), 350);
-  render();
+  if(slides[idx] === s) render();
+});
+
+// Real comments (comments-panel.js/social.js) in this app's existing
+// bottom-sheet shell — same open/close pattern as the Get Coins sheet
+// just above.
+commentBtn.addEventListener('click', () => {
+  if(slides.length === 0) return;
+  const s = slides[idx];
+  commentsSheetBackdrop.classList.add('open');
+  commentsSheet.classList.add('open');
+  feedCommentsController.load(s.id);
+});
+commentsSheetClose.addEventListener('click', () => {
+  commentsSheetBackdrop.classList.remove('open');
+  commentsSheet.classList.remove('open');
+});
+commentsSheetBackdrop.addEventListener('click', () => {
+  commentsSheetBackdrop.classList.remove('open');
+  commentsSheet.classList.remove('open');
 });
 
 document.getElementById('shareBtn').addEventListener('click', ()=>{

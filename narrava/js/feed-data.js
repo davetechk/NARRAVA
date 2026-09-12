@@ -76,9 +76,15 @@ async function fetchSlides() {
           currentEp: currentEp,
           totalEp: totalEp,
           nextEp: nextEp,
-          likes: '0',
+          // Real values (series_likes/series_saves via social.js),
+          // loaded lazily once this slide actually becomes current —
+          // see app.js's loadFeedSocialState. Zero/false here is just
+          // the honest "not fetched yet" default, not a fabricated
+          // starting count.
+          likes: 0,
           saved: false,
           liked: false,
+          socialLoaded: false,
           coinCost: 2,
           freeEpisodeCount: series.free_episode_count,
           art: series.cover_image_url

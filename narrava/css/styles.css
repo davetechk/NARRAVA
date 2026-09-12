@@ -1036,12 +1036,150 @@
     display:none;
   }
 
+  /* ============ Comments (shared: mobile sheet + desktop drawer) ============
+     One real comment tree — top-level comments, one level of replies,
+     each with a real like — rendered by comments-panel.js into either
+     surface's own body container. Structural styling only lives here
+     once; each surface's own shell (.sheet vs .watch-comments-panel)
+     handles positioning/open-close. */
+  .cmt-count{
+    font-size:13px;font-weight:700;color:var(--muted);
+    margin-left:4px;
+  }
+  .cmt-empty{
+    text-align:center;color:var(--muted);font-size:13px;padding:30px 10px;
+  }
+  .cmt-row{
+    display:flex;gap:10px;
+    padding:12px 0;
+  }
+  .cmt-avatar{
+    width:32px;height:32px;border-radius:50%;
+    flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;
+    color:#fff;font-weight:800;font-size:13px;
+    font-family:'Montserrat',sans-serif;
+  }
+  .cmt-reply .cmt-avatar{ width:26px;height:26px;font-size:11px; }
+  .cmt-main{ flex:1; min-width:0; }
+  .cmt-meta{
+    display:flex;align-items:baseline;gap:8px;
+    margin-bottom:2px;
+  }
+  .cmt-name{
+    font-size:12.5px;font-weight:700;color:#fff;
+  }
+  .cmt-time{
+    font-size:11px;color:var(--muted);
+  }
+  .cmt-body-text{
+    font-size:13px;color:var(--text);line-height:1.45;
+    word-break:break-word;
+  }
+  .cmt-mention{
+    color:var(--leaf-light);font-weight:700;
+  }
+  .cmt-actions{
+    display:flex;align-items:center;gap:14px;
+    margin-top:6px;
+  }
+  .cmt-like{
+    display:flex;align-items:center;gap:5px;
+    background:none;border:none;color:var(--muted);
+    font-size:12px;cursor:pointer;padding:0;
+  }
+  .cmt-like svg{width:15px;height:15px;}
+  .cmt-like.liked{color:var(--leaf-light);}
+  .cmt-like.liked svg{fill:var(--leaf-light);}
+  .cmt-reply-btn,
+  .cmt-delete-btn{
+    background:none;border:none;color:var(--muted);
+    font-size:12px;font-weight:700;cursor:pointer;padding:0;
+  }
+  .cmt-reply-btn:hover{color:#fff;}
+  .cmt-delete-btn{color:#F2A0A0;}
+  .cmt-delete-btn:hover{color:#ff8f8f;}
+  .cmt-delete-confirm{
+    font-size:12px;color:var(--muted);
+    display:flex;align-items:center;gap:6px;
+  }
+  .cmt-delete-yes{
+    color:#F2A0A0;font-weight:700;background:none;border:none;cursor:pointer;font-size:12px;padding:0;
+  }
+  .cmt-delete-no{
+    color:var(--muted);background:none;border:none;cursor:pointer;font-size:12px;padding:0;
+  }
+  .cmt-replies{
+    margin-top:4px;
+    padding-left:14px;
+    border-left:1px solid rgba(255,255,255,0.08);
+  }
+  .cmt-show-more{
+    display:flex;align-items:center;gap:4px;
+    background:none;border:none;color:var(--leaf-light);
+    font-size:12px;font-weight:700;cursor:pointer;
+    padding:6px 0;
+  }
+  .cmt-show-more svg{width:13px;height:13px;}
+  .cmt-reply-box{
+    display:flex;gap:8px;margin-top:8px;
+  }
+  .cmt-reply-input{
+    flex:1;min-width:0;
+    background:rgba(255,255,255,0.05);
+    border:1px solid rgba(255,255,255,0.1);
+    border-radius:8px;
+    padding:8px 10px;
+    color:var(--text);
+    font-size:12.5px;font-family:inherit;
+  }
+  .cmt-reply-post,
+  .cmt-reply-cancel{
+    background:none;border:none;
+    font-size:12px;font-weight:700;cursor:pointer;
+    padding:0 4px;
+  }
+  .cmt-reply-post{color:var(--leaf-light);}
+  .cmt-reply-cancel{color:var(--muted);}
+  .cmt-composer{
+    display:flex;gap:10px;align-items:center;
+    flex-shrink:0;
+    padding-top:12px;
+    border-top:1px solid rgba(255,255,255,0.08);
+  }
+  .cmt-composer-input{
+    flex:1;min-width:0;
+    background:rgba(255,255,255,0.05);
+    border:1px solid rgba(255,255,255,0.1);
+    border-radius:999px;
+    padding:10px 14px;
+    color:var(--text);
+    font-size:13px;font-family:inherit;
+  }
+  .cmt-composer-post{
+    background:var(--leaf);
+    border:none;color:#0D130E;
+    font-weight:700;font-size:13px;
+    padding:9px 16px;border-radius:999px;
+    cursor:pointer;
+    flex-shrink:0;
+  }
+  .cmt-composer-post:hover{background:var(--leaf-light);}
+
+  /* Mobile sheet: reuses the existing .sheet shell (fixed 72% height,
+     flex column, its own open/close transform) — only the body needs to
+     scroll internally, same idea as .watch-comments-body on desktop. */
+  .cmt-body{
+    flex:1;overflow-y:auto;
+    padding:4px 0 10px;
+  }
+
   /* Sign Up / Log In popup, opened from inside the Profile screen above
      instead of replacing it — same show/hide pattern as the Get Coins
      sheet (.sheet-backdrop), just centered instead of docked to the
      bottom. */
   .auth-modal-backdrop{
-    position:absolute;inset:0;
+    position:fixed;inset:0;
     background:rgba(4,7,5,0.65);
     display:flex;align-items:center;justify-content:center;
     padding:20px;
@@ -2207,13 +2345,12 @@
       overflow-y:auto;
       padding:24px;
     }
-    /* Honest empty state — there is no real comment data anywhere in
-       this app yet, so this is the only thing this panel ever shows. */
-    .watch-comments-empty{
-      color:var(--muted);
-      font-family:'Montserrat',sans-serif;
-      font-size:13px;
-      text-align:center;
-      padding:60px 20px;
+    /* The composer sits outside .watch-comments-body (never scrolls
+       away) — .cmt-composer's own base rule (shared with the mobile
+       sheet) has no horizontal padding of its own, since the mobile
+       sheet already gets that from .sheet; the drawer needs it added
+       explicitly here. */
+    .watch-comments-panel .cmt-composer{
+      padding:14px 24px;
     }
   }

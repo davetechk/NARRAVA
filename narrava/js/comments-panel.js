@@ -8,18 +8,23 @@
 // real source for comment data, this file never queries series_comments
 // directly for a list.
 //
-// One level of nesting only, matching the task: a reply to a reply just
-// becomes another reply on the same top-level comment (parent_comment_id
-// always points at a top-level comment, never at another reply — this
-// file enforces that by always passing the top-level id as the parent,
-// even when "Reply" is clicked on a reply row).
+// Reply depth itself is unlimited — a reply can be posted on any other
+// comment or reply, at any depth, and parent_comment_id always points at
+// whichever exact comment was actually being replied to (never forced up
+// to the top-level id). What stays fixed is the VISUAL indentation: every
+// non-root comment renders at the same single indent level regardless of
+// its real depth, with its own "@name" naming whichever specific comment
+// it actually replies to. This is done by rendering an entire root's
+// descendant subtree as one flat list inside a single .cmt-replies
+// wrapper (never nesting one .cmt-replies inside another, which would
+// compound the indent per level) — see buildRepliesFragments below. Each
+// node in that flat list still gets its own independent "N replies"
+// collapse/expand toggle for its own direct children, hidden by default.
 //
 // After any write (post, delete, like), the whole panel just re-fetches
 // via load() rather than guessing the new state locally — simpler and
 // guaranteed correct, since get_series_comments already computes
 // like_count/liked_by_me for us.
-
-const REPLIES_SHOWN_BY_DEFAULT = 2;
 
 function commentDisplayName(c){
   return (c.display_name && c.display_name.trim()) ? c.display_name.trim() : 'Narrava viewer';
@@ -40,16 +45,23 @@ function commentAvatarHtml(name){
 function createCommentsPanelController(els){
   let seriesId = null;
   let comments = [];
-  let repliesByParent = {};
-  let expandedReplyGroups = new Set();
-  let activeReplyBoxId = null; // top-level comment id currently showing an inline reply composer
+  let commentsById = {};
+  let childrenByParent = {};
+  let expandedReplyGroups = new Set(); // comment ids whose own direct children are currently shown
+  let activeReplyBoxId = null; // comment id (any depth) currently showing an inline reply composer
   let confirmDeleteId = null;
   let isAdmin = false;
   let myUserId = null;
 
+  // Splits the flat RPC result into top-level comments plus a general
+  // parent-id -> children map. childrenByParent is keyed by ANY comment's
+  // id, not just top-level ones, so it already supports real, unlimited
+  // reply depth — nothing here caps how deep parent_comment_id can chain.
   function groupComments(list){
     const topLevel = [];
     const byParent = {};
+    const byId = {};
+    list.forEach(c => { byId[c.id] = c; });
     list.forEach(c => {
       if(c.parent_comment_id){
         (byParent[c.parent_comment_id] = byParent[c.parent_comment_id] || []).push(c);
@@ -59,19 +71,22 @@ function createCommentsPanelController(els){
     });
     topLevel.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
     Object.keys(byParent).forEach(pid => byParent[pid].sort((a, b) => new Date(a.created_at) - new Date(b.created_at)));
-    return { topLevel, byParent };
+    return { topLevel, byParent, byId };
   }
 
   function canDelete(c){
     return !!myUserId && (String(c.user_id) === String(myUserId) || isAdmin);
   }
 
-  function actionsHtml(c, isReply){
+  function actionsHtml(c){
     const likeBtn = '<button type="button" class="cmt-like' + (c.liked_by_me ? ' liked' : '') + '" data-action="like-comment" data-comment-id="' + c.id + '">' +
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7.5-4.6-10-9.2C.5 8.4 2.3 4.8 6 4.2c2.3-.4 4.3.9 6 3 1.7-2.1 3.7-3.4 6-3 3.7.6 5.5 4.2 4 7.6C19.5 16.4 12 21 12 21z"/></svg>' +
       '<span>' + (c.like_count || 0) + '</span>' +
     '</button>';
-    const replyBtn = isReply ? '' : '<button type="button" class="cmt-reply-btn" data-action="reply" data-comment-id="' + c.id + '">Reply</button>';
+    // Reply is available on every comment regardless of depth — replying
+    // to a reply is a real, unlimited-depth action now, not just on
+    // top-level comments.
+    const replyBtn = '<button type="button" class="cmt-reply-btn" data-action="reply" data-comment-id="' + c.id + '">Reply</button>';
     let deleteHtml = '';
     if(canDelete(c)){
       deleteHtml = confirmDeleteId === c.id
@@ -92,8 +107,8 @@ function createCommentsPanelController(els){
       '<div class="cmt-main">' +
         '<div class="cmt-meta"><span class="cmt-name">' + escapeHtml(name) + '</span><span class="cmt-time">' + timeAgo(c.created_at) + '</span></div>' +
         '<div class="cmt-body-text">' + mention + escapeHtml(c.body) + '</div>' +
-        actionsHtml(c, isReply) +
-        (!isReply && activeReplyBoxId === c.id ? replyBoxHtml(c.id) : '') +
+        actionsHtml(c) +
+        (activeReplyBoxId === c.id ? replyBoxHtml(c.id) : '') +
       '</div>' +
     '</div>';
   }
@@ -106,18 +121,34 @@ function createCommentsPanelController(els){
     '</div>';
   }
 
-  function repliesHtml(parentId, parentAuthorName){
-    const replies = repliesByParent[parentId] || [];
-    if(!replies.length) return '';
+  function repliesToggleHtml(parentId, count, expanded){
+    return '<button type="button" class="cmt-replies-toggle' + (expanded ? ' expanded' : '') + '" data-action="toggle-replies" data-comment-id="' + parentId + '">' +
+      count + ' ' + (count === 1 ? 'reply' : 'replies') +
+      ' <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg>' +
+    '</button>';
+  }
+
+  // Builds the flat list of html fragments for parentId's own replies —
+  // its "N replies" toggle (if it has any direct children) plus, only
+  // once expanded, each child row followed immediately by that child's
+  // own fragments (recursive). Every fragment this returns is appended
+  // as a direct sibling inside ONE .cmt-replies wrapper per root — never
+  // nested .cmt-replies-in-.cmt-replies — so no matter how deep the real
+  // parent_comment_id chain goes, everything renders at the exact same
+  // single indent level, each with its own correct "@name" mention and
+  // its own independent collapse/expand toggle.
+  function buildRepliesFragments(parentId){
+    const children = childrenByParent[parentId] || [];
+    if(!children.length) return [];
     const expanded = expandedReplyGroups.has(parentId);
-    const visible = expanded ? replies : replies.slice(0, REPLIES_SHOWN_BY_DEFAULT);
-    const remaining = replies.length - visible.length;
-    let html = '<div class="cmt-replies">' + visible.map(r => rowHtml(r, true, parentAuthorName)).join('');
-    if(remaining > 0){
-      html += '<button type="button" class="cmt-show-more" data-action="show-more-replies" data-comment-id="' + parentId + '">Show more replies (' + remaining + ') <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></button>';
-    }
-    html += '</div>';
-    return html;
+    const parts = [repliesToggleHtml(parentId, children.length, expanded)];
+    if(!expanded) return parts;
+    const parentAuthorName = commentDisplayName(commentsById[parentId]);
+    children.forEach(child => {
+      parts.push(rowHtml(child, true, parentAuthorName));
+      parts.push.apply(parts, buildRepliesFragments(child.id));
+    });
+    return parts;
   }
 
   function render(){
@@ -129,10 +160,15 @@ function createCommentsPanelController(els){
       return;
     }
 
-    const { topLevel, byParent } = groupComments(comments);
-    repliesByParent = byParent;
+    const { topLevel, byParent, byId } = groupComments(comments);
+    childrenByParent = byParent;
+    commentsById = byId;
 
-    els.bodyEl.innerHTML = topLevel.map(c => rowHtml(c, false, null) + repliesHtml(c.id, commentDisplayName(c))).join('');
+    els.bodyEl.innerHTML = topLevel.map(c => {
+      const replyParts = buildRepliesFragments(c.id);
+      const repliesBlock = replyParts.length ? '<div class="cmt-replies">' + replyParts.join('') + '</div>' : '';
+      return rowHtml(c, false, null) + repliesBlock;
+    }).join('');
     wireRows();
     wireComposer();
   }
@@ -178,9 +214,11 @@ function createCommentsPanelController(els){
       });
     });
 
-    els.bodyEl.querySelectorAll('[data-action="show-more-replies"]').forEach(btn => {
+    els.bodyEl.querySelectorAll('[data-action="toggle-replies"]').forEach(btn => {
       btn.addEventListener('click', () => {
-        expandedReplyGroups.add(btn.dataset.commentId);
+        const id = btn.dataset.commentId;
+        if(expandedReplyGroups.has(id)) expandedReplyGroups.delete(id);
+        else expandedReplyGroups.add(id);
         render();
       });
     });

@@ -1114,13 +1114,14 @@
     padding-left:14px;
     border-left:1px solid rgba(255,255,255,0.08);
   }
-  .cmt-show-more{
+  .cmt-replies-toggle{
     display:flex;align-items:center;gap:4px;
     background:none;border:none;color:var(--leaf-light);
     font-size:12px;font-weight:700;cursor:pointer;
     padding:6px 0;
   }
-  .cmt-show-more svg{width:13px;height:13px;}
+  .cmt-replies-toggle svg{width:13px;height:13px;transition:transform 0.2s ease;}
+  .cmt-replies-toggle.expanded svg{transform:rotate(180deg);}
   .cmt-reply-box{
     display:flex;gap:8px;margin-top:8px;
   }
@@ -2232,6 +2233,7 @@
     .watch-action svg{width:22px;height:22px;}
     .watch-action:hover{color:var(--text);}
     .watch-action.active{color:var(--leaf-light);}
+    .watch-action.active svg{fill:var(--leaf-light);}
 
     /* Range tabs — only rendered at all once a series actually has
        enough episodes to need grouping (see watch.js); a 2-3 episode

@@ -328,6 +328,51 @@ async function uploadEpisodeToBunny({ seriesId, seriesTitle, episodeNumber, titl
   }
 }
 
+// Calls the already-deployed bunny-delete-video Edge Function to remove
+// one real video asset from Bunny — the real counterpart to
+// uploadEpisodeToBunny above, used by an episode's delete action so
+// deleting the record also stops it costing Bunny storage, instead of
+// just forgetting about an orphaned video. Confirmed live against the
+// real function: it expects {videoId}, returns {success:true} on a
+// genuine success and {error:"..."} with a non-2xx status on failure —
+// same envelope shape bunny-upload-init already uses, so this mirrors
+// that same error-message handling. Throws on any failure (missing/bad
+// session, non-2xx response, success:false, or a network error) — the
+// caller decides what "don't silently pretend it worked" looks like on
+// its end (see handleDelete in admin-episodes.js: the database row is
+// never deleted unless this resolves).
+async function deleteBunnyVideo(videoId){
+  const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
+  if(sessionError) throw sessionError;
+  if(!sessionData || !sessionData.session || !sessionData.session.access_token){
+    throw new Error('No active session — please log in again.');
+  }
+
+  let response;
+  try {
+    response = await fetch(SUPABASE_URL + '/functions/v1/bunny-delete-video', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + sessionData.session.access_token,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ videoId })
+    });
+  } catch(networkErr){
+    throw new Error('Could not reach Bunny to delete the video — check your connection and try again.');
+  }
+
+  let body = null;
+  try { body = await response.json(); } catch(_parseErr){ /* body wasn't JSON */ }
+
+  if(!response.ok || !body || body.success !== true){
+    const message = (body && (body.error || body.message)) || ('Bunny video deletion failed (status ' + response.status + ').');
+    throw new Error(message);
+  }
+
+  return body;
+}
+
 // Cover image uploads (Create Series + Series List edit forms) — real
 // files going to the existing `cover-images` Supabase Storage bucket
 // (admin-only write access already configured there), replacing the old

@@ -71,9 +71,14 @@ function editRowHtml(ep){
 
 function deleteRowHtml(ep){
   const series = epSeriesById[ep.series_id];
+  const label = 'Ep ' + ep.episode_number + (ep.title ? ' — “' + escapeHtml(ep.title) + '”' : '') + (series ? ' from “' + escapeHtml(series.title) + '”' : '');
+  const warning = ep.bunny_video_id
+    ? 'Delete ' + label + '? This removes the episode record from Narrava <strong>and</strong> deletes the actual video file from Bunny — both go away for good. This can’t be undone.'
+    : 'Delete ' + label + '? This episode has no video attached, so this only removes the episode record from Narrava. This can’t be undone.';
   return '<tr data-episode-id="' + ep.id + '"><td colspan="5">' +
     '<div class="admin-delete-confirm">' +
-      '<p>Delete Ep ' + ep.episode_number + (ep.title ? ' — “' + escapeHtml(ep.title) + '”' : '') + (series ? ' from “' + escapeHtml(series.title) + '”' : '') + '? This removes the episode record from Narrava. It does <strong>not</strong> delete the actual video file on Bunny — there\'s no way to do that from this app yet, only the database row goes away. This can’t be undone.</p>' +
+      '<p>' + warning + '</p>' +
+      '<div class="auth-error" id="epDeleteError-' + ep.id + '"></div>' +
       '<div class="admin-delete-confirm-actions">' +
         '<button type="button" class="admin-delete-confirm-btn" data-action="confirm-delete" data-episode-id="' + ep.id + '">Delete Permanently</button>' +
         '<button type="button" class="admin-delete-cancel-btn" data-action="cancel-delete">Cancel</button>' +
@@ -158,21 +163,59 @@ async function handleEditSubmit(e){
   }
 }
 
+// Real delete, both halves together: the actual video asset on Bunny
+// (via deleteBunnyVideo — admin-shared.js, the already-deployed
+// bunny-delete-video function) and the database row. Bunny goes first,
+// on purpose — if it fails, the database row is left completely alone
+// rather than silently deleting the record and pretending the video
+// went with it. An episode with no video attached (bunny_video_id
+// null) skips straight to the database delete, since there's nothing
+// real on Bunny to remove.
 async function handleDelete(btn){
   const epId = btn.dataset.episodeId;
+  const ep = epAllEpisodes.find(e => String(e.id) === String(epId));
+  const errorEl = document.getElementById('epDeleteError-' + epId);
+  if(errorEl){ errorEl.textContent = ''; errorEl.classList.remove('show'); }
+
   btn.disabled = true;
   btn.textContent = 'Deleting…';
+
+  if(ep && ep.bunny_video_id){
+    try {
+      await deleteBunnyVideo(ep.bunny_video_id);
+    } catch(err){
+      console.error('Narrava: failed to delete video from Bunny — episode record left untouched', err);
+      if(errorEl){
+        errorEl.textContent = 'Could not delete the video from Bunny: ' + (err.message || 'please try again') + '. The episode record was not deleted either.';
+        errorEl.classList.add('show');
+      } else {
+        showToast('Could not delete the video from Bunny — the episode record was not deleted either');
+      }
+      btn.disabled = false;
+      btn.textContent = 'Delete Permanently';
+      return;
+    }
+  }
+
   try {
     const { error } = await supabaseClient.from('episodes').delete().eq('id', epId);
     if(error) throw error;
 
-    epAllEpisodes = epAllEpisodes.filter(ep => String(ep.id) !== String(epId));
+    epAllEpisodes = epAllEpisodes.filter(e => String(e.id) !== String(epId));
     epDeletingId = null;
-    showToast('Episode record deleted ✓ — the video file on Bunny was not removed');
+    showToast('Episode deleted ✓' + (ep && ep.bunny_video_id ? ' — the video on Bunny was removed too' : ''));
     renderTable();
   } catch(err){
-    console.error('Narrava: failed to delete episode', err);
-    showToast('Could not delete episode — please try again');
+    console.error('Narrava: video deleted from Bunny, but the episode record could not be deleted', err);
+    const message = ep && ep.bunny_video_id
+      ? 'The video was deleted from Bunny, but the episode record could not be deleted: ' + (err.message || 'please try again') + '. Try deleting again to remove the leftover record.'
+      : 'Could not delete the episode record: ' + (err.message || 'please try again');
+    if(errorEl){
+      errorEl.textContent = message;
+      errorEl.classList.add('show');
+    } else {
+      showToast(message);
+    }
     btn.disabled = false;
     btn.textContent = 'Delete Permanently';
   }
@@ -363,7 +406,7 @@ async function handleUploadSubmit(e){
   if(failed === 0){
     summaryEl.textContent = 'All ' + succeeded + ' episode' + (succeeded === 1 ? '' : 's') + ' uploaded ✓';
     summaryEl.classList.add('success');
-    showToast(succeeded + ' episode' + (succeeded === 1 ? '' : 's') + ' uploaded ✓ — Bunny may take a few minutes to finish processing');
+    showBunnyProcessingToast(succeeded + ' episode' + (succeeded === 1 ? '' : 's') + ' uploaded — Bunny may take a few minutes to finish processing');
     epQueue = [];
     document.getElementById('epUploadFile').value = '';
     document.getElementById('epUploadFileBtn').textContent = 'Add Video Files (select multiple at once)';
@@ -387,6 +430,7 @@ document.getElementById('episodesSearch').addEventListener('input', (e) => {
 
 (async () => {
   await requireAdminSession('episodes');
+  document.getElementById('episodesTableWrap').innerHTML = narravaLoaderHtml('pulse', 'Loading episodes…');
 
   const params = new URLSearchParams(window.location.search);
   const preselectSeries = params.get('series');

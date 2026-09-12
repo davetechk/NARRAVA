@@ -11,6 +11,99 @@
     --gold-deep:#C99A3E;
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+
+  /* ============ Loading states (shared, main app + admin) ============
+     Two variants, already reviewed and picked — structure/animation
+     kept exactly as built (see loading-animations.html): a gentle pulse
+     for any general-purpose "just needs a moment" wait, and orbiting
+     dots specifically for the one real wait this app has where the
+     on-screen state genuinely lags reality — Bunny Stream still
+     processing an episode after upload. The only change from the
+     reviewed build is the mark at the center: Narrava's own real icon
+     (img/icon-triangle.png — a plain green play triangle) in place of
+     the placeholder "N" box, used as-is with no added circle or
+     background shape behind it. See narravaLoaderHtml() in
+     shared-utils.js for the markup this CSS is styling. */
+  .narrava-loading-block{
+    display:flex;flex-direction:column;align-items:center;
+    gap:14px;
+    padding:40px 20px;
+  }
+  .narrava-loading-label{
+    font-size:12.5px;color:var(--muted);letter-spacing:.2px;
+  }
+  .narrava-loader{
+    position:relative;width:64px;height:64px;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .narrava-loader-icon{
+    width:32px;height:32px;
+    object-fit:contain;
+    position:relative;z-index:2;
+    display:block;
+  }
+  /* Variant: gentle pulse — general purpose */
+  .narrava-loader-pulse .pulse-ring{
+    position:absolute;width:42px;height:42px;border-radius:14px;
+    background:var(--leaf);
+    opacity:0;
+    animation:narrava-pulse 1.8s ease-out infinite;
+  }
+  .narrava-loader-pulse .pulse-ring.delay{ animation-delay:.9s; }
+  .narrava-loader-pulse .narrava-loader-icon{ animation:narrava-breathe 1.8s ease-in-out infinite; }
+  @keyframes narrava-pulse{
+    0%{ transform:scale(.7); opacity:.55; }
+    100%{ transform:scale(1.7); opacity:0; }
+  }
+  @keyframes narrava-breathe{
+    0%,100%{ transform:scale(1); }
+    50%{ transform:scale(1.08); }
+  }
+  /* Variant: orbit dots — Bunny Stream processing wait */
+  .narrava-loader-orbit .orbit{
+    position:absolute;inset:0;
+    animation:narrava-orbit-spin 1.4s linear infinite;
+  }
+  .narrava-loader-orbit .dot{
+    position:absolute;width:6px;height:6px;border-radius:50%;
+    background:var(--leaf-light);
+    top:50%;left:50%;
+    transform-origin:0 0;
+  }
+  .narrava-loader-orbit .dot:nth-child(1){ transform:rotate(0deg) translate(29px) translate(-3px,-3px); background:var(--leaf); }
+  .narrava-loader-orbit .dot:nth-child(2){ transform:rotate(120deg) translate(29px) translate(-3px,-3px); opacity:.7; }
+  .narrava-loader-orbit .dot:nth-child(3){ transform:rotate(240deg) translate(29px) translate(-3px,-3px); opacity:.4; }
+  @keyframes narrava-orbit-spin{ to{ transform:rotate(360deg); } }
+
+  /* Small persisting notice (Bunny processing) — reuses .narrava-loader-orbit
+     at a smaller scale inline with text, for the one spot this app
+     genuinely has that wait: right after an episode upload succeeds. */
+  .narrava-processing-toast{
+    position:fixed;left:50%;bottom:28px;
+    transform:translateX(-50%) translateY(20px);
+    display:flex;align-items:center;gap:10px;
+    background:var(--panel);border:1px solid rgba(255,255,255,0.1);
+    border-radius:12px;
+    padding:10px 16px 10px 10px;
+    box-shadow:0 10px 30px rgba(0,0,0,0.45);
+    opacity:0;pointer-events:none;
+    transition:opacity 0.25s ease, transform 0.25s ease;
+    z-index:400;
+    max-width:min(92vw,380px);
+  }
+  .narrava-processing-toast.show{
+    opacity:1;transform:translateX(-50%) translateY(0);
+  }
+  .narrava-processing-toast .narrava-loader{ width:36px;height:36px;flex-shrink:0; }
+  .narrava-processing-toast .narrava-loader-icon{ width:18px;height:18px; }
+  .narrava-processing-toast .narrava-loader-orbit .dot{ width:4px;height:4px; }
+  .narrava-processing-toast .narrava-loader-orbit .dot:nth-child(1){ transform:rotate(0deg) translate(16px) translate(-2px,-2px); }
+  .narrava-processing-toast .narrava-loader-orbit .dot:nth-child(2){ transform:rotate(120deg) translate(16px) translate(-2px,-2px); }
+  .narrava-processing-toast .narrava-loader-orbit .dot:nth-child(3){ transform:rotate(240deg) translate(16px) translate(-2px,-2px); }
+  .narrava-processing-toast-text{
+    font-size:12.5px;color:var(--text);line-height:1.4;
+  }
+
   /* Form controls don't inherit font-family by default in any browser
      (a well-known UA-stylesheet quirk) — without this, any button/input
      text that doesn't set its own font-family falls back to the

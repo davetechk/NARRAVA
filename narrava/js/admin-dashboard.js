@@ -212,7 +212,7 @@ async function handleDashUploadSubmit(e){
 
   try {
     await uploadEpisodeToBunny({ seriesId, seriesTitle: series.title, episodeNumber, title, file }, els);
-    showToast('Episode uploaded ✓ — Bunny may take a few minutes to finish processing');
+    showBunnyProcessingToast('Episode uploaded — Bunny may take a few minutes to finish processing');
     document.getElementById('dashUploadForm').reset();
     document.getElementById('dashUploadFileBtn').textContent = 'Add Video File';
     document.getElementById('dashUploadNumber').value = 1;

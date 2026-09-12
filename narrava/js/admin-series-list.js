@@ -306,6 +306,7 @@ document.getElementById('seriesListSearch').addEventListener('input', (e) => {
 
 (async () => {
   await requireAdminSession('series-list');
+  document.getElementById('seriesListTableWrap').innerHTML = narravaLoaderHtml('pulse', 'Loading series…');
 
   try {
     const [core, episodesResult] = await Promise.all([

@@ -58,6 +58,7 @@ const likeCount = document.getElementById('likeCount');
 const likeBtn = document.getElementById('likeBtn');
 const bookmarkBtn = document.getElementById('bookmarkBtn');
 const commentBtn = document.getElementById('commentBtn');
+const commentCount = document.getElementById('commentCount');
 const commentsSheetBackdrop = document.getElementById('commentsSheetBackdrop');
 const commentsSheet = document.getElementById('commentsSheet');
 const commentsSheetClose = document.getElementById('commentsSheetClose');
@@ -632,6 +633,7 @@ function render(){
   likeCount.textContent = s.likes;
   likeBtn.classList.toggle('liked', s.liked);
   bookmarkBtn.classList.toggle('saved', s.saved);
+  commentCount.textContent = s.commentCount;
   if(!s.socialLoaded) loadFeedSocialState(s);
   coinBalance.textContent = coins;
   buildSpine(s.currentEp, s.totalEp);
@@ -660,10 +662,12 @@ async function loadFeedSocialState(s){
   s.likes = state.likeCount;
   s.liked = state.liked;
   s.saved = state.saved;
+  s.commentCount = state.commentCount;
   if(slides[idx] === s){
     likeCount.textContent = s.likes;
     likeBtn.classList.toggle('liked', s.liked);
     bookmarkBtn.classList.toggle('saved', s.saved);
+    commentCount.textContent = s.commentCount;
   }
 }
 

@@ -1122,6 +1122,14 @@
   }
   .cmt-replies-toggle svg{width:13px;height:13px;transition:transform 0.2s ease;}
   .cmt-replies-toggle.expanded svg{transform:rotate(180deg);}
+  .cmt-load-more{
+    display:block;
+    background:none;border:none;color:var(--muted);
+    font-size:12px;font-weight:700;cursor:pointer;
+    padding:6px 0 6px 0;
+    text-decoration:underline;
+  }
+  .cmt-load-more:hover{color:var(--text);}
   .cmt-reply-box{
     display:flex;gap:8px;margin-top:8px;
   }

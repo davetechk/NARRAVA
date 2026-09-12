@@ -50,14 +50,19 @@ async function fetchMySeriesLikeSaveState(seriesId, userId){
 // Fetches the real count + this viewer's own liked/saved state together
 // — one place both app.js (mobile feed) and watch.js (desktop) call
 // whenever a series becomes the current one, rather than two separate
-// implementations of the same real lookup.
+// implementations of the same real lookup. commentCount reuses
+// fetchSeriesComments (the one real source for comment data — see
+// below) rather than a separate count-only query, so the number shown
+// next to the Comment icon on the main screen can never drift from the
+// same real total the opened panel's own heading shows.
 async function fetchSeriesSocialState(seriesId){
   const userId = await getSignedInUserId();
-  const [likeCount, myState] = await Promise.all([
+  const [likeCount, myState, commentCount] = await Promise.all([
     fetchSeriesLikeCount(seriesId),
-    fetchMySeriesLikeSaveState(seriesId, userId)
+    fetchMySeriesLikeSaveState(seriesId, userId),
+    fetchSeriesCommentCount(seriesId)
   ]);
-  return { likeCount, liked: myState.liked, saved: myState.saved };
+  return { likeCount, liked: myState.liked, saved: myState.saved, commentCount };
 }
 
 // Toggles a real row in series_likes for the signed-in viewer. Returns
@@ -128,6 +133,16 @@ async function fetchSeriesComments(seriesId){
     console.error('Narrava: failed to fetch series comments', err);
     return [];
   }
+}
+
+// The real total shown next to the Comment icon on the main screen
+// (mobile feed and desktop watch page) — comments and replies together,
+// same number the opened panel's own heading shows, since both read it
+// off the same fetchSeriesComments array rather than two separate ways
+// of counting.
+async function fetchSeriesCommentCount(seriesId){
+  const comments = await fetchSeriesComments(seriesId);
+  return comments.length;
 }
 
 // Posts a real comment or reply (parentCommentId null/omitted for a

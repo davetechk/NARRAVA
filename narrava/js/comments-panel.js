@@ -14,17 +14,27 @@
 // to the top-level id). What stays fixed is the VISUAL indentation: every
 // non-root comment renders at the same single indent level regardless of
 // its real depth, with its own "@name" naming whichever specific comment
-// it actually replies to. This is done by rendering an entire root's
-// descendant subtree as one flat list inside a single .cmt-replies
-// wrapper (never nesting one .cmt-replies inside another, which would
-// compound the indent per level) — see buildRepliesFragments below. Each
-// node in that flat list still gets its own independent "N replies"
-// collapse/expand toggle for its own direct children, hidden by default.
+// it actually replies to.
+//
+// Matching how YouTube actually structures this (checked directly):
+// only the original top-level comment gets a "N replies" toggle. There is
+// no separate toggle at any deeper level — tapping the one toggle reveals
+// that comment's ENTIRE real reply chain, however deep it actually goes,
+// flattened into one single list (see flattenSubtree below). If that one
+// list is itself long, a real "Load more" control reveals the rest of it
+// in place — a batch limit on how much of the ALREADY-open list is shown,
+// not a second kind of toggle.
 //
 // After any write (post, delete, like), the whole panel just re-fetches
 // via load() rather than guessing the new state locally — simpler and
 // guaranteed correct, since get_series_comments already computes
 // like_count/liked_by_me for us.
+
+// How many of a root's flattened replies show right away once its
+// toggle is opened, before "Load more" is needed — a reasonable first
+// batch, not the honest full count (that's what the toggle's own number
+// already shows).
+const REPLIES_INITIAL_BATCH = 5;
 
 function commentDisplayName(c){
   return (c.display_name && c.display_name.trim()) ? c.display_name.trim() : 'Narrava viewer';
@@ -47,7 +57,8 @@ function createCommentsPanelController(els){
   let comments = [];
   let commentsById = {};
   let childrenByParent = {};
-  let expandedReplyGroups = new Set(); // comment ids whose own direct children are currently shown
+  let expandedRoots = new Set(); // top-level comment ids whose full reply chain is currently open
+  let visibleCounts = {}; // root id -> how many of its flattened replies are currently shown
   let activeReplyBoxId = null; // comment id (any depth) currently showing an inline reply composer
   let confirmDeleteId = null;
   let isAdmin = false;
@@ -121,34 +132,58 @@ function createCommentsPanelController(els){
     '</div>';
   }
 
-  function repliesToggleHtml(parentId, count, expanded){
-    return '<button type="button" class="cmt-replies-toggle' + (expanded ? ' expanded' : '') + '" data-action="toggle-replies" data-comment-id="' + parentId + '">' +
+  function repliesToggleHtml(rootId, count, expanded){
+    return '<button type="button" class="cmt-replies-toggle' + (expanded ? ' expanded' : '') + '" data-action="toggle-replies" data-comment-id="' + rootId + '">' +
       count + ' ' + (count === 1 ? 'reply' : 'replies') +
       ' <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg>' +
     '</button>';
   }
 
-  // Builds the flat list of html fragments for parentId's own replies —
-  // its "N replies" toggle (if it has any direct children) plus, only
-  // once expanded, each child row followed immediately by that child's
-  // own fragments (recursive). Every fragment this returns is appended
-  // as a direct sibling inside ONE .cmt-replies wrapper per root — never
-  // nested .cmt-replies-in-.cmt-replies — so no matter how deep the real
-  // parent_comment_id chain goes, everything renders at the exact same
-  // single indent level, each with its own correct "@name" mention and
-  // its own independent collapse/expand toggle.
-  function buildRepliesFragments(parentId){
+  // Walks a root's ENTIRE descendant subtree (however deep the real
+  // parent_comment_id chain goes) into one flat, depth-first ordered
+  // array — each entry paired with the display name of whichever exact
+  // comment it's actually replying to, never hardcoded to the root. This
+  // is the one real reply chain a root's single toggle reveals; there is
+  // no separate per-level toggle anywhere in this list.
+  function flattenSubtree(parentId){
     const children = childrenByParent[parentId] || [];
-    if(!children.length) return [];
-    const expanded = expandedReplyGroups.has(parentId);
-    const parts = [repliesToggleHtml(parentId, children.length, expanded)];
-    if(!expanded) return parts;
+    const out = [];
     const parentAuthorName = commentDisplayName(commentsById[parentId]);
     children.forEach(child => {
-      parts.push(rowHtml(child, true, parentAuthorName));
-      parts.push.apply(parts, buildRepliesFragments(child.id));
+      out.push({ comment: child, mentionName: parentAuthorName });
+      out.push.apply(out, flattenSubtree(child.id));
     });
-    return parts;
+    return out;
+  }
+
+  // Finds the top-level ancestor of any comment id — used after posting
+  // a reply so the right ROOT gets expanded (only roots have a toggle
+  // now, so expanding "the parent that was just replied to" only makes
+  // sense once translated up to its root).
+  function findRootId(commentId){
+    let current = commentsById[commentId];
+    while(current && current.parent_comment_id){
+      current = commentsById[current.parent_comment_id];
+    }
+    return current ? current.id : commentId;
+  }
+
+  function repliesBlockHtml(root){
+    const flat = flattenSubtree(root.id);
+    if(!flat.length) return '';
+    const expanded = expandedRoots.has(root.id);
+    if(!expanded){
+      return '<div class="cmt-replies">' + repliesToggleHtml(root.id, flat.length, false) + '</div>';
+    }
+    const visibleCount = Math.min(visibleCounts[root.id] || REPLIES_INITIAL_BATCH, flat.length);
+    const visible = flat.slice(0, visibleCount);
+    const remaining = flat.length - visible.length;
+    let html = repliesToggleHtml(root.id, flat.length, true) +
+      visible.map(item => rowHtml(item.comment, true, item.mentionName)).join('');
+    if(remaining > 0){
+      html += '<button type="button" class="cmt-load-more" data-action="load-more-replies" data-comment-id="' + root.id + '">Load ' + remaining + ' more repl' + (remaining === 1 ? 'y' : 'ies') + '</button>';
+    }
+    return '<div class="cmt-replies">' + html + '</div>';
   }
 
   function render(){
@@ -164,11 +199,7 @@ function createCommentsPanelController(els){
     childrenByParent = byParent;
     commentsById = byId;
 
-    els.bodyEl.innerHTML = topLevel.map(c => {
-      const replyParts = buildRepliesFragments(c.id);
-      const repliesBlock = replyParts.length ? '<div class="cmt-replies">' + replyParts.join('') + '</div>' : '';
-      return rowHtml(c, false, null) + repliesBlock;
-    }).join('');
+    els.bodyEl.innerHTML = topLevel.map(c => rowHtml(c, false, null) + repliesBlockHtml(c)).join('');
     wireRows();
     wireComposer();
   }
@@ -209,7 +240,13 @@ function createCommentsPanelController(els){
         const ok = await postSeriesComment(seriesId, body, parentId);
         if(!ok) return;
         activeReplyBoxId = null;
-        expandedReplyGroups.add(parentId); // the reply they just wrote should be visible, not hidden behind "Show more"
+        // The reply they just wrote should be visible, not hidden behind
+        // the root's own toggle or a "Load more" — only roots have a
+        // toggle now, so expand whichever root this reply actually
+        // belongs to, and lift the batch cap so the new one shows.
+        const rootId = findRootId(parentId);
+        expandedRoots.add(rootId);
+        visibleCounts[rootId] = Infinity;
         await load(seriesId);
       });
     });
@@ -217,8 +254,19 @@ function createCommentsPanelController(els){
     els.bodyEl.querySelectorAll('[data-action="toggle-replies"]').forEach(btn => {
       btn.addEventListener('click', () => {
         const id = btn.dataset.commentId;
-        if(expandedReplyGroups.has(id)) expandedReplyGroups.delete(id);
-        else expandedReplyGroups.add(id);
+        if(expandedRoots.has(id)){
+          expandedRoots.delete(id);
+          delete visibleCounts[id];
+        } else {
+          expandedRoots.add(id);
+        }
+        render();
+      });
+    });
+
+    els.bodyEl.querySelectorAll('[data-action="load-more-replies"]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        visibleCounts[btn.dataset.commentId] = Infinity;
         render();
       });
     });
@@ -275,10 +323,15 @@ function createCommentsPanelController(els){
     comments = fetchedComments;
     isAdmin = admin;
     myUserId = userId;
-    expandedReplyGroups = new Set();
+    expandedRoots = new Set();
+    visibleCounts = {};
     activeReplyBoxId = null;
     confirmDeleteId = null;
     render();
+    // Lets the main screen's own Comment icon badge (app.js/watch.js)
+    // stay in sync with the exact same real total this panel's heading
+    // just showed — one real source, read in two places.
+    if(els.onCountChange) els.onCountChange(newSeriesId, comments.length);
   }
 
   return { load };
@@ -290,12 +343,26 @@ const feedCommentsController = createCommentsPanelController({
   bodyEl: document.getElementById('feedCommentsBody'),
   countEl: document.getElementById('feedCommentsCount'),
   inputEl: document.getElementById('feedCommentsInput'),
-  postBtn: document.getElementById('feedCommentsPost')
+  postBtn: document.getElementById('feedCommentsPost'),
+  // Mirrors the real total onto the mobile feed's own Comment icon —
+  // slides[idx] is always the series this panel was opened for.
+  onCountChange: (loadedSeriesId, count) => {
+    const s = slides.find(sl => sl.id === loadedSeriesId);
+    if(s) s.commentCount = count;
+    if(slides[idx] && slides[idx].id === loadedSeriesId) commentCount.textContent = count;
+  }
 });
 
 const watchCommentsController = createCommentsPanelController({
   bodyEl: document.getElementById('watchCommentsBody'),
   countEl: document.getElementById('watchCommentsCount'),
   inputEl: document.getElementById('watchCommentsInput'),
-  postBtn: document.getElementById('watchCommentsPost')
+  postBtn: document.getElementById('watchCommentsPost'),
+  // Same real mirroring onto the desktop watch page's own Comment icon.
+  onCountChange: (loadedSeriesId, count) => {
+    if(watchSlide && watchSlide.id === loadedSeriesId){
+      watchSlide.commentCount = count;
+      watchCommentCount.textContent = count;
+    }
+  }
 });

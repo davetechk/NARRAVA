@@ -49,6 +49,7 @@ const watchLikeCount = document.getElementById('watchLikeCount');
 const watchSaveBtn = document.getElementById('watchSaveBtn');
 const watchShareBtn = document.getElementById('watchShareBtn');
 const watchCommentBtn = document.getElementById('watchCommentBtn');
+const watchCommentCount = document.getElementById('watchCommentCount');
 const watchCommentsBackdrop = document.getElementById('watchCommentsBackdrop');
 const watchCommentsClose = document.getElementById('watchCommentsClose');
 const watchCommentsBody = document.getElementById('watchCommentsBody');
@@ -236,6 +237,7 @@ async function openWatchScreen(slideIndex, resume){
   watchLikeBtn.classList.toggle('active', slide.liked);
   watchLikeCount.textContent = String(slide.likes);
   watchSaveBtn.classList.toggle('active', slide.saved);
+  watchCommentCount.textContent = String(slide.commentCount);
   watchEpisodes = [];
   watchEpRangesEl.innerHTML = '';
   watchEpisodeGrid.innerHTML = '';
@@ -262,10 +264,12 @@ async function loadWatchSocialState(slide){
   slide.likes = state.likeCount;
   slide.liked = state.liked;
   slide.saved = state.saved;
+  slide.commentCount = state.commentCount;
   if(watchSlide === slide){
     watchLikeBtn.classList.toggle('active', slide.liked);
     watchLikeCount.textContent = String(slide.likes);
     watchSaveBtn.classList.toggle('active', slide.saved);
+    watchCommentCount.textContent = String(slide.commentCount);
   }
 }
 

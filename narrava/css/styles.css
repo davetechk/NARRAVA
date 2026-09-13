@@ -1109,9 +1109,23 @@
   .cmt-delete-no{
     color:var(--muted);background:none;border:none;cursor:pointer;font-size:12px;padding:0;
   }
-  .cmt-replies{
+  /* .cmt-root-replies wraps a root comment's toggle + (once open) its
+     whole reply chain and "Load more" — no indent/line of its own, it's
+     not a reply level itself. .cmt-replies is the real per-level piece:
+     one is rendered per parent that actually has visible children (see
+     renderChildrenHtml in comments-panel.js), so its border-left only
+     ever spans that specific parent's own children — two replies to the
+     same comment share one .cmt-replies (same small indent, branching
+     from the same point), and something replying to one of those two
+     gets its own nested .cmt-replies one further small step in. The
+     10px step is deliberately small (not the ~32px gap between a root
+     and its avatar) so depth stays readable without a deep real thread
+     overflowing a narrow phone. */
+  .cmt-root-replies{
     margin-top:4px;
-    padding-left:14px;
+  }
+  .cmt-replies{
+    padding-left:10px;
     border-left:1px solid rgba(255,255,255,0.08);
   }
   .cmt-replies-toggle{

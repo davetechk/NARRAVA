@@ -11,19 +11,35 @@
 // Reply depth itself is unlimited — a reply can be posted on any other
 // comment or reply, at any depth, and parent_comment_id always points at
 // whichever exact comment was actually being replied to (never forced up
-// to the top-level id). What stays fixed is the VISUAL indentation: every
-// non-root comment renders at the same single indent level regardless of
-// its real depth, with its own "@name" naming whichever specific comment
-// it actually replies to.
+// to the top-level id).
 //
-// Matching how YouTube actually structures this (checked directly):
-// only the original top-level comment gets a "N replies" toggle. There is
-// no separate toggle at any deeper level — tapping the one toggle reveals
-// that comment's ENTIRE real reply chain, however deep it actually goes,
-// flattened into one single list (see flattenSubtree below). If that one
-// list is itself long, a real "Load more" control reveals the rest of it
-// in place — a batch limit on how much of the ALREADY-open list is shown,
-// not a second kind of toggle.
+// Only the original top-level comment gets a "N replies" toggle — there
+// is no separate toggle at any deeper level. Tapping that one toggle
+// reveals the comment's ENTIRE real reply chain, however deep it
+// actually goes, all in one place (see renderChildrenHtml below), in the
+// same depth-first order a real conversation actually happened in — a
+// reply always lands right after the specific comment it answers.
+//
+// Worked out directly as two diagrams with the person running this
+// project: each reply's connecting line has to visibly branch from the
+// specific comment it answers, not run as one line straight from the
+// root through everything under it — so this renders REAL nested
+// containers (one .cmt-replies per parent that actually has visible
+// children), each contributing one small indent step and its own
+// border-left, rather than one flat list at a single indent. Two
+// replies answering the same comment share that comment's own nested
+// container, so they land at the same small indent, branching from the
+// same point; something replying to one of those two gets its own
+// nested container one further small step in. The indent step stays
+// small and fixed regardless of depth specifically so a genuinely deep
+// thread doesn't become unreadable on a narrow phone.
+//
+// If a root's real reply count is more than a reasonable first batch,
+// a real "Load more" control reveals the rest in place — a shared
+// budget threaded through the recursive render (see the `budget`
+// param below) that cuts the same depth-first walk off at N items,
+// wherever in the tree that happens to land, not a second kind of
+// toggle.
 //
 // After any write (post, delete, like), the whole panel just re-fetches
 // via load() rather than guessing the new state locally — simpler and
@@ -139,21 +155,16 @@ function createCommentsPanelController(els){
     '</button>';
   }
 
-  // Walks a root's ENTIRE descendant subtree (however deep the real
-  // parent_comment_id chain goes) into one flat, depth-first ordered
-  // array — each entry paired with the display name of whichever exact
-  // comment it's actually replying to, never hardcoded to the root. This
-  // is the one real reply chain a root's single toggle reveals; there is
-  // no separate per-level toggle anywhere in this list.
-  function flattenSubtree(parentId){
+  // Total real descendant count under parentId, however deep — used only
+  // for the root's own toggle label and the "Load more" remaining count,
+  // not for rendering (that's the recursive walk below, kept as its own
+  // separate pass so this count logic — unchanged — stays independent
+  // of how the tree actually gets drawn).
+  function countDescendants(parentId){
     const children = childrenByParent[parentId] || [];
-    const out = [];
-    const parentAuthorName = commentDisplayName(commentsById[parentId]);
-    children.forEach(child => {
-      out.push({ comment: child, mentionName: parentAuthorName });
-      out.push.apply(out, flattenSubtree(child.id));
-    });
-    return out;
+    let total = children.length;
+    children.forEach(child => { total += countDescendants(child.id); });
+    return total;
   }
 
   // Finds the top-level ancestor of any comment id — used after posting
@@ -168,22 +179,45 @@ function createCommentsPanelController(els){
     return current ? current.id : commentId;
   }
 
+  // Recursively renders parentId's own real children, each followed
+  // immediately by its own children (same depth-first, "reply lands
+  // right after what it answers" order as before) — but now as REAL
+  // nested .cmt-replies containers instead of one flat list, so each
+  // container's border-left visibly branches from parentId's own row
+  // and only ever spans parentId's own children, never anyone else's.
+  // budget.remaining is shared across the whole walk (mutated in place)
+  // so "Load more"'s batch cutoff lands at the same item regardless of
+  // which branch of the tree it falls in — the identical cutoff the old
+  // flat slice() did, just expressed while actually nesting.
+  function renderChildrenHtml(parentId, budget){
+    const children = childrenByParent[parentId] || [];
+    if(!children.length || budget.remaining <= 0) return '';
+    const parentAuthorName = commentDisplayName(commentsById[parentId]);
+    let html = '';
+    for(let i = 0; i < children.length && budget.remaining > 0; i++){
+      const child = children[i];
+      budget.remaining--;
+      html += rowHtml(child, true, parentAuthorName) + renderChildrenHtml(child.id, budget);
+    }
+    return html ? '<div class="cmt-replies">' + html + '</div>' : '';
+  }
+
   function repliesBlockHtml(root){
-    const flat = flattenSubtree(root.id);
-    if(!flat.length) return '';
+    const total = countDescendants(root.id);
+    if(!total) return '';
     const expanded = expandedRoots.has(root.id);
     if(!expanded){
-      return '<div class="cmt-replies">' + repliesToggleHtml(root.id, flat.length, false) + '</div>';
+      return '<div class="cmt-root-replies">' + repliesToggleHtml(root.id, total, false) + '</div>';
     }
-    const visibleCount = Math.min(visibleCounts[root.id] || REPLIES_INITIAL_BATCH, flat.length);
-    const visible = flat.slice(0, visibleCount);
-    const remaining = flat.length - visible.length;
-    let html = repliesToggleHtml(root.id, flat.length, true) +
-      visible.map(item => rowHtml(item.comment, true, item.mentionName)).join('');
+    const visibleLimit = Math.min(visibleCounts[root.id] || REPLIES_INITIAL_BATCH, total);
+    const budget = { remaining: visibleLimit };
+    const nested = renderChildrenHtml(root.id, budget);
+    const remaining = total - visibleLimit;
+    let html = repliesToggleHtml(root.id, total, true) + nested;
     if(remaining > 0){
       html += '<button type="button" class="cmt-load-more" data-action="load-more-replies" data-comment-id="' + root.id + '">Load ' + remaining + ' more repl' + (remaining === 1 ? 'y' : 'ies') + '</button>';
     }
-    return '<div class="cmt-replies">' + html + '</div>';
+    return '<div class="cmt-root-replies">' + html + '</div>';
   }
 
   function render(){

@@ -595,6 +595,18 @@ function renderContinueWatchingBar(){
 }
 
 async function initDiscover(){
+  // Real loading state for Home's own real first wait — genres, the
+  // genre links, and `slides` itself (app.js) are all real reads still
+  // in flight the moment this screen is ever seen. Which of these three
+  // containers is actually the visible one depends on device width/state
+  // (mobile always shows tabs+discoverBody; desktop's default view shows
+  // discoverHero+discoverShelves instead) — existing CSS already decides
+  // which, this just makes sure whichever one that is doesn't sit blank
+  // in the meantime.
+  if(discoverHero) discoverHero.innerHTML = narravaLoaderHtml('pulse', 'Loading Narrava…');
+  if(discoverShelves) discoverShelves.innerHTML = narravaLoaderHtml('pulse', 'Loading Narrava…');
+  if(discoverBody) discoverBody.innerHTML = narravaLoaderHtml('pulse', 'Loading Narrava…');
+
   const [genreRows, links] = await Promise.all([fetchGenres(), fetchSeriesGenres()]);
   genres = genreRows;
   links.forEach(link => {

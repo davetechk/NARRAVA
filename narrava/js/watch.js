@@ -123,7 +123,14 @@ function watchPlayEpisode(ep, resumeSeconds){
   iframe.src = bunnyEmbedSrc(ep.bunny_video_id);
   iframe.setAttribute('allow', 'autoplay');
   iframe.setAttribute('allowfullscreen', '');
-  watchPlayerHost.innerHTML = '';
+  // Real loading state instead of a blank/still-loading iframe for the
+  // real wait until Bunny's player actually becomes interactive — the
+  // iframe already starts loading underneath it (added to the DOM right
+  // away, just not shown), so this never adds any extra delay of its
+  // own, only replaces what was on screen during a wait that was
+  // already happening.
+  watchPlayerHost.innerHTML = '<div class="watch-player-loading">' + narravaLoaderHtml('pulse') + '</div>';
+  iframe.style.display = 'none';
   watchPlayerHost.appendChild(iframe);
 
   const player = new playerjs.Player(iframe);
@@ -131,6 +138,9 @@ function watchPlayEpisode(ep, resumeSeconds){
   player.on('ready', () => {
     if(watchActiveEpisodeId !== episodeId) return; // navigated away before ready
     watchPlayer = player;
+    const loadingEl = watchPlayerHost.querySelector('.watch-player-loading');
+    if(loadingEl) loadingEl.remove();
+    iframe.style.display = '';
     if(resumeSeconds && resumeSeconds > 0.5) seekWhenSeekable(player, episodeId, resumeSeconds, 25);
   });
   player.on('pause', () => {
@@ -230,7 +240,12 @@ async function openWatchScreen(slideIndex, resume){
   watchActiveEpisodeId = null;
   watchPlayer = null;
   watchActiveRange = 0;
-  watchPlayerHost.innerHTML = '';
+  // Real loading state for the (usually brief, but real) wait on this
+  // series' own real episode list — replaces what would otherwise be a
+  // blank grid and a misleading "Select an episode to play" for a
+  // series that in fact already has a real episode about to be chosen
+  // automatically, not one that's genuinely waiting on a person to pick.
+  watchPlayerHost.innerHTML = '<div class="watch-player-loading">' + narravaLoaderHtml('pulse') + '</div>';
   watchBreadcrumbEl.innerHTML = 'Home / ' + escapeWatchHtml(slide.title) + ' / <span>…</span>';
   watchTitleEl.textContent = slide.title;
   watchTagsEl.innerHTML = heroTagsFor(slide).map(t => '<span class="watch-tag">' + t + '</span>').join('');
@@ -240,7 +255,7 @@ async function openWatchScreen(slideIndex, resume){
   watchCommentCount.textContent = String(slide.commentCount);
   watchEpisodes = [];
   watchEpRangesEl.innerHTML = '';
-  watchEpisodeGrid.innerHTML = '';
+  watchEpisodeGrid.innerHTML = narravaLoaderHtml('pulse', 'Loading episodes…');
 
   showScreen('watch');
   loadWatchSocialState(slide);

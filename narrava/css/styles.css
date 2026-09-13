@@ -19,10 +19,15 @@
      dots specifically for the one real wait this app has where the
      on-screen state genuinely lags reality — Bunny Stream still
      processing an episode after upload. The only change from the
-     reviewed build is the mark at the center: Narrava's own real icon
-     (img/icon-triangle.png — a plain green play triangle) in place of
-     the placeholder "N" box, used as-is with no added circle or
-     background shape behind it. See narravaLoaderHtml() in
+     reviewed build is the mark at the center: Narrava's own real icon,
+     a traced vector pulled directly from the actual logo file
+     (narrava/img/load_img_icon.svg), inlined as real <svg> markup
+     (NARRAVA_LOADER_ICON_SVG in shared-utils.js) rather than an <img
+     src> — no broken-image path to get wrong — in place of the
+     placeholder "N" box, used as-is with no added circle or background
+     shape behind it. Sizing is controlled entirely by
+     .narrava-loader-icon below; the SVG's own viewBox scales inside it
+     the same way an <img> would. See narravaLoaderHtml() in
      shared-utils.js for the markup this CSS is styling. */
   .narrava-loading-block{
     display:flex;flex-direction:column;align-items:center;
@@ -189,6 +194,15 @@
     inset:0;
     animation:none;
   }
+  /* The real wait for a real episode's video to actually become
+     playable (see setLoadingArt in app.js) — fills the same frame a
+     real video or cover art would, with a solid backdrop since there's
+     no art behind it once this replaces it. */
+  .bgvideo-loading{
+    position:absolute;inset:0;
+    display:flex;align-items:center;justify-content:center;
+    background:var(--panel);
+  }
   .bgvideo iframe{
     width:100%;
     height:100%;
@@ -219,13 +233,26 @@
      of these visible, same as before video existed at all. The tap
      target itself (.playpulse) is deliberately NOT hidden here — it's
      still how play/pause works once watching (see playToggle's click
-     handler in app.js). */
+     handler in app.js).
+     .info itself stays up (rather than collapsing whole), with only its
+     title/synopsis/progress-bar/Continue button hidden individually —
+     the small "EP X · Y" badge (.epbadge) needs to stay visible and
+     tappable while watching (it's what opens the real episode jump
+     grid, see app.js), and .unlock needs to be able to show the real
+     unlock prompt while watching too, whenever the episode landed on is
+     actually locked (driven by JS via .unlock.hidden below, not by this
+     blanket rule — it has to work the same in both states). */
   .feed.watching .topbar,
   .feed.watching .spine,
   .feed.watching .pager,
   .feed.watching .vignette,
-  .feed.watching .info,
   .feed.watching .actionrail{
+    display:none;
+  }
+  .feed.watching .title,
+  .feed.watching .synopsis,
+  .feed.watching .progressbar,
+  .feed.watching .continue{
     display:none;
   }
 
@@ -388,6 +415,7 @@
     border:1px solid rgba(232,184,92,0.4);
     padding:3px 9px;
     border-radius:5px;
+    cursor:pointer;
     margin-bottom:9px;
   }
   .title{
@@ -447,11 +475,12 @@
     display:flex;align-items:center;gap:5px;
     white-space:nowrap;
   }
-  .unlock.unlocked{
-    background:rgba(125,179,89,0.14);
-    border-color:rgba(125,179,89,0.5);
-    color:var(--leaf-light);
-  }
+  /* Shown only while the episode actually being looked at right now
+     (browsing preview, or whichever real episode watching/swiping/the
+     jump grid landed on) is genuinely locked — see render() in app.js.
+     Nothing to prompt once it isn't, so it hides rather than switching
+     to some "already unlocked" cosmetic state. */
+  .unlock.hidden{display:none;}
   .unlock svg{width:13px;height:13px;}
 
   .bottomnav{
@@ -476,6 +505,18 @@
   }
   .navitem svg{width:21px;height:21px;}
   .navitem.active{color:var(--leaf-light);}
+
+  /* Mobile only (desktop already hides .bottomnav outright, further
+     down) — the feed sits over the full phone frame, bottom nav
+     included, and .bottomnav was never actually hidden for it despite
+     covering part of the video. body.feed-active already exists and is
+     already kept correct by showScreen() (app.js) for exactly this —
+     set the moment "For You" becomes the active screen, whether
+     browsing or actually watching, and cleared the moment it isn't, so
+     this needs no state of its own. */
+  body.feed-active .bottomnav{
+    display:none;
+  }
 
   /* Get Coins sheet */
   .sheet-backdrop{
@@ -1195,6 +1236,44 @@
   .cmt-body{
     flex:1;overflow-y:auto;
     padding:4px 0 10px;
+  }
+
+  /* Real episode jump grid, same .sheet shell as comments/Get Coins.
+     5 columns fits the phone frame's own width comfortably; locked
+     cells match the desktop watch page's own grid styling (small corner
+     lock badge, number stays visible) rather than inventing a different
+     look for the same real honest state. */
+  .epgrid-body{
+    flex:1;overflow-y:auto;
+    display:grid;
+    grid-template-columns:repeat(5, 1fr);
+    gap:8px;
+    padding:4px 0 10px;
+  }
+  .epgrid-cell{
+    position:relative;
+    height:48px;
+    display:flex;align-items:center;justify-content:center;
+    background:rgba(255,255,255,0.06);
+    border:1px solid rgba(255,255,255,0.12);
+    border-radius:8px;
+    color:var(--text);
+    font-family:'Montserrat',sans-serif;
+    font-weight:700;
+    font-size:14px;
+    cursor:pointer;
+  }
+  .epgrid-cell.active{
+    background:var(--leaf);
+    border-color:var(--leaf);
+    color:#0D130E;
+  }
+  .epgrid-cell.locked{color:var(--muted);}
+  .epgrid-cell-lock{
+    position:absolute;
+    top:4px;left:5px;
+    width:11px;height:11px;
+    color:var(--muted);
   }
 
   /* Sign Up / Log In popup, opened from inside the Profile screen above
@@ -2128,6 +2207,18 @@
       max-width:none;
       font-size:14px;
     }
+    /* Desktop's own dedicated per-series page (watch.js) is the real
+       "watch a series" experience at this width — this shared feed's
+       "For You" tab reuse is mobile-only in spirit (episode
+       swiping/the jump grid/the real per-episode unlock prompt are
+       genuinely mobile-only, see app.js), so it keeps its exact
+       pre-existing look here: the whole info panel, badge included,
+       stays hidden while watching, same as every other piece of chrome
+       .feed.watching already collapses at this width. */
+    body.feed-active .feed.watching .epbadge,
+    body.feed-active .feed.watching .unlock{
+      display:none;
+    }
 
     /* ----- Watch page (single-series desktop screen, see watch.js) -----
        Rebuilt against real measurements taken directly off a live
@@ -2174,9 +2265,20 @@
     }
     .watch-player-inner{
       width:100%;height:100%;
+      position:relative;
     }
     .watch-player-inner iframe{
       width:100%;height:100%;border:none;display:block;
+    }
+    /* The real wait for a real episode's video to actually become
+       playable (see watchPlayEpisode in watch.js) — Bunny's player
+       often takes 30+ seconds (confirmed live) to become interactive
+       after its iframe first loads, so this replaces what would
+       otherwise just be a blank/loading iframe for that whole wait. */
+    .watch-player-loading{
+      position:absolute;inset:0;
+      display:flex;align-items:center;justify-content:center;
+      background:#000;
     }
     .watch-player-inner:empty::before{
       content:"Select an episode to play";

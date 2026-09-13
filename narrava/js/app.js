@@ -4,8 +4,34 @@
 // slide, swipe/wheel navigation, like/save/comment/unlock buttons, and
 // the "Get Coins" sheet. Like/save/comments are real now (series_likes/
 // series_saves/series_comments via social.js/comments-panel.js). Coin
-// balance, unlock state and coin cost are still fake/frontend-only,
-// exactly as in the original mockup.
+// balance and coin cost are still fake/frontend-only, exactly as in the
+// original mockup — but which real episode is locked is not: it's the
+// same free_episode_count rule the desktop watch page's grid already
+// uses, and "unlocked" now means a real episode id has actually been
+// paid for this session (slide.unlockedEpisodeIds), not a single
+// one-episode-ahead flag.
+//
+// Swiping means two different real things depending on state: while
+// just browsing, it moves between series (goTo), exactly as before.
+// Once a series has actually been entered (openSeriesInFeed/
+// enterMobileWatching), it moves through THAT series' own real episodes
+// instead (see advanceForward/advanceBackward/goToEpisodeInSlide) —
+// stopping dead at episode one going backward, and rolling straight
+// into the next series' own watching state going forward once the
+// current one genuinely runs out. A real, numbered jump grid (opened
+// from the small episode badge, still visible while watching) lets
+// someone jump straight to any of a series' real episodes the same way.
+// Landing on a real locked episode, by any of these paths, never plays
+// it — it shows the same real unlock prompt (unlockBtn below) every
+// other locked episode in this app already uses.
+//
+// Video/preload identity throughout is keyed by the real EPISODE id,
+// not the series id — a single slide can now point at different real
+// videos over its lifetime (whichever episode is currently active), so
+// "which video is this" and "which series is this slide" are tracked
+// as two separate ids (currentVideoEpisodeId/currentVideoSeriesId etc.)
+// rather than conflating them the way a series-id-only slide could
+// safely assume before real episode navigation existed.
 
 const regions = {
   NG:{ symbol:'₦', methods:['Card','Bank Transfer','Mobile Money'],
@@ -25,22 +51,26 @@ const regions = {
 };
 
 let slides = [];
+let slidesLoaded = false; // real fetchSlides() has actually resolved — see render()'s empty-feed branch, which needs this to tell "still loading" apart from "genuinely no series exist"
 let idx = 0;
 let coins = 3;
 
-// Real video playback state (Bunny's player.js).
-let currentPlayer = null;        // playerjs.Player for the active, visible slide's video, or null
-let currentVideoSlideId = null;  // slide.id currentPlayer belongs to
-let pendingResumeSlideId = null; // slide.id the automatic resume wants seeked once its player is ready (see openSeriesInFeed/promotePreload)
+// Real video playback state (Bunny's player.js) — identity is the real
+// EPISODE id throughout (see header comment above), not the series/slide
+// id, since one slide can point at different real episodes over time.
+let currentPlayer = null;          // playerjs.Player for the active, visible episode's video, or null
+let currentVideoEpisodeId = null;  // real episode id currentPlayer belongs to
+let currentVideoSeriesId = null;   // the slide/series that episode belongs to, kept in lockstep with currentVideoEpisodeId — saveCurrentFeedProgress needs both, and this avoids re-deriving the series by searching `slides` after it may have already moved on to a different episode
+let pendingResumeEpisodeId = null; // real episode id the automatic resume wants seeked once its player is ready (see enterMobileWatching/promotePreload)
 let pendingResumeSeconds = 0;
-let renderedMediaSlideId = null; // slide.id whose media (video or art) is currently in #bgvideo, so unrelated re-renders (unlock, continue) don't restart a playing video
+let renderedMediaEpisodeId = null; // real episode id whose media (video or art) is currently in #bgvideo, so unrelated re-renders (unlock, continue) don't restart a playing video
 
-// slide.id -> { iframe, player, ready } for a video warming up off-screen
-// ahead of time (see preloadSlide/promotePreload). Bunny's player takes a
+// episodeId -> { iframe, player, ready } for a video warming up off-screen
+// ahead of time (see preloadVideo/promotePreload). Bunny's player takes a
 // genuinely long time to become interactive after an iframe first loads —
 // confirmed live, well over 30 seconds is normal, not a bug — so the only
 // way to make a video feel like it "just starts" is to have been loading
-// it already, quietly, while the previous slide was still on screen.
+// it already, quietly, while the previous episode was still on screen.
 const preloadCache = {};
 const preloadHost = document.getElementById('preloadHost');
 let region = 'NG';
@@ -62,6 +92,10 @@ const commentCount = document.getElementById('commentCount');
 const commentsSheetBackdrop = document.getElementById('commentsSheetBackdrop');
 const commentsSheet = document.getElementById('commentsSheet');
 const commentsSheetClose = document.getElementById('commentsSheetClose');
+const episodeGridBackdrop = document.getElementById('episodeGridBackdrop');
+const episodeGridSheet = document.getElementById('episodeGridSheet');
+const episodeGridClose = document.getElementById('episodeGridClose');
+const episodeGridBody = document.getElementById('episodeGridBody');
 const unlockBtn = document.getElementById('unlockBtn');
 const unlockLabel = document.getElementById('unlockLabel');
 const coinBalance = document.getElementById('coinBalance');
@@ -129,7 +163,7 @@ function showScreen(name){
 
   if(name !== 'feed'){
     stopFeedPlayback();
-  } else if(slides.length && renderedMediaSlideId !== slides[idx].id){
+  } else if(slides.length && renderedMediaEpisodeId !== slides[idx].episodeId){
     // Coming back into the feed after stopFeedPlayback tore its video
     // down (or before the very first render) — reload the current
     // slide's media the same way goTo/render always do.
@@ -169,30 +203,39 @@ async function refreshContinueWatchingMap(){
 let resolveContinueWatchingReady;
 const continueWatchingReady = new Promise(resolve => { resolveContinueWatchingReady = resolve; });
 
+// Real per-episode lock check — a real episode number past the series'
+// own real free_episode_count is locked, unless its real id has already
+// been fake-unlocked (coins) this session. Exactly the same rule the
+// desktop watch page's own grid already uses (watch.js's
+// watchFreeCount/watchEpCardHtml) — this is the one real source for it
+// on mobile too, not a second version of the same check.
+function isEpisodeLocked(s, ep){
+  return ep.episode_number > (s.freeEpisodeCount || 0) && !s.unlockedEpisodeIds.has(ep.id);
+}
+
+// Moves slide s to real episode ep as its current position — used by
+// entering watching, in-series swipe navigation, and the jump grid
+// alike, so all three ever do this exactly one way. Never sets a real
+// bunnyVideoId for a locked episode (renderMedia's own honest "no video
+// yet" static-art fallback handles that instead of ever actually
+// playing it) — s.locked/s.lockedEpisode are what the real unlock
+// prompt (unlockBtn) reads to know what it's actually prompting for.
+function setActiveEpisode(s, ep){
+  const locked = isEpisodeLocked(s, ep);
+  s.currentEp = ep.episode_number;
+  s.episodeId = ep.id;
+  s.epBadge = 'EP ' + ep.episode_number + ' · ' + s.totalEp;
+  s.locked = locked;
+  s.lockedEpisode = locked ? ep : null;
+  s.bunnyVideoId = locked ? null : (ep.bunny_video_id || null);
+}
+
 // Used by discover.js: open a specific series (by its index in `slides`)
 // — every poster/hero/shelf/search-result tap, and the floating bar's
 // own Continue button, all funnel through this one function. On desktop
 // this opens the dedicated watch page (watch.js) instead of the mobile
 // swipe feed. matchesMedia mirrors the exact 900px breakpoint styles.css
 // uses everywhere else, not a separate cutoff.
-//
-// Resuming is automatic and silent, not a separate action: if
-// continueWatchingMap has saved progress for this series, that's passed
-// straight into the normal open path. Desktop always resumes accurately
-// (watch.js plays whichever real episode is asked for). The mobile swipe
-// feed's slide only ever carries its series' first episode's video by
-// default (see feed-data.js/fetchSlides) — when the saved progress is on
-// that same first episode, resuming just works; when it's on a later
-// episode, this fetches that one specific episode's real row (a
-// targeted read, not a second episode list — see
-// feed-data.js/fetchEpisodeById) and swaps the slide over to its real
-// video for this one viewing, rather than silently opening episode 1.
-// This is NOT general episode swiping/a jump grid on mobile — it's a
-// single, resume-driven substitution of what one slide currently plays.
-// The slide is always reset to its true first episode first, so a
-// previous override never lingers once it no longer applies (e.g. the
-// saved episode changed, or there's no saved progress at all). No saved
-// progress just opens from the beginning, same as before this existed.
 async function openSeriesInFeed(i){
   const slide = slides[i];
   const resume = slide ? continueWatchingMap.get(slide.id) : null;
@@ -201,51 +244,44 @@ async function openSeriesInFeed(i){
     openWatchScreen(i, resume ? { episodeId: resume.episode_id, positionSeconds: resume.position_seconds } : null);
     return;
   }
+  await enterMobileWatching(i, resume);
+}
+
+// The one general mechanism for a series actually entering its watching
+// state on mobile — a normal tap, Continue Watching's resume, and a
+// swipe rolling forward off the real end of the previous series (see
+// advanceForward) all funnel through this, rather than the old one-off
+// "guess whether the resume lands on the first episode or fetch that
+// one episode specially" workaround this replaced. Fetches this one
+// series' real, full episode list via fetchEpisodesForSeries (the same
+// one real source the desktop watch page and admin panel already use),
+// once — guarded by episodesLoaded so re-entering the same series later
+// this session (tapping it again, resuming again) never re-fetches.
+async function enterMobileWatching(i, resume){
+  const slide = slides[i];
   if(!slide) return;
-  const previousBunnyVideoId = slide.bunnyVideoId;
+  pendingResumeEpisodeId = null;
 
-  slide.bunnyVideoId = slide.firstEpisodeBunnyVideoId;
-  slide.episodeId = slide.firstEpisodeId;
-  slide.currentEp = slide.firstEpisodeNumber;
-  slide.epBadge = 'EP ' + slide.firstEpisodeNumber + ' · ' + slide.totalEp;
-  pendingResumeSlideId = null;
+  if(!slide.episodesLoaded){
+    const episodes = await fetchEpisodesForSeries(slide.id);
+    slide.episodes = episodes;
+    slide.episodesLoaded = true;
+  }
+  if(!slide.episodes.length) return; // genuinely no episodes to watch
 
+  let targetEp = slide.episodes[0];
+  let resumeSeconds = 0;
   if(resume && resume.position_seconds > 0.5){
-    if(resume.episode_id === slide.firstEpisodeId){
-      pendingResumeSlideId = slide.id;
-      pendingResumeSeconds = resume.position_seconds;
-    } else {
-      const ep = await fetchEpisodeById(resume.episode_id);
-      if(ep && ep.bunny_video_id && ep.series_id === slide.id){
-        slide.bunnyVideoId = ep.bunny_video_id;
-        slide.episodeId = ep.id;
-        slide.currentEp = ep.episode_number;
-        slide.epBadge = 'EP ' + ep.episode_number + ' · ' + slide.totalEp;
-        pendingResumeSlideId = slide.id;
-        pendingResumeSeconds = resume.position_seconds;
-      }
-      // Fetch failed, or came back without a real video: slide already
-      // stands reset to the real first episode above — opens honestly
-      // from there instead of a half-applied mismatched state.
-    }
+    const resumeEp = slide.episodes.find(e => e.id === resume.episode_id);
+    if(resumeEp){ targetEp = resumeEp; resumeSeconds = resume.position_seconds; }
+    // Saved episode no longer in this series' real list: targetEp stays
+    // the real first episode, same honest fallback as no saved progress.
   }
 
-  // preloadCache is keyed by slide.id, not by which video it's actually
-  // holding — a preload warmed before this slide's effective video
-  // changed (either overridden above, or reset back off an earlier
-  // override) would otherwise be reused as-is by renderMedia/
-  // preloadSlide. Torn down here whenever the effective video actually
-  // changed, so the next preload/render genuinely loads the right one.
-  // Also clears renderedMediaSlideId's short-circuit for the rare case
-  // this exact slide was already the one on screen, so the swap isn't
-  // silently skipped.
-  if(slide.bunnyVideoId !== previousBunnyVideoId){
-    const stalePreload = preloadCache[slide.id];
-    if(stalePreload){
-      stalePreload.iframe.remove();
-      delete preloadCache[slide.id];
-    }
-    if(renderedMediaSlideId === slide.id) renderedMediaSlideId = null;
+  setActiveEpisode(slide, targetEp);
+  if(resumeSeconds > 0.5 && !slide.locked){
+    pendingResumeEpisodeId = slide.episodeId;
+    pendingResumeSeconds = resumeSeconds;
   }
 
   goTo(i);
@@ -324,6 +360,14 @@ function setArt(art){
   }
 }
 
+// The real wait for a real episode's video to actually become playable
+// (renderMedia below) — replaces the series' own cover image for that
+// wait specifically, never used for a genuinely video-less/locked
+// episode (there's nothing being waited on there, see renderMedia).
+function setLoadingArt(){
+  bgvideo.innerHTML = '<div class="bgvideo-loading">' + narravaLoaderHtml('pulse') + '</div>';
+}
+
 function bunnyEmbedSrc(bunnyVideoId){
   // No loop=true: a looped <video> never fires a real 'ended' event per
   // the HTML5 spec, which would silently break auto-advance-on-finish.
@@ -333,22 +377,24 @@ function bunnyEmbedSrc(bunnyVideoId){
     '?autoplay=true&muted=true&preload=true&responsive=false';
 }
 
-// Starts loading a slide's video off-screen, in .preload-host, well
-// before it's ever shown — confirmed live that Bunny's player can take
-// 30+ seconds to become interactive after its iframe first loads, so
-// preloading during the *previous* slide's viewing time is the only
-// realistic way for a swipe to ever land on an already-playing video.
-// No-ops if there's nothing to preload or it's already in flight.
-function preloadSlide(s){
-  if(!s || !s.bunnyVideoId || preloadCache[s.id]) return;
+// Starts loading a real episode's video off-screen, in .preload-host,
+// well before it's ever shown — confirmed live that Bunny's player can
+// take 30+ seconds to become interactive after its iframe first loads,
+// so preloading during the *previous* episode's viewing time is the
+// only realistic way for a swipe to ever land on an already-playing
+// video. target is {id (real episode id), bunnyVideoId, seriesId} — see
+// nextPreloadTarget. No-ops if there's nothing to preload or it's
+// already in flight.
+function preloadVideo(target){
+  if(!target || !target.bunnyVideoId || preloadCache[target.id]) return;
 
   const iframe = document.createElement('iframe');
-  iframe.src = bunnyEmbedSrc(s.bunnyVideoId);
+  iframe.src = bunnyEmbedSrc(target.bunnyVideoId);
   iframe.setAttribute('allow', 'autoplay');
   preloadHost.appendChild(iframe);
 
   const entry = { iframe, player: null, ready: false };
-  preloadCache[s.id] = entry;
+  preloadCache[target.id] = entry;
 
   const player = new playerjs.Player(iframe);
   entry.player = player;
@@ -365,18 +411,19 @@ function preloadSlide(s){
     // that this callback firing means *this* video is actually ready.
     if(!player.isReady) return;
     entry.ready = true;
-    // If the feed is sitting on this exact slide right now (it loaded
+    // If the feed is sitting on this exact episode right now (it loaded
     // faster than the viewer swiped away), promote it immediately
     // instead of leaving it preloaded and unused. Checked against
-    // currentPlayer itself (this exact instance), not currentVideoSlideId
-    // — that gets set to the new slide's id as soon as navigation
-    // happens, before any promotion, so comparing slide ids here would
-    // wrongly conclude "already promoted" the instant you arrive.
-    if(s.id === renderedMediaSlideId && currentPlayer !== player) promotePreload(s);
+    // currentPlayer itself (this exact instance), not
+    // currentVideoEpisodeId — that gets set to the new episode's id as
+    // soon as navigation happens, before any promotion, so comparing
+    // episode ids here would wrongly conclude "already promoted" the
+    // instant you arrive.
+    if(target.id === renderedMediaEpisodeId && currentPlayer !== player) promotePreload(target);
   });
 }
 
-// The automatic resume's seek (see promotePreload/openSeriesInFeed).
+// The automatic resume's seek (see promotePreload/enterMobileWatching).
 // player.js's 'ready'/promotion only means the postMessage bridge to the
 // iframe is up — not that the underlying video's own duration/seekable
 // range has loaded. Confirmed live (desktop watch page, same player.js
@@ -390,70 +437,76 @@ function preloadSlide(s){
 // poll) if it didn't, rather than assuming success from one blind call.
 // Gives up after ~10s of duration-polling rather than looping forever
 // if a duration genuinely never arrives.
-function seekWhenSeekable(player, slideId, seconds, attemptsLeft){
-  if(currentVideoSlideId !== slideId || currentPlayer !== player) return; // navigated away
+function seekWhenSeekable(player, episodeId, seconds, attemptsLeft){
+  if(currentVideoEpisodeId !== episodeId || currentPlayer !== player) return; // navigated away
   player.getDuration((duration) => {
-    if(currentVideoSlideId !== slideId || currentPlayer !== player) return;
+    if(currentVideoEpisodeId !== episodeId || currentPlayer !== player) return;
     if(duration && duration > 0){
       player.setCurrentTime(seconds);
       setTimeout(() => {
-        if(currentVideoSlideId !== slideId || currentPlayer !== player) return;
+        if(currentVideoEpisodeId !== episodeId || currentPlayer !== player) return;
         player.getCurrentTime((landedAt) => {
-          if(currentVideoSlideId !== slideId || currentPlayer !== player) return;
+          if(currentVideoEpisodeId !== episodeId || currentPlayer !== player) return;
           if(Math.abs(landedAt - seconds) > 2 && attemptsLeft > 0){
-            seekWhenSeekable(player, slideId, seconds, attemptsLeft - 1);
+            seekWhenSeekable(player, episodeId, seconds, attemptsLeft - 1);
           }
         });
       }, 300);
       return;
     }
     if(attemptsLeft <= 0) return;
-    setTimeout(() => seekWhenSeekable(player, slideId, seconds, attemptsLeft - 1), 400);
+    setTimeout(() => seekWhenSeekable(player, episodeId, seconds, attemptsLeft - 1), 400);
   });
 }
 
 // Moves an already-warmed preload from the off-screen host into #bgvideo
 // and makes it the real, controlling player — the "instant start" case.
-function promotePreload(s){
-  const entry = preloadCache[s.id];
+// target is the same {id, bunnyVideoId, seriesId} descriptor preloadVideo
+// was given.
+function promotePreload(target){
+  const entry = preloadCache[target.id];
   if(!entry) return;
-  delete preloadCache[s.id];
+  delete preloadCache[target.id];
 
   bgvideo.innerHTML = '';
   bgvideo.classList.add('has-video');
   bgvideo.appendChild(entry.iframe);
   currentPlayer = entry.player;
-  currentVideoSlideId = s.id;
+  currentVideoEpisodeId = target.id;
+  currentVideoSeriesId = target.seriesId;
 
-  // The automatic resume's jump-back-in (see openSeriesInFeed):
-  // this slide's video has just genuinely become the active player for
-  // the first time, so if a resume was queued for exactly this slide,
-  // this is when to seek it. Confirmed live (see watch.js's
+  // The automatic resume's jump-back-in (see enterMobileWatching):
+  // this episode's video has just genuinely become the active player
+  // for the first time, so if a resume was queued for exactly this
+  // episode, this is when to seek it. Confirmed live (see watch.js's
   // seekWhenSeekable) that calling setCurrentTime this early — right as
   // the player becomes active — is silently ignored: 'ready'/promotion
   // only means the postMessage bridge is up, not that the video's own
   // duration/seekable range has loaded. Polling getDuration first is
   // what's actually confirmed to make the seek stick.
-  if(pendingResumeSlideId === s.id){
+  if(pendingResumeEpisodeId === target.id){
     const resumeSeconds = pendingResumeSeconds;
-    pendingResumeSlideId = null;
-    seekWhenSeekable(entry.player, s.id, resumeSeconds, 25);
+    pendingResumeEpisodeId = null;
+    seekWhenSeekable(entry.player, target.id, resumeSeconds, 25);
   }
 
   // 'ended' is wired here, once, only on the player that's actually
   // becoming active — never during preload. Guards against the same
   // cross-instance broadcast issue as the isReady check above (a
   // previously-active, now-stale player's own lingering registration
-  // firing on someone else's real 'ended'): checking that *this* slide
-  // is still the current one is enough, since a stale instance belongs
-  // to a slide that's no longer current by the time it could fire.
+  // firing on someone else's real 'ended'): checking that *this*
+  // episode is still the current one is enough, since a stale instance
+  // belongs to an episode that's no longer current by the time it could
+  // fire. Advances the same real way a forward swipe would (see
+  // advanceForward) — the next real episode in this series while
+  // watching, or the next series while just browsing.
   // (An earlier version also re-confirmed via getDuration/getCurrentTime
   // before advancing — cut after live testing showed the player's own
   // reported currentTime can already have moved on by the time that
   // round-trip resolves, which silently swallowed the real 'ended'.)
   entry.player.on('ended', () => {
-    if(s.id !== currentVideoSlideId || s.id !== renderedMediaSlideId) return;
-    goTo(idx + 1);
+    if(target.id !== currentVideoEpisodeId || target.id !== renderedMediaEpisodeId) return;
+    advanceForward();
   });
 
   // A short clip can finish playing during Bunny's own (often 30+
@@ -463,8 +516,8 @@ function promotePreload(s){
   // startup delay itself, not for genuine episode-length video.
   entry.player.getDuration((duration) => {
     entry.player.getCurrentTime((current) => {
-      if(s.id !== currentVideoSlideId || s.id !== renderedMediaSlideId) return;
-      if(duration && current >= duration - 0.5) goTo(idx + 1);
+      if(target.id !== currentVideoEpisodeId || target.id !== renderedMediaEpisodeId) return;
+      if(duration && current >= duration - 0.5) advanceForward();
     });
   });
 
@@ -472,15 +525,34 @@ function promotePreload(s){
   else entry.player.play();
 }
 
-// Kicks off preloading the slide after the current one, and tears down
-// any preload that's neither the current slide nor that next one — so
-// there's never more than one silent, warming-up video sitting in the
-// background at a time, on top of whatever's actually on screen.
-function maintainPreload(){
+// What to warm up next depends on which of the two real states the
+// current slide is actually in: its own next real episode while
+// watching, or the next series' first episode while just browsing —
+// same preload mechanism either way (preloadVideo/maintainPreload never
+// know or care which case produced the target), just pointed at a
+// different real target.
+function nextPreloadTarget(){
+  const s = slides[idx];
+  if(!s) return null;
+  if(feed.classList.contains('watching') && s.episodesLoaded){
+    const curPos = s.episodes.findIndex(e => e.id === s.episodeId);
+    const nextEp = curPos !== -1 ? s.episodes[curPos + 1] : null;
+    return nextEp ? { id: nextEp.id, bunnyVideoId: nextEp.bunny_video_id || null, seriesId: s.id } : null;
+  }
   const nextSlide = slides[(idx + 1) % slides.length];
-  if(nextSlide && nextSlide.id !== renderedMediaSlideId) preloadSlide(nextSlide);
+  return nextSlide ? { id: nextSlide.episodeId, bunnyVideoId: nextSlide.bunnyVideoId, seriesId: nextSlide.id } : null;
+}
 
-  const keepIds = [renderedMediaSlideId, nextSlide ? nextSlide.id : null];
+// Kicks off preloading the real next target (see nextPreloadTarget), and
+// tears down any preload that's neither the current episode nor that
+// next one — so there's never more than one silent, warming-up video
+// sitting in the background at a time, on top of whatever's actually on
+// screen.
+function maintainPreload(){
+  const target = nextPreloadTarget();
+  if(target && target.id !== renderedMediaEpisodeId) preloadVideo(target);
+
+  const keepIds = [renderedMediaEpisodeId, target ? target.id : null];
   Object.keys(preloadCache).forEach(id => {
     if(keepIds.indexOf(id) === -1){
       preloadCache[id].iframe.remove();
@@ -489,17 +561,18 @@ function maintainPreload(){
   });
 }
 
-// Renders whichever media the current slide should show. Default is
-// always the existing static art — honest, no regression, identical to
-// a slide with no video at all — and it *upgrades* to the real video
-// the moment that video is actually ready, whenever that turns out to
-// be: instantly if it was already preloaded, later if it just started
-// loading now, or never if bunny_video_id doesn't point at a real video
-// (Bunny's own 404 page for a bad id never sends a 'ready' at all, so
-// this deliberately never times out and gives up — there's no reliable
-// way to tell "still loading" and "genuinely broken" apart from out
-// here, and wrongly giving up on a real, just-slow video would be worse
-// than staying on art a little longer than strictly necessary).
+// Renders whichever media the current slide's real active episode
+// should show. Default is always the existing static art — honest, no
+// regression, identical to an episode with no video at all (including a
+// real locked one, see setActiveEpisode) — and it *upgrades* to the real
+// video the moment that video is actually ready, whenever that turns
+// out to be: instantly if it was already preloaded, later if it just
+// started loading now, or never if bunny_video_id doesn't point at a
+// real video (Bunny's own 404 page for a bad id never sends a 'ready' at
+// all, so this deliberately never times out and gives up — there's no
+// reliable way to tell "still loading" and "genuinely broken" apart from
+// out here, and wrongly giving up on a real, just-slow video would be
+// worse than staying on art a little longer than strictly necessary).
 //
 // Replacing #bgvideo's content removes any iframe that was already
 // inside it, and removing an iframe from the DOM is what actually stops
@@ -507,15 +580,18 @@ function maintainPreload(){
 // just hides it — so at most one *active* video is ever playing,
 // without needing to explicitly ask the old player to pause first.
 //
-// Guarded by renderedMediaSlideId so re-rendering the *same* slide
-// (unlocking an episode, tapping Continue) only updates the surrounding
-// UI, not the video itself — otherwise every unrelated re-render would
-// tear down and restart whatever was already playing.
+// Guarded by renderedMediaEpisodeId so re-rendering the *same* episode
+// (unlocking it, tapping Continue) only updates the surrounding UI, not
+// the video itself — otherwise every unrelated re-render would tear
+// down and restart whatever was already playing. Keyed by the real
+// episode id, not the slide/series id, since one slide can now point at
+// different real episodes over time (see header comment).
 function renderMedia(s){
-  if(s.id === renderedMediaSlideId) return;
-  renderedMediaSlideId = s.id;
+  if(s.episodeId === renderedMediaEpisodeId) return;
+  renderedMediaEpisodeId = s.episodeId;
   currentPlayer = null;
-  currentVideoSlideId = s.id;
+  currentVideoEpisodeId = s.episodeId;
+  currentVideoSeriesId = s.id;
 
   if(!s.bunnyVideoId){
     bgvideo.classList.remove('has-video');
@@ -524,62 +600,73 @@ function renderMedia(s){
     return;
   }
 
-  const existing = preloadCache[s.id];
+  const existing = preloadCache[s.episodeId];
   if(existing && existing.ready){
-    promotePreload(s);
+    promotePreload({ id: s.episodeId, bunnyVideoId: s.bunnyVideoId, seriesId: s.id });
     maintainPreload();
     return;
   }
 
-  // Not preloaded yet (or still warming up) — show the same static art
-  // a video-less slide would, and let preloadSlide's own 'ready' handler
+  // Not preloaded yet (or still warming up) — a real episode's video
+  // that's genuinely on its way, so this shows the real loading state
+  // instead of the series' own cover image while it loads (the cover
+  // image showing here was never actually honest — there IS something
+  // real being waited on). preloadVideo's own 'ready' handler
   // (registered below, or already registered if `existing` is truthy)
-  // promote it the moment it's actually ready.
+  // promotes it — and replaces this loader with the real video — the
+  // moment it's actually ready.
   bgvideo.classList.remove('has-video');
-  setArt(s.art);
-  if(!existing) preloadSlide(s);
+  setLoadingArt();
+  if(!existing) preloadVideo({ id: s.episodeId, bunnyVideoId: s.bunnyVideoId, seriesId: s.id });
   maintainPreload();
 }
 
 // Leaving the feed for any other screen must actually stop playback, not
 // just hide it — removing #bgvideo's iframe is what tears down the video
 // (see renderMedia above), so this does the same teardown renderMedia
-// already does on every slide switch, just triggered by navigation away
-// from the feed instead. Also clears any off-screen preload in flight,
-// since those are real videos quietly loading too. renderedMediaSlideId
-// is reset to null so coming back to the feed re-renders its media from
-// scratch via the normal render() path, instead of render() thinking the
-// current slide's video is already showing.
+// already does on every episode switch, just triggered by navigation
+// away from the feed instead. Also clears any off-screen preload in
+// flight, since those are real videos quietly loading too.
+// renderedMediaEpisodeId is reset to null so coming back to the feed
+// re-renders its media from scratch via the normal render() path,
+// instead of render() thinking the current episode's video is already
+// showing.
 function stopFeedPlayback(){
-  if(renderedMediaSlideId === null && Object.keys(preloadCache).length === 0) return;
+  if(renderedMediaEpisodeId === null && Object.keys(preloadCache).length === 0) return;
   saveCurrentFeedProgress();
   bgvideo.innerHTML = '';
   bgvideo.classList.remove('has-video');
   currentPlayer = null;
-  currentVideoSlideId = null;
-  renderedMediaSlideId = null;
+  currentVideoEpisodeId = null;
+  currentVideoSeriesId = null;
+  renderedMediaEpisodeId = null;
   Object.keys(preloadCache).forEach(id => { preloadCache[id].iframe.remove(); delete preloadCache[id]; });
 }
 
-// Reads the currently-playing slide's real position from its actual
+// Reads the currently-playing episode's real position from its actual
 // player (never assumed/estimated) and upserts it via watch-progress.js.
-// No-ops quietly if there's no real video playing right now, or the
-// slide has no episodeId (e.g. bunny_video_id was never set) — same
-// silent-no-op-when-signed-out behavior lives in saveWatchProgress
-// itself. Called periodically, on pause, and whenever the feed leaves
-// the current slide/episode (goTo, stopFeedPlayback).
+// No-ops quietly if there's no real video playing right now. Both the
+// real episode id AND its series id are read straight off
+// currentVideoEpisodeId/currentVideoSeriesId (kept in lockstep wherever
+// they're set — see renderMedia/promotePreload) rather than looked up
+// from `slides` by id here: the slide that episode belongs to may
+// already have moved on to a different real episode by the time this
+// runs (real in-series swiping makes that a normal, frequent case now,
+// not just a rare race), so searching `slides` for it could silently
+// find nothing, or worse, the slide's now-different current episode.
+// Called periodically, on pause, and whenever the feed leaves the
+// current episode (goTo, stopFeedPlayback, in-series navigation).
 function saveCurrentFeedProgress(){
-  if(!currentPlayer || !currentVideoSlideId) return;
-  const s = slides.find(sl => sl.id === currentVideoSlideId);
-  if(!s || !s.episodeId) return;
+  if(!currentPlayer || !currentVideoEpisodeId || !currentVideoSeriesId) return;
   const player = currentPlayer;
-  const slideId = s.id;
+  const episodeId = currentVideoEpisodeId;
+  const seriesId = currentVideoSeriesId;
   player.getCurrentTime((seconds) => {
-    // A stale callback can land after the slide/player has already
+    // A stale callback can land after the episode/player has already
     // moved on (e.g. a fast swipe right after this fired) — recheck
     // before writing so a leftover read never overwrites newer progress.
-    if(currentPlayer !== player || currentVideoSlideId !== slideId) return;
-    saveWatchProgress(s.episodeId, s.id, seconds);
+    if(currentPlayer !== player || currentVideoEpisodeId !== episodeId) return;
+    saveWatchProgress(episodeId, seriesId, seconds);
   });
 }
 
@@ -592,17 +679,31 @@ function renderEmptyFeed(){
   bgvideo.innerHTML = '';
   bgvideo.classList.remove('has-video');
   currentPlayer = null;
-  currentVideoSlideId = null;
-  renderedMediaSlideId = null;
+  currentVideoEpisodeId = null;
+  currentVideoSeriesId = null;
+  renderedMediaEpisodeId = null;
   Object.keys(preloadCache).forEach(id => { preloadCache[id].iframe.remove(); delete preloadCache[id]; });
   spine.innerHTML = '';
   pager.innerHTML = '';
   epBadge.textContent = '';
-  titleEl.innerHTML = 'No series available right now';
-  synopsisEl.textContent = 'Please check back soon.';
   progressFill.style.width = '0%';
   coinBalance.textContent = coins;
   ctaRow.classList.add('hidden');
+
+  // "No series available" is a real, honest statement only once
+  // fetchSlides() has actually come back empty — while it's still in
+  // flight (slidesLoaded false), this was wrongly showing that same
+  // permanent-sounding message during what's actually just a real,
+  // temporary wait on real data. The loading state replaces the title/
+  // synopsis area for that wait instead.
+  if(slidesLoaded){
+    titleEl.innerHTML = 'No series available right now';
+    synopsisEl.innerHTML = '';
+    synopsisEl.textContent = 'Please check back soon.';
+  } else {
+    titleEl.innerHTML = '';
+    synopsisEl.innerHTML = narravaLoaderHtml('pulse', 'Loading Narrava…');
+  }
 }
 
 function render(){
@@ -638,12 +739,17 @@ function render(){
   coinBalance.textContent = coins;
   buildSpine(s.currentEp, s.totalEp);
 
-  if(s.unlocked){
-    unlockBtn.classList.add('unlocked');
-    unlockLabel.textContent = '▶ Ep ' + s.nextEp + ' unlocked';
+  // The real unlock prompt — shown whenever the episode actually being
+  // looked at right now (browsing preview, or wherever watching/
+  // swiping/the jump grid landed) is genuinely locked, targeting that
+  // exact real episode. Nothing to prompt once it isn't, so it just
+  // hides rather than switching to some "already unlocked" cosmetic
+  // state (see unlockBtn's own click handler for the actual spend).
+  if(s.locked && s.lockedEpisode){
+    unlockBtn.classList.remove('hidden');
+    unlockLabel.textContent = 'Unlock Ep ' + s.lockedEpisode.episode_number + ' · ' + s.coinCost + ' coin' + (s.coinCost===1?'':'s');
   } else {
-    unlockBtn.classList.remove('unlocked');
-    unlockLabel.textContent = 'Unlock Ep ' + s.nextEp + ' · ' + s.coinCost + ' coin' + (s.coinCost===1?'':'s');
+    unlockBtn.classList.add('hidden');
   }
 
   Array.from(pager.children).forEach((d,i)=>d.classList.toggle('active', i===idx));
@@ -673,9 +779,11 @@ async function loadFeedSocialState(s){
 
 // Scrolling/swiping to a (possibly new) slide always lands back in the
 // default browsing state — overlay visible, autoplaying, not paused —
-// even if the slide you're leaving was in watching or paused. Callers
-// that want to land directly in watching (openSeriesInFeed) explicitly
-// add that back right after calling this.
+// even if the slide you're leaving was in watching or paused. This is
+// pure series-to-series navigation (pager dots, a browsing swipe/wheel
+// tick) — callers that want to land directly in watching
+// (enterMobileWatching) explicitly add that back right after calling
+// this, same as before.
 function goTo(i){
   if(slides.length === 0) return;
   saveCurrentFeedProgress();
@@ -686,11 +794,64 @@ function goTo(i){
 }
 
 // A manual navigation always supersedes any still-pending automatic
-// resume seek (see openSeriesInFeed/promotePreload) — without this,
-// swiping away and later swiping back onto the same slide could replay
+// resume seek (see enterMobileWatching/promotePreload) — without this,
+// swiping away and later swiping back onto the same episode could replay
 // a stale resume-seek the viewer never asked for this time.
 function clearPendingResume(){
-  pendingResumeSlideId = null;
+  pendingResumeEpisodeId = null;
+}
+
+// Moves the CURRENTLY WATCHED slide to a different one of its own real
+// episodes — idx/pager/the "watching" state itself never change, only
+// which of this series' real episodes is active. Used by in-series
+// swipe navigation and the jump grid alike. If ep is locked, this never
+// plays it — setActiveEpisode leaves it showing the same real unlock
+// prompt (unlockBtn) every other locked episode in this app already
+// uses, not a new one.
+function goToEpisodeInSlide(s, ep){
+  clearPendingResume();
+  setActiveEpisode(s, ep);
+  render();
+}
+
+// The one real "move forward" action — used by a forward swipe/wheel
+// tick AND by a video actually finishing (see promotePreload's 'ended'
+// handling), so both do exactly the same real thing. While actually
+// watching a series with its real episode list already loaded, this
+// moves to its next real episode, or — once genuinely past the last
+// one — rolls straight into the next series' own watching state at its
+// first episode (never back to browsing, same continuous feel). While
+// just browsing, it's plain series-to-series navigation, unchanged.
+function advanceForward(){
+  const s = slides[idx];
+  if(feed.classList.contains('watching') && s && s.episodesLoaded){
+    const curPos = s.episodes.findIndex(e => e.id === s.episodeId);
+    if(curPos === -1) return;
+    if(curPos + 1 < s.episodes.length){
+      goToEpisodeInSlide(s, s.episodes[curPos + 1]);
+    } else {
+      enterMobileWatching((idx + 1) % slides.length, null);
+    }
+    return;
+  }
+  clearPendingResume();
+  goTo(idx + 1);
+}
+
+// The mirror of advanceForward for a backward swipe/wheel tick. While
+// watching, this stops dead at the real episode one — no wrapping
+// around to a previous series — rather than doing anything at all past
+// that point.
+function advanceBackward(){
+  const s = slides[idx];
+  if(feed.classList.contains('watching') && s && s.episodesLoaded){
+    const curPos = s.episodes.findIndex(e => e.id === s.episodeId);
+    if(curPos <= 0) return; // already at episode one — stays put
+    goToEpisodeInSlide(s, s.episodes[curPos - 1]);
+    return;
+  }
+  clearPendingResume();
+  goTo(idx - 1);
 }
 
 pager.addEventListener('click', e=>{
@@ -702,25 +863,28 @@ feed.addEventListener('touchstart', e=>{ touchStartY = e.touches[0].clientY; });
 feed.addEventListener('touchend', e=>{
   if(touchStartY===null) return;
   const dy = e.changedTouches[0].clientY - touchStartY;
-  if(dy < -40){ clearPendingResume(); goTo(idx+1); }
-  else if(dy > 40){ clearPendingResume(); goTo(idx-1); }
+  if(dy < -40){ advanceForward(); }
+  else if(dy > 40){ advanceBackward(); }
   touchStartY = null;
 });
 let wheelLock = false;
 feed.addEventListener('wheel', e=>{
   if(wheelLock) return;
   wheelLock = true;
-  if(e.deltaY > 8){ clearPendingResume(); goTo(idx+1); }
-  else if(e.deltaY < -8){ clearPendingResume(); goTo(idx-1); }
+  if(e.deltaY > 8){ advanceForward(); }
+  else if(e.deltaY < -8){ advanceBackward(); }
   setTimeout(()=>wheelLock=false, 500);
 });
 
 // The single tap target covering the whole video, with two different
 // jobs depending on state:
 //   - Browsing (the default): tapping commits to watching this slide —
-//     the overlay clears, the video keeps playing exactly as it was,
-//     untouched. It does not also pause — those are deliberately two
-//     separate ideas here.
+//     the same real "enter the watching state" mechanism as tapping a
+//     poster from Discover or Continue Watching (enterMobileWatching),
+//     so a normal in-feed tap gets a real episode list and real resume
+//     too, not just a bare CSS class flip with no episode data behind
+//     it. The video keeps playing exactly as it was, untouched, if
+//     there's no saved progress to resume from.
 //   - Watching: tapping just controls play/pause, the same way tapping
 //     a real video player normally does — it does NOT bring the overlay
 //     back. That only happens by swiping/scrolling to a new slide
@@ -731,7 +895,22 @@ feed.addEventListener('wheel', e=>{
 //     already-specified trigger (leaving the slide).
 playToggle.addEventListener('click', ()=>{
   if(!feed.classList.contains('watching')){
-    feed.classList.add('watching');
+    if(slides.length === 0) return;
+    // This shared feed also gets reused, restyled, as desktop's own
+    // "For You" tab (see styles.css's body.feed-active rules) — but
+    // real episode swiping/the jump grid/the real per-episode unlock
+    // prompt are mobile-only (matching how openSeriesInFeed already
+    // sends desktop to its own dedicated watch.js page instead of this
+    // feed for the actual "watch a series" experience there). Desktop's
+    // For You tab keeps its exact prior simple behavior — just commit
+    // to watching, no real episode fetch — rather than this task's new
+    // mechanism leaking into a screen it was never meant to touch.
+    if(window.matchMedia('(min-width: 900px)').matches){
+      feed.classList.add('watching');
+      return;
+    }
+    const s = slides[idx];
+    enterMobileWatching(idx, continueWatchingMap.get(s.id));
     return;
   }
   const nowPaused = feed.classList.toggle('paused');
@@ -797,6 +976,53 @@ commentsSheetBackdrop.addEventListener('click', () => {
   commentsSheet.classList.remove('open');
 });
 
+// Real episode jump grid — same real per-episode data and honest
+// free_episode_count lock rule as the desktop watch page's own grid
+// (watchEpCardHtml in watch.js), in this app's existing bottom-sheet
+// shell. Opened from the small "EP X · Y" badge, which stays visible
+// while watching specifically so this has somewhere to open from (see
+// styles.css). Tapping any cell — locked or not — closes the sheet and
+// runs it through the exact same goToEpisodeInSlide a swipe would: an
+// unlocked one plays for real, a locked one shows the same real unlock
+// prompt as anywhere else, never a second way of deciding either.
+function epgridCellHtml(s, ep){
+  const locked = isEpisodeLocked(s, ep);
+  const isActive = ep.id === s.episodeId;
+  const lockBadge = locked
+    ? '<svg class="epgrid-cell-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 018 0v3"/></svg>'
+    : '';
+  return '<button type="button" class="epgrid-cell' + (isActive ? ' active' : '') + (locked ? ' locked' : '') +
+    '" data-ep-id="' + ep.id + '">' + lockBadge + ep.episode_number + '</button>';
+}
+
+function renderEpisodeGrid(s){
+  episodeGridBody.innerHTML = s.episodes.map(ep => epgridCellHtml(s, ep)).join('');
+  episodeGridBody.querySelectorAll('.epgrid-cell').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const ep = s.episodes.find(e => e.id === btn.dataset.epId);
+      if(!ep) return;
+      closeEpisodeGrid();
+      goToEpisodeInSlide(s, ep);
+    });
+  });
+}
+
+function openEpisodeGrid(){
+  if(slides.length === 0) return;
+  const s = slides[idx];
+  if(!feed.classList.contains('watching') || !s.episodesLoaded) return;
+  renderEpisodeGrid(s);
+  episodeGridBackdrop.classList.add('open');
+  episodeGridSheet.classList.add('open');
+}
+function closeEpisodeGrid(){
+  episodeGridBackdrop.classList.remove('open');
+  episodeGridSheet.classList.remove('open');
+}
+epBadge.addEventListener('click', openEpisodeGrid);
+episodeGridClose.addEventListener('click', closeEpisodeGrid);
+episodeGridBackdrop.addEventListener('click', closeEpisodeGrid);
+
 document.getElementById('shareBtn').addEventListener('click', ()=>{
   const btn = document.getElementById('shareBtn');
   btn.classList.add('pulse');
@@ -810,20 +1036,27 @@ document.getElementById('continueBtn').addEventListener('click', ()=>{
   render();
 });
 
+// The one real unlock mechanism in this app — reused as-is (not
+// reinvented) by a swipe or jump-grid tap landing on a locked episode
+// (see setActiveEpisode/goToEpisodeInSlide): those just leave
+// s.locked/s.lockedEpisode set to the real locked episode, and this
+// button, already showing the matching real prompt (see render()), is
+// what actually spends the (still fake/session-only) coins. Marks that
+// real episode id as unlocked for the rest of this session and plays it
+// immediately — that was the point of tapping unlock.
 unlockBtn.addEventListener('click', ()=>{
   if(slides.length === 0) return;
   const s = slides[idx];
-  if(s.unlocked) return;
+  if(!s.locked || !s.lockedEpisode) return;
+  const ep = s.lockedEpisode;
   if(coins < s.coinCost){
     openSheet(true);
     return;
   }
   coins -= s.coinCost;
-  s.unlocked = true;
-  s.currentEp = s.nextEp;
-  s.epBadge = 'EP ' + s.currentEp + ' · ' + s.totalEp;
-  s.progress = 4;
-  render();
+  s.unlockedEpisodeIds.add(ep.id);
+  showToast('Unlocked Ep ' + ep.episode_number + ' ✓');
+  goToEpisodeInSlide(s, ep);
 });
 
 // --- Get Coins sheet ---
@@ -914,6 +1147,7 @@ const slidesReady = new Promise(resolve => { resolveSlidesReady = resolve; });
 async function init(){
   const [fetchedSlides] = await Promise.all([fetchSlides(), refreshContinueWatchingMap()]);
   slides = fetchedSlides;
+  slidesLoaded = true;
   pager.innerHTML = slides.map((_,i)=>'<div class="pdot ' + (i===0?'active':'') + '" data-i="' + i + '"></div>').join('');
   render();
   resolveSlidesReady();

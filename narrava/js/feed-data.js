@@ -52,30 +52,50 @@ async function fetchSlides() {
         const firstEpisode = episodes[0];
         const totalEp = episodes.length;
         const currentEp = firstEpisode.episode_number;
-        const nextEp = Math.min(currentEp + 1, totalEp);
+        const freeEpisodeCount = series.free_episode_count || 0;
+        // Real lock check (episode number vs. the series' own real
+        // free_episode_count), same rule the desktop watch page's grid
+        // already uses — computed here too since fetchSlides already has
+        // this series' first episode in hand, so the browsing preview is
+        // honest from the very first render, not just once someone
+        // actually enters the watching state.
+        const locked = currentEp > freeEpisodeCount;
 
         return {
           id: series.id,
           createdAt: series.created_at,
           featuredAt: series.featured_at,
-          bunnyVideoId: firstEpisode.bunny_video_id || null,
+          // Never actually points at a locked episode's real video — a
+          // locked episode has no business autoplaying just because it's
+          // a series' first episode.
+          bunnyVideoId: locked ? null : (firstEpisode.bunny_video_id || null),
           episodeId: firstEpisode.id,
-          // Stable references to the real first episode, kept separate
-          // from bunnyVideoId/episodeId above — those two get
-          // temporarily overridden by app.js's mobile Continue Watching
-          // resume (a saved episode past the first one), and need a
-          // reliable "real default" to reset back to on the next open
-          // once that override no longer applies.
-          firstEpisodeId: firstEpisode.id,
-          firstEpisodeBunnyVideoId: firstEpisode.bunny_video_id || null,
-          firstEpisodeNumber: currentEp,
           title: series.title,
           synopsis: series.description || '',
           epBadge: 'EP ' + currentEp + ' · ' + totalEp,
           progress: 0,
           currentEp: currentEp,
           totalEp: totalEp,
-          nextEp: nextEp,
+          // Real per-episode data (see app.js's enterMobileWatching,
+          // which calls fetchEpisodesForSeries — the same one real
+          // source the desktop watch page and admin panel already use).
+          // Fetched lazily, once, only for a series someone actually
+          // enters the watching state for — never upfront here for every
+          // series just sitting in the browsing feed.
+          episodes: [],
+          episodesLoaded: false,
+          // Real lock state for whichever episode is currently active
+          // (currentEp/episodeId above) — recomputed by app.js's
+          // setActiveEpisode every time that changes, via the same
+          // freeEpisodeCount rule. lockedEpisode is the real episode row
+          // itself when locked, null otherwise, so the unlock prompt
+          // always has real data to act on.
+          locked: locked,
+          lockedEpisode: locked ? firstEpisode : null,
+          // Fake/session-only coin economy (unchanged from earlier
+          // rounds) — which specific real episode ids have actually been
+          // "paid for" this session.
+          unlockedEpisodeIds: new Set(),
           // Real values (series_likes/series_saves via social.js),
           // loaded lazily once this slide actually becomes current —
           // see app.js's loadFeedSocialState. Zero/false here is just
@@ -87,7 +107,7 @@ async function fetchSlides() {
           commentCount: 0,
           socialLoaded: false,
           coinCost: 2,
-          freeEpisodeCount: series.free_episode_count,
+          freeEpisodeCount: freeEpisodeCount,
           art: series.cover_image_url
             ? { type: 'img', src: series.cover_image_url }
             : PLACEHOLDER_ART[i % PLACEHOLDER_ART.length]
@@ -102,9 +122,12 @@ async function fetchSlides() {
   }
 }
 
-// Fetches every episode for one series, in full — used by the desktop
-// watch page's episode grid/list (fetchSlides above only keeps each
-// series' first episode, which is all the feed needs).
+// Fetches every episode for one series, in full — the one real source
+// for a series' episode list, used by the desktop watch page's episode
+// grid, the admin panel, and (see app.js's enterMobileWatching) the
+// mobile swipe feed once a series actually enters its watching state
+// (fetchSlides above only keeps each series' first episode, enough for
+// the browsing feed alone).
 async function fetchEpisodesForSeries(seriesId) {
   try {
     const { data, error } = await supabaseClient
@@ -117,27 +140,6 @@ async function fetchEpisodesForSeries(seriesId) {
   } catch (err) {
     console.error('Narrava: failed to load episodes for series', err);
     return [];
-  }
-}
-
-// Fetches one specific episode by id — a real, targeted read, not a
-// second episode list. Used by app.js's mobile Continue Watching resume:
-// a feed slide only ever carries its series' first episode's video (see
-// fetchSlides above), so resuming a later saved episode needs this one
-// row's own real bunny_video_id to actually play it, instead of quietly
-// substituting the first episode's video.
-async function fetchEpisodeById(episodeId) {
-  try {
-    const { data, error } = await supabaseClient
-      .from('episodes')
-      .select('id, series_id, episode_number, title, bunny_video_id, duration_seconds')
-      .eq('id', episodeId)
-      .single();
-    if (error) throw error;
-    return data || null;
-  } catch (err) {
-    console.error('Narrava: failed to load episode by id', err);
-    return null;
   }
 }
 

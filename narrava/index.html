@@ -165,6 +165,22 @@
           <button type="button" class="cmt-composer-post" id="feedCommentsPost">Post</button>
         </div>
       </div>
+
+      <!-- Real episode jump grid — opened from the small "EP X · Y"
+           badge (still visible while watching, see styles.css), same
+           real per-episode data and honest free_episode_count lock rule
+           as the desktop watch page's own grid (app.js's
+           enterMobileWatching/fetchEpisodesForSeries), just in this
+           app's existing bottom-sheet shell. -->
+      <div class="sheet-backdrop" id="episodeGridBackdrop"></div>
+      <div class="sheet epgrid-sheet" id="episodeGridSheet">
+        <div class="sheet-handle"></div>
+        <div class="sheet-header">
+          <h3>Episodes</h3>
+          <button class="sheet-close" id="episodeGridClose">✕</button>
+        </div>
+        <div class="epgrid-body" id="episodeGridBody"></div>
+      </div>
     </div>
 
     <div class="toast" id="toast"></div>

@@ -115,7 +115,7 @@
      browser's system font instead of Montserrat, everywhere in the app
      including admin. */
   button,input,select,textarea{font-family:inherit;}
-  html,body{margin:0;padding:0;overflow-x:hidden;}
+  html,body{margin:0;padding:0;overflow-x:hidden;overscroll-behavior-y:none;}
   body{
     background:transparent;
     font-family:'Montserrat',sans-serif;
@@ -175,6 +175,25 @@
     position:absolute;
     inset:0;
     overflow:hidden;
+  }
+  /* The whole feed's custom vertical swipe (see the touchstart/touchend
+     listeners on #feed in app.js) fully replaces native touch handling
+     for a drag gesture in EITHER direction — without this, a downward
+     drag (the "backward" gesture) starting at the top of the page is
+     exactly the gesture real mobile browsers recognize as pull-to-
+     refresh/overscroll-bounce and can take over natively before our own
+     touchend ever sees a clean gesture, while an upward drag (forward)
+     is never intercepted that way — matching the reported one-sided
+     failure exactly. Scoped to the feed's own visible surface (video
+     stage + action rail + info block) rather than `.feed` itself, since
+     `touch-action:none` on an ancestor also disables native scrolling
+     for any scrollable descendant — and `.feed` is the direct parent of
+     the comments/coin/episode-grid bottom sheets, which still need
+     their own native scroll. */
+  .feed-stage > *,
+  .feed > .actionrail,
+  .feed > .info{
+    touch-action:none;
   }
   .bgvideo{
     position:absolute;

@@ -25,11 +25,11 @@
 // place that decides which screen a poster/hero/search-result click
 // lands on.
 //
-// The video itself reuses the exact same Bunny embed URL app.js already
-// builds (bunnyEmbedSrc) in a plain iframe — no preload/promote
-// machinery here, since that exists only for the feed's swipe-and-
-// autoplay-instantly behaviour and has no purpose on a page that plays
-// one chosen episode at a time.
+// The video itself reuses the exact same real signed-URL + hls.js engine
+// app.js's mobile feed uses (attachEpisodePlayback, video-player.js) on a
+// real native <video> element — no preload/promote machinery here, since
+// that exists only for the feed's swipe-and-autoplay-instantly behaviour
+// and has no purpose on a page that plays one chosen episode at a time.
 
 const WATCH_RANGE_SIZE = 30;
 
@@ -37,10 +37,28 @@ let watchSlide = null;
 let watchEpisodes = [];
 let watchActiveEpisodeId = null;
 let watchActiveRange = 0; // index into the RANGE_SIZE-sized chunks of watchEpisodes
-let watchPlayer = null;   // playerjs.Player wrapping the active episode's iframe, or null
+let watchVideoEl = null;     // the real, active <video> element, or null
+let watchPlaybackCtl = null; // its attachEpisodePlayback() controller (video-player.js) — .destroy() tears the real playback down
+
+let watchScrubbing = false; // true while the viewer is actively dragging watchScrubRange — see app.js's identical `scrubbing` for why
+
+// Real tap-to-pause / press-and-hold-to-2x on the video itself — same
+// real gesture as the mobile feed (app.js), confirmed directly against
+// reelshort.com; see app.js's HOLD_SPEED/TAP_MAX_MS comment for what
+// was actually confirmed there versus a reasonable default. Desktop had
+// no play/pause affordance on the video at all before this — real
+// native controls stay off (video.controls = false, watchPlayEpisode),
+// so this is now the one real way to pause here, same as reelshort's
+// own click-to-pause.
+const WATCH_HOLD_SPEED = 2;
+const WATCH_TAP_MAX_MS = 200;
+let watchPressStartTime = 0;
+let watchPressHolding = false;
 
 const watchBackBtn = document.getElementById('watchBackBtn');
+const watchPlayerBox = document.getElementById('watchPlayerBox');
 const watchPlayerHost = document.getElementById('watchPlayerHost');
+const watchScrubRange = document.getElementById('watchScrubRange');
 const watchBreadcrumbEl = document.getElementById('watchBreadcrumb');
 const watchTitleEl = document.getElementById('watchTitle');
 const watchTagsEl = document.getElementById('watchTags');
@@ -56,105 +74,120 @@ const watchCommentsBody = document.getElementById('watchCommentsBody');
 const watchEpRangesEl = document.getElementById('watchEpRanges');
 const watchEpisodeGrid = document.getElementById('watchEpisodeGrid');
 
-// Same reasoning as app.js's stopFeedPlayback: leaving this screen for
-// any other one must actually tear the iframe down (removing it from
-// the DOM is what stops the video), not just hide it — called from
+// Same reasoning as app.js's destroyActivePlayback/stopFeedPlayback:
+// leaving this screen for any other one must actually tear the real
+// video down — real hls.js resources (its segment-loading loop, the
+// scheduled auth-refresh timer), not just the DOM element — called from
 // showScreen() whenever the target screen isn't 'watch'.
 function stopWatchPlayback(){
   saveCurrentWatchProgress();
+  if(watchPlaybackCtl) watchPlaybackCtl.destroy();
   watchPlayerHost.innerHTML = '';
-  watchPlayer = null;
+  watchPlayerBox.classList.remove('has-video', 'paused');
+  watchVideoEl = null;
+  watchPlaybackCtl = null;
   watchActiveEpisodeId = null;
   closeWatchComments();
 }
 
-// Reads the real position off the actual playing player (never assumed)
-// and upserts it via watch-progress.js. No-ops quietly if nothing is
-// playing right now, or if nobody's signed in (saveWatchProgress's own
-// job). Called periodically, on pause, and whenever this screen leaves
-// the current episode (stopWatchPlayback, switching episodes).
+// Reads the real position straight off the real <video> element (never
+// assumed/estimated) and upserts it via watch-progress.js. No-ops
+// quietly if nothing is playing right now, or if nobody's signed in
+// (saveWatchProgress's own job). Called periodically, on pause, and
+// whenever this screen leaves the current episode (stopWatchPlayback,
+// switching episodes).
 function saveCurrentWatchProgress(){
-  if(!watchPlayer || !watchActiveEpisodeId || !watchSlide) return;
-  const player = watchPlayer;
-  const episodeId = watchActiveEpisodeId;
-  const seriesId = watchSlide.id;
-  player.getCurrentTime((seconds) => {
-    if(watchPlayer !== player || watchActiveEpisodeId !== episodeId) return;
-    saveWatchProgress(episodeId, seriesId, seconds);
-  });
+  if(!watchVideoEl || !watchActiveEpisodeId || !watchSlide) return;
+  saveWatchProgress(watchActiveEpisodeId, watchSlide.id, watchVideoEl.currentTime);
 }
 
 // Same 15s cadence as the mobile feed (app.js) — frequent enough that a
 // refresh/crash never loses more than a few seconds of real progress.
 setInterval(saveCurrentWatchProgress, 15000);
 
-// player.js's 'ready' event only means the postMessage bridge to the
-// iframe is up — NOT that the underlying video's own duration/seekable
-// range has loaded yet. Confirmed live: calling setCurrentTime right on
-// 'ready' is silently ignored (tested with a target far past anything
-// that could've naturally played by then — it landed nowhere near it).
-// getDuration reporting a real, non-zero value is what's actually
-// confirmed live to mean the seek will stick, so this polls for that
-// first. Gives up after ~10s of polling rather than looping forever if
-// a duration genuinely never arrives.
-function seekWhenSeekable(player, episodeId, seconds, attemptsLeft){
-  if(watchActiveEpisodeId !== episodeId) return; // navigated away
-  player.getDuration((duration) => {
-    if(watchActiveEpisodeId !== episodeId) return;
-    if(duration && duration > 0){
-      player.setCurrentTime(seconds);
-      return;
-    }
-    if(attemptsLeft <= 0) return;
-    setTimeout(() => seekWhenSeekable(player, episodeId, seconds, attemptsLeft - 1), 400);
-  });
-}
-
-// resumeSeconds, when given, seeks the real player to that exact
-// position — see seekWhenSeekable above for why that's more than just
-// calling setCurrentTime once on 'ready'.
-function watchPlayEpisode(ep, resumeSeconds){
+// resumeSeconds, when given, seeks to that exact real position — a
+// real, direct, synchronous currentTime assignment once the real video
+// is actually ready (loadedmetadata), no polling needed.
+async function watchPlayEpisode(ep, resumeSeconds){
   if(!ep || !ep.bunny_video_id) return;
   saveCurrentWatchProgress();
+  if(watchPlaybackCtl) watchPlaybackCtl.destroy();
 
-  watchActiveEpisodeId = ep.id;
-  watchPlayer = null;
-  const iframe = document.createElement('iframe');
-  iframe.src = bunnyEmbedSrc(ep.bunny_video_id);
-  iframe.setAttribute('allow', 'autoplay');
-  iframe.setAttribute('allowfullscreen', '');
-  // Real loading state instead of a blank/still-loading iframe for the
-  // real wait until Bunny's player actually becomes interactive — the
-  // iframe already starts loading underneath it (added to the DOM right
-  // away, just not shown), so this never adds any extra delay of its
-  // own, only replaces what was on screen during a wait that was
+  const episodeId = ep.id;
+  watchActiveEpisodeId = episodeId;
+  watchVideoEl = null;
+  watchPlaybackCtl = null;
+  watchPlayerBox.classList.remove('has-video', 'paused');
+
+  const video = document.createElement('video');
+  video.controls = false;
+  video.playsInline = true;
+  video.style.display = 'none';
+  // Real loading state instead of a blank/still-loading video for the
+  // real wait until the real signed URL/hls.js setup actually resolves —
+  // the video already starts loading underneath it (added to the DOM
+  // right away, just not shown), so this never adds any extra delay of
+  // its own, only replaces what was on screen during a wait that was
   // already happening.
   watchPlayerHost.innerHTML = '<div class="watch-player-loading">' + narravaLoaderHtml('pulse') + '</div>';
-  iframe.style.display = 'none';
-  watchPlayerHost.appendChild(iframe);
+  watchPlayerHost.appendChild(video);
 
-  const player = new playerjs.Player(iframe);
-  const episodeId = ep.id;
-  player.on('ready', () => {
-    if(watchActiveEpisodeId !== episodeId) return; // navigated away before ready
-    watchPlayer = player;
-    const loadingEl = watchPlayerHost.querySelector('.watch-player-loading');
-    if(loadingEl) loadingEl.remove();
-    iframe.style.display = '';
-    if(resumeSeconds && resumeSeconds > 0.5) seekWhenSeekable(player, episodeId, resumeSeconds, 25);
-  });
-  player.on('pause', () => {
-    if(watchPlayer !== player) return;
-    saveCurrentWatchProgress();
-  });
-
-  // The breadcrumb and heading are per-episode (the real site's own
-  // heading is literally "Episode N - <title>"), so they update with
-  // whichever episode is actually playing.
+  // The breadcrumb, heading and grid highlight are per-episode (the
+  // real site's own heading is literally "Episode N - <title>"), and
+  // update immediately — same as before — rather than waiting on the
+  // real signed URL/hls.js setup below, since they're honest the moment
+  // this episode is genuinely the one being switched to, not only once
+  // its video is actually playing.
   watchBreadcrumbEl.innerHTML = 'Home / ' + escapeWatchHtml(watchSlide.title) + ' / <span>Episode ' + ep.episode_number + '</span>';
   watchTitleEl.textContent = ep.title ? ('Ep ' + ep.episode_number + ': ' + ep.title) : ('Episode ' + ep.episode_number);
-
   renderWatchEpisodes();
+
+  const ctl = await attachEpisodePlayback(video, episodeId);
+  if(watchActiveEpisodeId !== episodeId) { if(ctl) ctl.destroy(); return; } // navigated away before this resolved
+  if(!ctl){
+    // The function's own real refusal (see video-player.js) — never
+    // fall back to anything else, just leave the real loading state
+    // showing rather than fake a working player.
+    return;
+  }
+  watchVideoEl = video;
+  watchPlaybackCtl = ctl;
+  watchScrubRange.value = video.currentTime || 0;
+  // Same defensive read as app.js's attachPlaybackControls: if metadata
+  // somehow already loaded by the time this runs, don't wait on an
+  // event that's already fired and will never fire again.
+  watchScrubRange.max = (video.duration && isFinite(video.duration)) ? video.duration : 0;
+  watchScrubRange.style.setProperty('--scrub-pct', '0%');
+
+  video.addEventListener('canplay', function onCanPlay(){
+    video.removeEventListener('canplay', onCanPlay);
+    if(watchActiveEpisodeId !== episodeId) return;
+    const loadingEl = watchPlayerHost.querySelector('.watch-player-loading');
+    if(loadingEl) loadingEl.remove();
+    video.style.display = '';
+    watchPlayerBox.classList.add('has-video');
+    if(resumeSeconds && resumeSeconds > 0.5) video.currentTime = resumeSeconds;
+    video.play().catch(() => {});
+  }, { once: true });
+  video.addEventListener('loadedmetadata', () => {
+    if(watchVideoEl !== video) return;
+    watchScrubRange.max = video.duration || 0;
+  });
+  video.addEventListener('timeupdate', () => {
+    if(watchVideoEl !== video || watchScrubbing) return;
+    watchScrubRange.value = video.currentTime;
+    const pct = video.duration ? (video.currentTime / video.duration) * 100 : 0;
+    watchScrubRange.style.setProperty('--scrub-pct', pct + '%');
+  });
+  video.addEventListener('pause', () => {
+    if(watchVideoEl !== video) return;
+    saveCurrentWatchProgress();
+    watchPlayerBox.classList.add('paused');
+  });
+  video.addEventListener('play', () => {
+    if(watchVideoEl !== video) return;
+    watchPlayerBox.classList.remove('paused');
+  });
 }
 
 function escapeWatchHtml(s){
@@ -236,9 +269,17 @@ async function openWatchScreen(slideIndex, resume){
   const slide = slides[slideIndex];
   if(!slide) return;
 
+  // Real teardown of whatever was already playing (see stopWatchPlayback)
+  // — this can be reached series-to-series without ever leaving the
+  // 'watch' screen in between (a poster click while already watching
+  // something else), so the normal "leaving this screen" trigger alone
+  // isn't enough to release the outgoing real hls.js instance.
+  if(watchPlaybackCtl) watchPlaybackCtl.destroy();
+
   watchSlide = slide;
   watchActiveEpisodeId = null;
-  watchPlayer = null;
+  watchVideoEl = null;
+  watchPlaybackCtl = null;
   watchActiveRange = 0;
   // Real loading state for the (usually brief, but real) wait on this
   // series' own real episode list — replaces what would otherwise be a
@@ -289,6 +330,47 @@ async function loadWatchSocialState(slide){
 }
 
 watchBackBtn.addEventListener('click', () => showScreen('discover'));
+
+// Real, draggable seeking — a real <input type=range>'s own native drag
+// handling, not hand-rolled pointer math. See app.js's identical
+// scrubRange wiring for why `watchScrubbing` and the live 'input' seek
+// (not just on release) matter.
+watchScrubRange.addEventListener('input', () => {
+  watchScrubbing = true;
+  if(watchVideoEl) watchVideoEl.currentTime = parseFloat(watchScrubRange.value);
+  const pct = watchScrubRange.max > 0 ? (watchScrubRange.value / watchScrubRange.max) * 100 : 0;
+  watchScrubRange.style.setProperty('--scrub-pct', pct + '%');
+});
+watchScrubRange.addEventListener('change', () => { watchScrubbing = false; });
+
+// Real tap-to-pause / press-and-hold-to-2x, confirmed directly against
+// reelshort.com — see the WATCH_HOLD_SPEED comment above. No swipe
+// gesture exists on this screen to guard against (unlike the mobile
+// feed), so this is simpler: just a real press/release pair deciding
+// tap vs. hold. Attached to the stable watchPlayerHost container rather
+// than the <video> itself, since that's replaced on every episode
+// switch (watchPlayEpisode) while this only needs wiring once.
+watchPlayerHost.addEventListener('pointerdown', () => {
+  if(!watchVideoEl) return;
+  watchPressStartTime = performance.now();
+  watchPressHolding = !watchVideoEl.paused;
+  if(watchPressHolding) watchVideoEl.playbackRate = WATCH_HOLD_SPEED;
+});
+function endWatchPress(){
+  if(!watchVideoEl) return;
+  const wasHolding = watchPressHolding;
+  const elapsed = performance.now() - watchPressStartTime;
+  watchPressHolding = false;
+  if(wasHolding) watchVideoEl.playbackRate = 1; // instant, exactly where playback actually is
+  if(elapsed > WATCH_TAP_MAX_MS) return; // a genuine hold already did its one real job above
+  if(watchVideoEl.paused){
+    watchVideoEl.play().catch(() => {});
+  } else {
+    watchVideoEl.pause();
+  }
+}
+watchPlayerHost.addEventListener('pointerup', endWatchPress);
+watchPlayerHost.addEventListener('pointercancel', endWatchPress);
 
 // Comment panel: a fixed drawer over the existing layout, opened/closed
 // by toggling one class — never part of the document flow, so it can

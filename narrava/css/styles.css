@@ -222,11 +222,13 @@
     display:flex;align-items:center;justify-content:center;
     background:var(--panel);
   }
-  .bgvideo iframe{
+  .bgvideo iframe,
+  .bgvideo video{
     width:100%;
     height:100%;
     border:0;
     display:block;
+    object-fit:cover;
   }
 
   /* Off-screen home for the *next* slide's video, warming up quietly
@@ -242,7 +244,8 @@
     opacity:0;
     pointer-events:none;
   }
-  .preload-host iframe{
+  .preload-host iframe,
+  .preload-host video{
     width:340px;height:706px;
     border:0;
   }
@@ -418,6 +421,57 @@
     100%{transform:scale(1);}
   }
 
+  /* The real scrub bar (see video-controls above the .info markup in
+     index.html) — confirmed directly against reelshort.com: it is NOT
+     visible while a video is genuinely playing, only while paused (a
+     tap pauses and reveals it; tapping again resumes and hides it —
+     see playToggle's own pointer handlers). `.feed.paused` is the same
+     real "genuinely paused" state .playpulse-icon already keys off, not
+     a separate concept invented here. `.has-video` still keeps this off
+     a locked/still-loading episode's own art entirely. */
+  .video-controls{
+    display:none;
+    position:absolute;
+    left:16px;right:16px;
+    bottom:146px;
+    z-index:40;
+    align-items:center;
+    gap:10px;
+    touch-action:none;
+  }
+  .feed.watching.paused .video-controls.has-video{
+    display:flex;
+  }
+  .scrub-range{
+    flex:1;
+    -webkit-appearance:none;
+    appearance:none;
+    height:4px;
+    border-radius:2px;
+    background:rgba(244,247,241,0.28);
+    outline:none;
+    cursor:pointer;
+  }
+  .scrub-range::-webkit-slider-thumb{
+    -webkit-appearance:none;
+    appearance:none;
+    width:13px;height:13px;
+    border-radius:50%;
+    background:var(--leaf-light);
+    box-shadow:0 1px 4px rgba(0,0,0,0.5);
+  }
+  .scrub-range::-moz-range-thumb{
+    width:13px;height:13px;
+    border:none;
+    border-radius:50%;
+    background:var(--leaf-light);
+    box-shadow:0 1px 4px rgba(0,0,0,0.5);
+  }
+  .scrub-range::-webkit-slider-runnable-track{
+    height:4px;
+    border-radius:2px;
+    background:linear-gradient(to right, var(--leaf-light) var(--scrub-pct, 0%), rgba(244,247,241,0.28) 0);
+  }
   .info{
     position:absolute;
     left:22px;right:66px;
@@ -2281,13 +2335,30 @@
       aspect-ratio:340/706;
       overflow:hidden;
       background:#000;
+      position:relative;
     }
     .watch-player-inner{
       width:100%;height:100%;
       position:relative;
     }
-    .watch-player-inner iframe{
-      width:100%;height:100%;border:none;display:block;
+    .watch-player-inner iframe,
+    .watch-player-inner video{
+      width:100%;height:100%;border:none;display:block;object-fit:cover;
+    }
+    /* Confirmed directly against reelshort.com: not visible while a
+       video is genuinely playing, only while paused — same real gate as
+       the mobile feed's .video-controls. */
+    .watch-video-controls{
+      display:none;
+      position:absolute;
+      left:16px;right:16px;
+      bottom:16px;
+      z-index:20;
+      align-items:center;
+      gap:10px;
+    }
+    .watch-player-box.has-video.paused .watch-video-controls{
+      display:flex;
     }
     /* The real wait for a real episode's video to actually become
        playable (see watchPlayEpisode in watch.js) — Bunny's player

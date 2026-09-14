@@ -55,22 +55,45 @@ let slidesLoaded = false; // real fetchSlides() has actually resolved — see re
 let idx = 0;
 let coins = 3;
 
-// Real video playback state (Bunny's player.js) — identity is the real
-// EPISODE id throughout (see header comment above), not the series/slide
-// id, since one slide can point at different real episodes over time.
-let currentPlayer = null;          // playerjs.Player for the active, visible episode's video, or null
-let currentVideoEpisodeId = null;  // real episode id currentPlayer belongs to
+// Real video playback state — a real native <video> element plus hls.js
+// (video-player.js), identity is the real EPISODE id throughout (see
+// header comment above), not the series/slide id, since one slide can
+// point at different real episodes over time.
+let currentVideoEl = null;         // the real, active <video> element for the visible episode, or null
+let currentPlaybackCtl = null;     // its attachEpisodePlayback() controller (video-player.js) — owns auth refresh, .destroy() tears the real playback down
+let currentVideoEpisodeId = null;  // real episode id currentVideoEl belongs to
 let currentVideoSeriesId = null;   // the slide/series that episode belongs to, kept in lockstep with currentVideoEpisodeId — saveCurrentFeedProgress needs both, and this avoids re-deriving the series by searching `slides` after it may have already moved on to a different episode
-let pendingResumeEpisodeId = null; // real episode id the automatic resume wants seeked once its player is ready (see enterMobileWatching/promotePreload)
+let pendingResumeEpisodeId = null; // real episode id the automatic resume wants seeked once its video is ready (see enterMobileWatching/promotePreload)
 let pendingResumeSeconds = 0;
 let renderedMediaEpisodeId = null; // real episode id whose media (video or art) is currently in #bgvideo, so unrelated re-renders (unlock, continue) don't restart a playing video
 
-// episodeId -> { iframe, player, ready } for a video warming up off-screen
-// ahead of time (see preloadVideo/promotePreload). Bunny's player takes a
-// genuinely long time to become interactive after an iframe first loads —
-// confirmed live, well over 30 seconds is normal, not a bug — so the only
-// way to make a video feel like it "just starts" is to have been loading
-// it already, quietly, while the previous episode was still on screen.
+// Real playback controls (video-controls in index.html) — the same real
+// <video> element's own currentTime/duration/playbackRate throughout,
+// never a fabricated position or speed.
+let scrubbing = false; // true while the viewer's own finger/pointer is actively dragging scrubRange — timeupdate skips updating it meanwhile so it never fights the drag
+
+// Press-and-hold-to-fast-forward on the video itself (playToggle below)
+// — confirmed directly against the real reference (reelshort.com): a
+// single tap toggles play/pause, and separately, holding anywhere on
+// the video jumps instantly to 2x for exactly as long as it's actually
+// held, snapping back to 1x the instant it's released, no ramp either
+// direction. HOLD_SPEED/TAP_MAX_MS aren't from the reference itself
+// (only the real 2x value and the "instant, no ramp" shape are
+// confirmed) — TAP_MAX_MS is a standard tap-vs-hold threshold, open to
+// correction if it doesn't feel right live.
+const HOLD_SPEED = 2;
+const TAP_MAX_MS = 200;
+const SWIPE_CANCEL_PX = 15; // a real vertical swipe (forward/backward nav) cancels the tap/hold read entirely — feed's own touchstart/touchend already owns that gesture
+let pressStartY = null;
+let pressStartTime = 0;
+let pressHolding = false;
+let pressMoved = false;
+
+// episodeId -> { video, ctl, ready } for a video warming up off-screen
+// ahead of time (see preloadVideo/promotePreload) — a real <video> element
+// in #preloadHost, already fetching its real signed URL and buffering via
+// hls.js, well before it's ever shown, so a swipe can land on an
+// already-playing video instead of waiting on it cold.
 const preloadCache = {};
 const preloadHost = document.getElementById('preloadHost');
 let region = 'NG';
@@ -98,6 +121,8 @@ const episodeGridClose = document.getElementById('episodeGridClose');
 const episodeGridBody = document.getElementById('episodeGridBody');
 const unlockBtn = document.getElementById('unlockBtn');
 const unlockLabel = document.getElementById('unlockLabel');
+const scrubRange = document.getElementById('scrubRange');
+const videoControls = document.getElementById('videoControls');
 const coinBalance = document.getElementById('coinBalance');
 const feed = document.getElementById('feed');
 const playToggle = document.getElementById('playToggle');
@@ -360,6 +385,16 @@ function setArt(art){
   }
 }
 
+// Keeps the real playback controls (scrub bar, speed) in lockstep with
+// whether a real video is actually the thing on screen right now — art
+// (locked episode, still loading) never gets scrub/speed controls
+// floating uselessly over it. bgvideo's own 'has-video' class is the
+// single real source of truth for this everywhere it's set.
+function setBgHasVideo(hasVideo){
+  bgvideo.classList.toggle('has-video', hasVideo);
+  videoControls.classList.toggle('has-video', hasVideo);
+}
+
 // The real wait for a real episode's video to actually become playable
 // (renderMedia below) — replaces the series' own cover image for that
 // wait specifically, never used for a genuinely video-less/locked
@@ -368,162 +403,157 @@ function setLoadingArt(){
   bgvideo.innerHTML = '<div class="bgvideo-loading">' + narravaLoaderHtml('pulse') + '</div>';
 }
 
-function bunnyEmbedSrc(bunnyVideoId){
-  // No loop=true: a looped <video> never fires a real 'ended' event per
-  // the HTML5 spec, which would silently break auto-advance-on-finish.
-  // Playing once and advancing to the next slide (real content) is also
-  // just the better behavior here than looping the same clip forever.
-  return 'https://iframe.mediadelivery.net/embed/' + BUNNY_LIBRARY_ID + '/' + bunnyVideoId +
-    '?autoplay=true&muted=true&preload=true&responsive=false';
+// Tears down whatever's currently the real, active video — real hls.js
+// resources (its segment-loading loop, the scheduled auth-refresh
+// timer), not just the DOM element, which merely removing/replacing
+// #bgvideo's own content never released on its own. A no-op if nothing
+// is actually playing.
+function destroyActivePlayback(){
+  if(currentPlaybackCtl) currentPlaybackCtl.destroy();
+  currentVideoEl = null;
+  currentPlaybackCtl = null;
 }
 
-// Starts loading a real episode's video off-screen, in .preload-host,
-// well before it's ever shown — confirmed live that Bunny's player can
-// take 30+ seconds to become interactive after its iframe first loads,
-// so preloading during the *previous* episode's viewing time is the
-// only realistic way for a swipe to ever land on an already-playing
-// video. target is {id (real episode id), bunnyVideoId, seriesId} — see
-// nextPreloadTarget. No-ops if there's nothing to preload or it's
-// already in flight.
+// Starts loading a real episode's video off-screen, in #preloadHost,
+// well before it's ever shown — a real <video> element plus hls.js
+// (video-player.js), already fetching its real signed URL and buffering
+// real segments, so a swipe can land on an already-playing video
+// instead of waiting on it cold. target is {id (real episode id),
+// bunnyVideoId, seriesId} — see nextPreloadTarget. No-ops if there's
+// nothing to preload or it's already in flight.
 function preloadVideo(target){
   if(!target || !target.bunnyVideoId || preloadCache[target.id]) return;
 
-  const iframe = document.createElement('iframe');
-  iframe.src = bunnyEmbedSrc(target.bunnyVideoId);
-  iframe.setAttribute('allow', 'autoplay');
-  preloadHost.appendChild(iframe);
+  const video = document.createElement('video');
+  video.muted = true;
+  video.playsInline = true;
+  video.setAttribute('playsinline', '');
+  preloadHost.appendChild(video);
 
-  const entry = { iframe, player: null, ready: false };
+  const entry = { video, ctl: null, ready: false };
   preloadCache[target.id] = entry;
 
-  const player = new playerjs.Player(iframe);
-  entry.player = player;
-
-  player.on('ready', () => {
-    // Confirmed live: player.js's "ready" broadcast isn't reliably
-    // scoped to the one iframe it actually came from once more than one
-    // Player() instance exists on the page at a time (exactly what
-    // preloading needs) — a real video's genuine ready broadcast was
-    // observed firing this *other*, unrelated preload's 'ready'
-    // callback too. player.isReady, set only by player.js's own
-    // internal src-matched handling, is the one place that check is
-    // still done correctly — so re-check it here rather than trusting
-    // that this callback firing means *this* video is actually ready.
-    if(!player.isReady) return;
-    entry.ready = true;
-    // If the feed is sitting on this exact episode right now (it loaded
-    // faster than the viewer swiped away), promote it immediately
-    // instead of leaving it preloaded and unused. Checked against
-    // currentPlayer itself (this exact instance), not
-    // currentVideoEpisodeId — that gets set to the new episode's id as
-    // soon as navigation happens, before any promotion, so comparing
-    // episode ids here would wrongly conclude "already promoted" the
-    // instant you arrive.
-    if(target.id === renderedMediaEpisodeId && currentPlayer !== player) promotePreload(target);
-  });
-}
-
-// The automatic resume's seek (see promotePreload/enterMobileWatching).
-// player.js's 'ready'/promotion only means the postMessage bridge to the
-// iframe is up — not that the underlying video's own duration/seekable
-// range has loaded. Confirmed live (desktop watch page, same player.js
-// library): calling setCurrentTime that early is silently ignored.
-// Polling getDuration until it reports a real value is necessary, but
-// confirmed live NOT sufficient on its own: a duration being known
-// doesn't always mean the seek sticks the instant it's called (seen
-// live — currentTime stayed put after setCurrentTime, then a second
-// call moments later landed instantly). So this verifies the seek
-// actually took, and retries the same way (not a fresh getDuration
-// poll) if it didn't, rather than assuming success from one blind call.
-// Gives up after ~10s of duration-polling rather than looping forever
-// if a duration genuinely never arrives.
-function seekWhenSeekable(player, episodeId, seconds, attemptsLeft){
-  if(currentVideoEpisodeId !== episodeId || currentPlayer !== player) return; // navigated away
-  player.getDuration((duration) => {
-    if(currentVideoEpisodeId !== episodeId || currentPlayer !== player) return;
-    if(duration && duration > 0){
-      player.setCurrentTime(seconds);
-      setTimeout(() => {
-        if(currentVideoEpisodeId !== episodeId || currentPlayer !== player) return;
-        player.getCurrentTime((landedAt) => {
-          if(currentVideoEpisodeId !== episodeId || currentPlayer !== player) return;
-          if(Math.abs(landedAt - seconds) > 2 && attemptsLeft > 0){
-            seekWhenSeekable(player, episodeId, seconds, attemptsLeft - 1);
-          }
-        });
-      }, 300);
+  attachEpisodePlayback(video, target.id).then((ctl) => {
+    // Preload was torn down (maintainPreload dropped it, or the whole
+    // feed navigated away) before the real signed URL/hls.js setup
+    // resolved — nothing left to attach this real playback to.
+    if(preloadCache[target.id] !== entry) { if(ctl) ctl.destroy(); return; }
+    if(!ctl){
+      // The function's own real refusal (see video-player.js) — this
+      // episode genuinely isn't playable right now. Never fall back to
+      // anything else; just drop the preload attempt.
+      delete preloadCache[target.id];
+      video.remove();
       return;
     }
-    if(attemptsLeft <= 0) return;
-    setTimeout(() => seekWhenSeekable(player, episodeId, seconds, attemptsLeft - 1), 400);
+    entry.ctl = ctl;
+    video.addEventListener('canplay', function onCanPlay(){
+      video.removeEventListener('canplay', onCanPlay);
+      entry.ready = true;
+      // If the feed is sitting on this exact episode right now (it
+      // loaded faster than the viewer swiped away), promote it
+      // immediately instead of leaving it preloaded and unused.
+      if(target.id === renderedMediaEpisodeId && currentVideoEl !== video) promotePreload(target);
+    }, { once: true });
   });
 }
 
 // Moves an already-warmed preload from the off-screen host into #bgvideo
-// and makes it the real, controlling player — the "instant start" case.
-// target is the same {id, bunnyVideoId, seriesId} descriptor preloadVideo
-// was given.
+// and makes it the real, active video — the "instant start" case.
+// Moving a <video> element in the DOM (rather than removing/re-adding
+// it, or ever touching its src) preserves its real playback/buffer
+// state, so this is a genuine handoff, not a reload. target is the same
+// {id, bunnyVideoId, seriesId} descriptor preloadVideo was given.
 function promotePreload(target){
   const entry = preloadCache[target.id];
   if(!entry) return;
   delete preloadCache[target.id];
 
+  destroyActivePlayback();
   bgvideo.innerHTML = '';
-  bgvideo.classList.add('has-video');
-  bgvideo.appendChild(entry.iframe);
-  currentPlayer = entry.player;
+  setBgHasVideo(true);
+  bgvideo.appendChild(entry.video);
+  currentVideoEl = entry.video;
+  currentPlaybackCtl = entry.ctl;
   currentVideoEpisodeId = target.id;
   currentVideoSeriesId = target.seriesId;
+  attachPlaybackControls(entry.video);
 
-  // The automatic resume's jump-back-in (see enterMobileWatching):
-  // this episode's video has just genuinely become the active player
-  // for the first time, so if a resume was queued for exactly this
-  // episode, this is when to seek it. Confirmed live (see watch.js's
-  // seekWhenSeekable) that calling setCurrentTime this early — right as
-  // the player becomes active — is silently ignored: 'ready'/promotion
-  // only means the postMessage bridge is up, not that the video's own
-  // duration/seekable range has loaded. Polling getDuration first is
-  // what's actually confirmed to make the seek stick.
+  // The automatic resume's jump-back-in (see enterMobileWatching): this
+  // episode's video has just genuinely become the active one for the
+  // first time, so if a resume was queued for exactly this episode,
+  // this is when to seek it — a real, direct, synchronous currentTime
+  // assignment, already reliable the moment canplay has fired (which
+  // promotion itself is gated on), no polling needed.
   if(pendingResumeEpisodeId === target.id){
-    const resumeSeconds = pendingResumeSeconds;
+    entry.video.currentTime = pendingResumeSeconds;
     pendingResumeEpisodeId = null;
-    seekWhenSeekable(entry.player, target.id, resumeSeconds, 25);
   }
 
-  // 'ended' is wired here, once, only on the player that's actually
-  // becoming active — never during preload. Guards against the same
-  // cross-instance broadcast issue as the isReady check above (a
-  // previously-active, now-stale player's own lingering registration
-  // firing on someone else's real 'ended'): checking that *this*
-  // episode is still the current one is enough, since a stale instance
-  // belongs to an episode that's no longer current by the time it could
-  // fire. Advances the same real way a forward swipe would (see
-  // advanceForward) — the next real episode in this series while
-  // watching, or the next series while just browsing.
-  // (An earlier version also re-confirmed via getDuration/getCurrentTime
-  // before advancing — cut after live testing showed the player's own
-  // reported currentTime can already have moved on by the time that
-  // round-trip resolves, which silently swallowed the real 'ended'.)
-  entry.player.on('ended', () => {
+  // 'ended' is wired here, once, only on the video that's actually
+  // becoming active — never during preload. Checking that this episode
+  // is still the current one guards against a stale listener on a
+  // video that's since been torn down. Advances the same real way a
+  // forward swipe would (see advanceForward) — the next real episode in
+  // this series while watching, or the next series while just browsing.
+  entry.video.addEventListener('ended', () => {
     if(target.id !== currentVideoEpisodeId || target.id !== renderedMediaEpisodeId) return;
     advanceForward();
   });
 
-  // A short clip can finish playing during Bunny's own (often 30+
-  // second, confirmed live) startup delay, entirely before the 'ended'
-  // listener above ever existed to catch it — checked once, right here,
-  // since that real gap only matters for a clip shorter than the
-  // startup delay itself, not for genuine episode-length video.
-  entry.player.getDuration((duration) => {
-    entry.player.getCurrentTime((current) => {
-      if(target.id !== currentVideoEpisodeId || target.id !== renderedMediaEpisodeId) return;
-      if(duration && current >= duration - 0.5) advanceForward();
-    });
-  });
-
-  if(feed.classList.contains('paused')) entry.player.pause();
-  else entry.player.play();
+  if(feed.classList.contains('paused')) entry.video.pause();
+  else entry.video.play().catch(() => {});
 }
+
+// Wires the real scrub bar to whichever <video> just became active —
+// called once per promotion (video-player.js's own instance is
+// per-episode, so this re-wires fresh each time rather than trying to
+// move listeners between elements).
+function attachPlaybackControls(video){
+  scrubRange.value = video.currentTime || 0;
+  // A preloaded video (the normal case — see promotePreload) has
+  // usually already buffered well past loadedmetadata by the time this
+  // runs, so that event has already fired and would never come again —
+  // read a real, already-known duration straight away rather than only
+  // ever waiting for a future event that a fresh (non-preloaded) video
+  // still genuinely needs this same listener for.
+  scrubRange.max = (video.duration && isFinite(video.duration)) ? video.duration : 0;
+  scrubRange.style.setProperty('--scrub-pct', '0%');
+
+  video.addEventListener('loadedmetadata', () => {
+    if(currentVideoEl !== video) return;
+    scrubRange.max = video.duration || 0;
+  });
+  video.addEventListener('timeupdate', () => {
+    if(currentVideoEl !== video || scrubbing) return;
+    scrubRange.value = video.currentTime;
+    const pct = video.duration ? (video.currentTime / video.duration) * 100 : 0;
+    scrubRange.style.setProperty('--scrub-pct', pct + '%');
+  });
+}
+
+// Real, draggable seeking — a real <input type=range>'s own native drag
+// handling, not hand-rolled pointer math. scrubbing is set for the
+// whole real drag (not just the final release) so the timeupdate
+// handler above never fights the viewer's own finger mid-drag; seeking
+// live on 'input' (not only on release) is what makes this a genuine
+// scrub, not just a tap-to-jump.
+scrubRange.addEventListener('input', () => {
+  scrubbing = true;
+  if(currentVideoEl) currentVideoEl.currentTime = parseFloat(scrubRange.value);
+  const pct = scrubRange.max > 0 ? (scrubRange.value / scrubRange.max) * 100 : 0;
+  scrubRange.style.setProperty('--scrub-pct', pct + '%');
+});
+scrubRange.addEventListener('change', () => { scrubbing = false; });
+// Never let a drag that starts on the scrub bar reach #feed's own
+// vertical swipe listeners (touchstart/touchend) — touch-action:none
+// (styles.css) already stops the browser's native panning from
+// interfering, but JS event bubbling is a separate concern: without
+// this, the feed would still see the same touch sequence and could
+// misread it as a swipe.
+['touchstart', 'touchend', 'touchmove', 'pointerdown'].forEach(evt => {
+  scrubRange.addEventListener(evt, e => e.stopPropagation());
+});
 
 // What to warm up next depends on which of the two real states the
 // current slide is actually in: its own next real episode while
@@ -554,11 +584,22 @@ function maintainPreload(){
 
   const keepIds = [renderedMediaEpisodeId, target ? target.id : null];
   Object.keys(preloadCache).forEach(id => {
-    if(keepIds.indexOf(id) === -1){
-      preloadCache[id].iframe.remove();
-      delete preloadCache[id];
-    }
+    if(keepIds.indexOf(id) === -1) destroyPreloadEntry(id);
   });
+}
+
+// Tears down one off-screen preload for real — .destroy() (video-player.js)
+// releases hls.js's own real resources (its segment-loading loop, the
+// scheduled auth-refresh timer), not just the DOM element, and is a
+// no-op if the real signed URL/hls.js setup hasn't resolved yet (that
+// callback notices the cache entry is gone and cleans up itself once it
+// does — see preloadVideo).
+function destroyPreloadEntry(episodeId){
+  const entry = preloadCache[episodeId];
+  if(!entry) return;
+  delete preloadCache[episodeId];
+  if(entry.ctl) entry.ctl.destroy();
+  entry.video.remove();
 }
 
 // Renders whichever media the current slide's real active episode
@@ -574,11 +615,9 @@ function maintainPreload(){
 // out here, and wrongly giving up on a real, just-slow video would be
 // worse than staying on art a little longer than strictly necessary).
 //
-// Replacing #bgvideo's content removes any iframe that was already
-// inside it, and removing an iframe from the DOM is what actually stops
-// its video — the browser tears down the whole embedded document, not
-// just hides it — so at most one *active* video is ever playing,
-// without needing to explicitly ask the old player to pause first.
+// destroyActivePlayback (above) tears down whatever real video was
+// already active — its own hls.js resources, not just the DOM element —
+// so at most one *active* video is ever really running.
 //
 // Guarded by renderedMediaEpisodeId so re-rendering the *same* episode
 // (unlocking it, tapping Continue) only updates the surrounding UI, not
@@ -589,12 +628,12 @@ function maintainPreload(){
 function renderMedia(s){
   if(s.episodeId === renderedMediaEpisodeId) return;
   renderedMediaEpisodeId = s.episodeId;
-  currentPlayer = null;
+  destroyActivePlayback();
   currentVideoEpisodeId = s.episodeId;
   currentVideoSeriesId = s.id;
 
   if(!s.bunnyVideoId){
-    bgvideo.classList.remove('has-video');
+    setBgHasVideo(false);
     setArt(s.art);
     maintainPreload();
     return;
@@ -615,18 +654,19 @@ function renderMedia(s){
   // (registered below, or already registered if `existing` is truthy)
   // promotes it — and replaces this loader with the real video — the
   // moment it's actually ready.
-  bgvideo.classList.remove('has-video');
+  setBgHasVideo(false);
   setLoadingArt();
   if(!existing) preloadVideo({ id: s.episodeId, bunnyVideoId: s.bunnyVideoId, seriesId: s.id });
   maintainPreload();
 }
 
 // Leaving the feed for any other screen must actually stop playback, not
-// just hide it — removing #bgvideo's iframe is what tears down the video
-// (see renderMedia above), so this does the same teardown renderMedia
-// already does on every episode switch, just triggered by navigation
-// away from the feed instead. Also clears any off-screen preload in
-// flight, since those are real videos quietly loading too.
+// just hide it — destroyActivePlayback (above) is what tears down the
+// video for real (see renderMedia above), so this does the same
+// teardown renderMedia already does on every episode switch, just
+// triggered by navigation away from the feed instead. Also clears any
+// off-screen preload in flight, since those are real videos quietly
+// loading too.
 // renderedMediaEpisodeId is reset to null so coming back to the feed
 // re-renders its media from scratch via the normal render() path,
 // instead of render() thinking the current episode's video is already
@@ -634,40 +674,32 @@ function renderMedia(s){
 function stopFeedPlayback(){
   if(renderedMediaEpisodeId === null && Object.keys(preloadCache).length === 0) return;
   saveCurrentFeedProgress();
+  destroyActivePlayback();
   bgvideo.innerHTML = '';
-  bgvideo.classList.remove('has-video');
-  currentPlayer = null;
+  setBgHasVideo(false);
   currentVideoEpisodeId = null;
   currentVideoSeriesId = null;
   renderedMediaEpisodeId = null;
-  Object.keys(preloadCache).forEach(id => { preloadCache[id].iframe.remove(); delete preloadCache[id]; });
+  Object.keys(preloadCache).forEach(destroyPreloadEntry);
 }
 
-// Reads the currently-playing episode's real position from its actual
-// player (never assumed/estimated) and upserts it via watch-progress.js.
-// No-ops quietly if there's no real video playing right now. Both the
-// real episode id AND its series id are read straight off
-// currentVideoEpisodeId/currentVideoSeriesId (kept in lockstep wherever
-// they're set — see renderMedia/promotePreload) rather than looked up
-// from `slides` by id here: the slide that episode belongs to may
-// already have moved on to a different real episode by the time this
-// runs (real in-series swiping makes that a normal, frequent case now,
-// not just a rare race), so searching `slides` for it could silently
-// find nothing, or worse, the slide's now-different current episode.
-// Called periodically, on pause, and whenever the feed leaves the
-// current episode (goTo, stopFeedPlayback, in-series navigation).
+// Reads the currently-playing episode's real position straight off the
+// real <video> element (never assumed/estimated) and upserts it via
+// watch-progress.js. No-ops quietly if there's no real video playing
+// right now. Both the real episode id AND its series id are read
+// straight off currentVideoEpisodeId/currentVideoSeriesId (kept in
+// lockstep wherever they're set — see renderMedia/promotePreload)
+// rather than looked up from `slides` by id here: the slide that
+// episode belongs to may already have moved on to a different real
+// episode by the time this runs (real in-series swiping makes that a
+// normal, frequent case now, not just a rare race), so searching
+// `slides` for it could silently find nothing, or worse, the slide's
+// now-different current episode. Called periodically, on pause, and
+// whenever the feed leaves the current episode (goTo, stopFeedPlayback,
+// in-series navigation).
 function saveCurrentFeedProgress(){
-  if(!currentPlayer || !currentVideoEpisodeId || !currentVideoSeriesId) return;
-  const player = currentPlayer;
-  const episodeId = currentVideoEpisodeId;
-  const seriesId = currentVideoSeriesId;
-  player.getCurrentTime((seconds) => {
-    // A stale callback can land after the episode/player has already
-    // moved on (e.g. a fast swipe right after this fired) — recheck
-    // before writing so a leftover read never overwrites newer progress.
-    if(currentPlayer !== player || currentVideoEpisodeId !== episodeId) return;
-    saveWatchProgress(episodeId, seriesId, seconds);
-  });
+  if(!currentVideoEl || !currentVideoEpisodeId || !currentVideoSeriesId) return;
+  saveWatchProgress(currentVideoEpisodeId, currentVideoSeriesId, currentVideoEl.currentTime);
 }
 
 // 15s: frequent enough that a crash/refresh never loses more than a few
@@ -676,13 +708,13 @@ function saveCurrentFeedProgress(){
 setInterval(saveCurrentFeedProgress, 15000);
 
 function renderEmptyFeed(){
+  destroyActivePlayback();
   bgvideo.innerHTML = '';
-  bgvideo.classList.remove('has-video');
-  currentPlayer = null;
+  setBgHasVideo(false);
   currentVideoEpisodeId = null;
   currentVideoSeriesId = null;
   renderedMediaEpisodeId = null;
-  Object.keys(preloadCache).forEach(id => { preloadCache[id].iframe.remove(); delete preloadCache[id]; });
+  Object.keys(preloadCache).forEach(destroyPreloadEntry);
   spine.innerHTML = '';
   pager.innerHTML = '';
   epBadge.textContent = '';
@@ -885,44 +917,78 @@ feed.addEventListener('wheel', e=>{
 //     too, not just a bare CSS class flip with no episode data behind
 //     it. The video keeps playing exactly as it was, untouched, if
 //     there's no saved progress to resume from.
-//   - Watching: tapping just controls play/pause, the same way tapping
-//     a real video player normally does — it does NOT bring the overlay
-//     back. That only happens by swiping/scrolling to a new slide
-//     (goTo already resets to browsing there). Chosen over "tap toggles
-//     the overlay back" because once committed to watching, the natural
-//     next thing to want from a tap is play/pause, not to undo the
-//     choice you just made — bringing the overlay back has its own,
-//     already-specified trigger (leaving the slide).
+//   - Watching: a real tap toggles play/pause, and press-and-hold
+//     anywhere on the video is real, temporary 2x — both confirmed
+//     directly against reelshort.com (see the HOLD_SPEED/TAP_MAX_MS
+//     comment above) — neither brings the browsing overlay back. That
+//     only happens by swiping/scrolling to a new slide (goTo already
+//     resets to browsing there).
 playToggle.addEventListener('click', ()=>{
-  if(!feed.classList.contains('watching')){
-    if(slides.length === 0) return;
-    // This shared feed also gets reused, restyled, as desktop's own
-    // "For You" tab (see styles.css's body.feed-active rules) — but
-    // real episode swiping/the jump grid/the real per-episode unlock
-    // prompt are mobile-only (matching how openSeriesInFeed already
-    // sends desktop to its own dedicated watch.js page instead of this
-    // feed for the actual "watch a series" experience there). Desktop's
-    // For You tab keeps its exact prior simple behavior — just commit
-    // to watching, no real episode fetch — rather than this task's new
-    // mechanism leaking into a screen it was never meant to touch.
-    if(window.matchMedia('(min-width: 900px)').matches){
-      feed.classList.add('watching');
-      return;
-    }
-    const s = slides[idx];
-    enterMobileWatching(idx, continueWatchingMap.get(s.id));
+  if(feed.classList.contains('watching')) return; // tap/hold here now fully owned by the pointer handlers below
+  if(slides.length === 0) return;
+  // This shared feed also gets reused, restyled, as desktop's own
+  // "For You" tab (see styles.css's body.feed-active rules) — but
+  // real episode swiping/the jump grid/the real per-episode unlock
+  // prompt are mobile-only (matching how openSeriesInFeed already
+  // sends desktop to its own dedicated watch.js page instead of this
+  // feed for the actual "watch a series" experience there). Desktop's
+  // For You tab keeps its exact prior simple behavior — just commit
+  // to watching, no real episode fetch — rather than this task's new
+  // mechanism leaking into a screen it was never meant to touch.
+  if(window.matchMedia('(min-width: 900px)').matches){
+    feed.classList.add('watching');
     return;
   }
+  const s = slides[idx];
+  enterMobileWatching(idx, continueWatchingMap.get(s.id));
+});
+
+// Real press-and-hold-to-2x, confirmed directly against reelshort.com:
+// instant on press (no delay/ramp — see HOLD_SPEED above), instant back
+// to normal the moment it's released, exactly wherever playback
+// actually is at that instant — never a lingering faster speed. A tap
+// (a press released within TAP_MAX_MS) still toggles play/pause, same
+// as before, just decided here now instead of a separate 'click'
+// listener, since only a real press/release pair can tell a tap and a
+// hold apart. A real vertical drag (SWIPE_CANCEL_PX or more) cancels
+// this read entirely — that's #feed's own forward/backward swipe
+// gesture, not a tap or a hold, and must never also toggle pause or
+// flash 2x on top of navigating.
+playToggle.addEventListener('pointerdown', (e) => {
+  if(!feed.classList.contains('watching') || !currentVideoEl) return;
+  pressStartY = e.clientY;
+  pressStartTime = performance.now();
+  pressMoved = false;
+  pressHolding = !currentVideoEl.paused;
+  if(pressHolding) currentVideoEl.playbackRate = HOLD_SPEED;
+});
+playToggle.addEventListener('pointermove', (e) => {
+  if(pressStartY === null) return;
+  if(Math.abs(e.clientY - pressStartY) > SWIPE_CANCEL_PX) pressMoved = true;
+});
+function endPlayTogglePress(){
+  if(pressStartY === null) return;
+  const wasHolding = pressHolding;
+  const moved = pressMoved;
+  const elapsed = performance.now() - pressStartTime;
+  pressStartY = null;
+  pressHolding = false;
+  pressMoved = false;
+  if(wasHolding && currentVideoEl) currentVideoEl.playbackRate = 1; // instant, exactly where playback actually is — no seeking, no easing
+  if(moved) return; // a real swipe — #feed's own touchstart/touchend already handles navigation
+  if(elapsed > TAP_MAX_MS) return; // a genuine hold already did its one real job above
   const nowPaused = feed.classList.toggle('paused');
-  if(currentPlayer){
+  if(currentVideoEl){
     if(nowPaused){
-      currentPlayer.pause();
+      currentVideoEl.pause();
       saveCurrentFeedProgress();
     } else {
-      currentPlayer.play();
+      currentVideoEl.play().catch(() => {});
     }
   }
-});
+}
+playToggle.addEventListener('pointerup', endPlayTogglePress);
+playToggle.addEventListener('pointercancel', endPlayTogglePress);
 
 // Real like: series_likes (social.js), not a session-only toggle. A
 // signed-out tap opens the same sign-in modal every other account-gated

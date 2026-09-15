@@ -73,14 +73,14 @@ let renderedMediaEpisodeId = null; // real episode id whose media (video or art)
 let scrubbing = false; // true while the viewer's own finger/pointer is actively dragging scrubRange — timeupdate skips updating it meanwhile so it never fights the drag
 
 // Press-and-hold-to-fast-forward on the video itself (playToggle below)
-// — confirmed directly against the real reference (reelshort.com): a
-// single tap toggles play/pause, and separately, holding anywhere on
-// the video jumps instantly to 2x for exactly as long as it's actually
-// held, snapping back to 1x the instant it's released, no ramp either
-// direction. HOLD_SPEED/TAP_MAX_MS aren't from the reference itself
-// (only the real 2x value and the "instant, no ramp" shape are
-// confirmed) — TAP_MAX_MS is a standard tap-vs-hold threshold, open to
-// correction if it doesn't feel right live.
+// — separate, already-confirmed mechanic, untouched by the real chrome
+// show/hide sequence below: holding anywhere on the video jumps
+// instantly to 2x for exactly as long as it's actually held, snapping
+// back to 1x the instant it's released, no ramp either direction.
+// HOLD_SPEED/TAP_MAX_MS aren't from the reference itself (only the real
+// 2x value and the "instant, no ramp" shape are confirmed) —
+// TAP_MAX_MS is a standard tap-vs-hold threshold, open to correction if
+// it doesn't feel right live.
 const HOLD_SPEED = 2;
 const TAP_MAX_MS = 200;
 const SWIPE_CANCEL_PX = 15; // a real vertical swipe (forward/backward nav) cancels the tap/hold read entirely — feed's own touchstart/touchend already owns that gesture
@@ -88,6 +88,43 @@ let pressStartY = null;
 let pressStartTime = 0;
 let pressHolding = false;
 let pressMoved = false;
+
+// The real chrome group while watching — name (.title), description
+// (.synopsis), social icons (.actionrail), and the scrub bar
+// (.video-controls) — confirmed directly, more than once, as one
+// single group that always moves together, replacing the old
+// reference-matched "tap pauses and shows controls together" behavior
+// entirely, not merging with it:
+//   1. Entering an episode shows the whole group immediately.
+//   2. After 2 real seconds of actually playing, the whole group
+//      auto-hides together — the video itself keeps playing.
+//   3. A tap while hidden reveals the whole group and does NOT touch
+//      play/pause at all.
+//   4. A tap while already showing pauses (or resumes) the video —
+//      the real toggle every tap here has always done, just decided by
+//      "is the group visible" now, not by a fixed two-tap sequence.
+//   5. Resuming playback (from either path above) rearms the same real
+//      2-second timer, driven off the video's own real 'playing'/
+//      'pause' events (see attachPlaybackControls) rather than guessed
+//      at from when a tap happened — so it fires the same way whether
+//      playback resumed from this tap logic or from anywhere else.
+// feed.chrome-hidden (styles.css) is the one and only thing that ever
+// hides the group, and it always hides all of it together.
+const CHROME_AUTOHIDE_MS = 2000;
+let chromeHideTimer = null;
+function showChrome(){
+  feed.classList.remove('chrome-hidden');
+}
+function hideChrome(){
+  feed.classList.add('chrome-hidden');
+}
+function clearChromeHideTimer(){
+  if(chromeHideTimer){ clearTimeout(chromeHideTimer); chromeHideTimer = null; }
+}
+function armChromeHideTimer(){
+  clearChromeHideTimer();
+  chromeHideTimer = setTimeout(() => { chromeHideTimer = null; hideChrome(); }, CHROME_AUTOHIDE_MS);
+}
 
 // episodeId -> { video, ctl, ready } for a video warming up off-screen
 // ahead of time (see preloadVideo/promotePreload) — a real <video> element
@@ -317,6 +354,7 @@ async function enterMobileWatching(i, resume){
 
   goTo(i);
   feed.classList.add('watching');
+  showChrome(); // entering an episode always starts with the real chrome group visible, even during the brief loading-art wait before promotion
   showScreen('feed');
 }
 
@@ -424,6 +462,7 @@ function destroyActivePlayback(){
   if(currentPlaybackCtl) currentPlaybackCtl.destroy();
   currentVideoEl = null;
   currentPlaybackCtl = null;
+  clearChromeHideTimer(); // never let a stale timer from the outgoing video hide the next one's chrome mid-flight
 }
 
 // Starts loading a real episode's video off-screen, in #preloadHost,
@@ -576,6 +615,25 @@ function attachPlaybackControls(video){
     scrubRange.value = video.currentTime;
     const pct = video.duration ? (video.currentTime / video.duration) * 100 : 0;
     scrubRange.style.setProperty('--scrub-pct', pct + '%');
+  });
+
+  // The real chrome group (see CHROME_AUTOHIDE_MS above) always starts
+  // visible the moment this episode's video actually becomes the active
+  // one. Arming/clearing the 2-second auto-hide off this video's own
+  // real 'playing'/'pause' events (rather than only from the tap
+  // handler below) means it fires the same real way regardless of
+  // *why* playback started or stopped — the initial autoplay right
+  // after promotion, a tap-to-unpause, or anything else that genuinely
+  // plays or pauses this video.
+  showChrome();
+  video.addEventListener('playing', () => {
+    if(currentVideoEl !== video) return;
+    armChromeHideTimer();
+  });
+  video.addEventListener('pause', () => {
+    if(currentVideoEl !== video) return;
+    clearChromeHideTimer();
+    showChrome(); // a genuinely paused video never sits there with no visible way to unpause it
   });
 }
 
@@ -964,12 +1022,14 @@ feed.addEventListener('wheel', e=>{
 //     too, not just a bare CSS class flip with no episode data behind
 //     it. The video keeps playing exactly as it was, untouched, if
 //     there's no saved progress to resume from.
-//   - Watching: a real tap toggles play/pause, and press-and-hold
-//     anywhere on the video is real, temporary 2x — both confirmed
-//     directly against reelshort.com (see the HOLD_SPEED/TAP_MAX_MS
-//     comment above) — neither brings the browsing overlay back. That
-//     only happens by swiping/scrolling to a new slide (goTo already
-//     resets to browsing there).
+//   - Watching: a real tap either reveals the real chrome group or
+//     toggles play/pause, depending on whether that group is already
+//     showing (see the CHROME_AUTOHIDE_MS comment above for the full
+//     real sequence) — and press-and-hold anywhere on the video is
+//     real, temporary 2x, a separate, untouched mechanic (see
+//     HOLD_SPEED). Neither ever brings the browsing overlay itself
+//     back — that only happens by swiping/scrolling to a new slide
+//     (goTo already resets to browsing there).
 playToggle.addEventListener('click', ()=>{
   if(feed.classList.contains('watching')) return; // tap/hold here now fully owned by the pointer handlers below
   if(slides.length === 0) return;
@@ -984,6 +1044,7 @@ playToggle.addEventListener('click', ()=>{
   // mechanism leaking into a screen it was never meant to touch.
   if(window.matchMedia('(min-width: 900px)').matches){
     feed.classList.add('watching');
+    showChrome();
     return;
   }
   const s = slides[idx];
@@ -1024,6 +1085,17 @@ function endPlayTogglePress(){
   if(wasHolding && currentVideoEl) currentVideoEl.playbackRate = 1; // instant, exactly where playback actually is — no seeking, no easing
   if(moved) return; // a real swipe — #feed's own touchstart/touchend already handles navigation
   if(elapsed > TAP_MAX_MS) return; // a genuine hold already did its one real job above
+
+  // The real chrome group's own tap rule (see CHROME_AUTOHIDE_MS above):
+  // a tap while hidden only ever reveals it, never touches play/pause —
+  // that's the one thing that changed here. A tap while already showing
+  // still does exactly what every tap here has always done: toggle
+  // play/pause (the resulting real 'playing'/'pause' event is what
+  // actually arms/clears the auto-hide timer — see attachPlaybackControls).
+  if(feed.classList.contains('chrome-hidden')){
+    showChrome();
+    return;
+  }
   const nowPaused = feed.classList.toggle('paused');
   if(currentVideoEl){
     if(nowPaused){

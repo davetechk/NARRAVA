@@ -264,24 +264,41 @@
      still how play/pause works once watching (see playToggle's click
      handler in app.js).
      .info itself stays up (rather than collapsing whole), with only its
-     title/synopsis/progress-bar/Continue button hidden individually —
-     the small "EP X · Y" badge (.epbadge) needs to stay visible and
+     progress-bar/Continue button hidden individually — those are
+     browsing-preview-only, never part of the real watching chrome. The
+     small "EP X · Y" badge (.epbadge) needs to stay visible and
      tappable while watching (it's what opens the real episode jump
      grid, see app.js), and .unlock needs to be able to show the real
      unlock prompt while watching too, whenever the episode landed on is
      actually locked (driven by JS via .unlock.hidden below, not by this
-     blanket rule — it has to work the same in both states). */
+     blanket rule — it has to work the same in both states). Neither is
+     part of the real name/description/social-icons/scrub-bar group
+     below, and neither is ever hidden by it. */
   .feed.watching .topbar,
   .feed.watching .spine,
   .feed.watching .pager,
-  .feed.watching .vignette,
-  .feed.watching .actionrail{
+  .feed.watching .vignette{
     display:none;
   }
-  .feed.watching .title,
-  .feed.watching .synopsis,
   .feed.watching .progressbar,
   .feed.watching .continue{
+    display:none;
+  }
+  /* The real single group — name (.title), description (.synopsis),
+     social icons (.actionrail), and the scrub bar (.video-controls,
+     further down) — that moves together the whole time watching,
+     confirmed directly, replacing the old reference-matched
+     tap-to-pause-and-show behavior entirely (see playToggle's pointer
+     handlers in app.js for the real 2-second-after-playback timer and
+     tap-reveal/toggle-pause logic that drives .chrome-hidden below).
+     Visible by default (their own normal, non-watching display values
+     apply — .actionrail's own flex, title/synopsis's own block) the
+     whole time watching; .chrome-hidden (JS-driven, never CSS-driven)
+     is the one and only thing that ever hides them, and it always hides
+     all of them together, never independently. */
+  .feed.watching.chrome-hidden .title,
+  .feed.watching.chrome-hidden .synopsis,
+  .feed.watching.chrome-hidden .actionrail{
     display:none;
   }
 
@@ -429,13 +446,13 @@
   }
 
   /* The real scrub bar (see video-controls above the .info markup in
-     index.html) — confirmed directly against reelshort.com: it is NOT
-     visible while a video is genuinely playing, only while paused (a
-     tap pauses and reveals it; tapping again resumes and hides it —
-     see playToggle's own pointer handlers). `.feed.paused` is the same
-     real "genuinely paused" state .playpulse-icon already keys off, not
-     a separate concept invented here. `.has-video` still keeps this off
-     a locked/still-loading episode's own art entirely. */
+     index.html) — one member of the real name/description/social-icons/
+     scrub-bar group (see the .chrome-hidden comment further up) that
+     moves together the whole time watching, confirmed directly. Visible
+     by default while watching a real video; `.chrome-hidden` (JS-driven,
+     app.js) is the one thing that ever hides it, always together with
+     the rest of the group, never on its own. `.has-video` still keeps
+     this off a locked/still-loading episode's own art entirely. */
   .video-controls{
     display:none;
     position:absolute;
@@ -446,8 +463,11 @@
     gap:10px;
     touch-action:none;
   }
-  .feed.watching.paused .video-controls.has-video{
+  .feed.watching .video-controls.has-video{
     display:flex;
+  }
+  .feed.watching.chrome-hidden .video-controls{
+    display:none;
   }
   .scrub-range{
     flex:1;

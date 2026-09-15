@@ -105,6 +105,15 @@ function saveCurrentWatchProgress(){
 // refresh/crash never loses more than a few seconds of real progress.
 setInterval(saveCurrentWatchProgress, 15000);
 
+// The honest failure state in watchPlayerHost — real retry button wired
+// to genuinely redo the whole load (watchPlayEpisode again, from
+// scratch, same ep/resumeSeconds — not just re-showing a spinner over
+// the same dead attempt).
+function showWatchLoadFailure(ep, resumeSeconds){
+  watchPlayerHost.innerHTML = '<div class="watch-player-loading">' + narravaLoadFailedHtml('watchPlayerRetryBtn') + '</div>';
+  document.getElementById('watchPlayerRetryBtn').addEventListener('click', () => watchPlayEpisode(ep, resumeSeconds));
+}
+
 // resumeSeconds, when given, seeks to that exact real position — a
 // real, direct, synchronous currentTime assignment once the real video
 // is actually ready (loadedmetadata), no polling needed.
@@ -142,7 +151,14 @@ async function watchPlayEpisode(ep, resumeSeconds){
   watchTitleEl.textContent = ep.title ? ('Ep ' + ep.episode_number + ': ' + ep.title) : ('Episode ' + ep.episode_number);
   renderWatchEpisodes();
 
-  const ctl = await attachEpisodePlayback(video, episodeId);
+  const ctl = await attachEpisodePlayback(video, episodeId, () => {
+    // Every real bounded retry (video-player.js) has now genuinely been
+    // exhausted — confirmed live: before this existed, nothing here ever
+    // learned the load had failed, so watchPlayerHost just sat on its
+    // loading spinner forever, over a <video> that was already dead.
+    if(watchActiveEpisodeId !== episodeId) return; // navigated away before this fired
+    showWatchLoadFailure(ep, resumeSeconds);
+  });
   if(watchActiveEpisodeId !== episodeId) { if(ctl) ctl.destroy(); return; } // navigated away before this resolved
   if(!ctl){
     // The function's own real refusal (see video-player.js) — never
@@ -418,9 +434,10 @@ watchSaveBtn.addEventListener('click', async () => {
   slide.saved = newSaved;
   if(watchSlide === slide) watchSaveBtn.classList.toggle('active', slide.saved);
 });
-// No real share integration exists anywhere in this app yet — same
-// honest no-op-with-feedback the feed's own shareBtn already does.
+// Real sharing (shareSeries, shared-utils.js) — same real mechanism the
+// mobile feed's own shareBtn uses, not a second implementation.
 watchShareBtn.addEventListener('click', () => {
   watchShareBtn.classList.add('pulse');
   setTimeout(() => watchShareBtn.classList.remove('pulse'), 350);
+  if(watchSlide) shareSeries(watchSlide.title);
 });

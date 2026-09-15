@@ -53,8 +53,16 @@ function menuLinkRow(id, label, icon, href){
 
 function renderProfileMenu(){
   const loggedIn = !!currentSession;
+  // Every visitor now genuinely has a session (see bootstrapAnonymousSession,
+  // watch-progress.js) — a real anonymous account has no real email, so the
+  // identity row specifically needs the stronger "is this a real account"
+  // check, not just "is there a session at all", or it would show the
+  // literal string "undefined" instead of an email for an anonymous-only
+  // visitor. Wallet balance below is unaffected — a real anonymous account
+  // has a real profiles row and a real coin_balance, nothing broken there.
+  const isRealAccount = loggedIn && !currentSession.user.is_anonymous;
 
-  const identityHtml = loggedIn
+  const identityHtml = isRealAccount
     ? '<div class="profile-id"><div class="profile-email">' + escapeHtml(currentSession.user.email) + '</div></div>'
     : '<button type="button" class="profile-id profile-login-row" id="profileLoginRow">' +
         '<span>Log in</span>' + PROFILE_ICONS.chevron +

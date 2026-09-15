@@ -23,7 +23,7 @@
       <div class="topbar-nav">
         <button class="topbar-link active" id="topbarHome" type="button">Home</button>
         <button class="topbar-link" id="topbarForYou" type="button">For You</button>
-        <button class="topbar-link" type="button" disabled>Library</button>
+        <button class="topbar-link" id="topbarLibrary" type="button">Library</button>
         <button class="topbar-link" id="topbarProfile" type="button">Profile</button>
       </div>
       <div class="topbar-actions">
@@ -239,6 +239,17 @@
       <div class="profile-panel" id="profilePanel"></div>
     </div>
 
+    <!-- Every series the signed-in viewer has actually saved
+         (series_saves via social.js's toggleSeriesSave — see
+         library.js, which never invents a second way of reading or
+         writing that table). Reuses the exact same .poster-card markup
+         and openSeriesInFeed navigation Discover's own grid already
+         uses — see discover.js's posterCardHtml. -->
+    <div class="library screen-hidden" id="libraryScreen">
+      <div class="library-header"><h2 class="library-title">Library</h2></div>
+      <div class="library-body" id="libraryBody"></div>
+    </div>
+
     <!-- Desktop-only: opened instead of the mobile swipe feed when a
          series is opened from the desktop layout (see openSeriesInFeed
          in app.js and watch.js). Never shown on mobile. Structure
@@ -342,7 +353,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></svg>
         For You
       </div>
-      <div class="navitem">
+      <div class="navitem" id="navLibrary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h9a2 2 0 012 2v16l-6.5-4L4 21V5a2 2 0 012-2z"/></svg>
         Library
       </div>
@@ -368,18 +379,48 @@
   </div>
 </div>
 
+<!-- Real share fallback (see shareSeries in shared-utils.js) — shown only
+     when navigator.share isn't available. Body-level like the auth
+     modal above, since both the mobile feed's shareBtn and the desktop
+     watch page's watchShareBtn need this same one popup, not two.
+     Every row here has a genuine, working destination: the page's own
+     real URL copied to the clipboard, or WhatsApp's/Facebook's own real
+     no-login-required share endpoints — never a platform icon with
+     nothing real behind it. -->
+<div class="auth-modal-backdrop" id="shareSheetBackdrop">
+  <div class="auth-modal">
+    <button class="auth-modal-close" id="shareSheetClose" type="button" aria-label="Close">✕</button>
+    <div class="auth-card">
+      <div class="auth-title">Share</div>
+      <button type="button" class="profile-row" id="shareCopyLinkBtn">
+        <span class="profile-row-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 007 0l3-3a5 5 0 00-7-7l-1.5 1.5"/><path d="M14 11a5 5 0 00-7 0l-3 3a5 5 0 007 7l1.5-1.5"/></svg></span>
+        <span class="profile-row-label">Copy link</span>
+      </button>
+      <button type="button" class="profile-row" id="shareWhatsAppBtn">
+        <span class="profile-row-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.4 8.4 0 01-1 4 8.5 8.5 0 01-7.5 4.5 8.4 8.4 0 01-4-1L3 20l1-5.5a8.4 8.4 0 01-1-4A8.5 8.5 0 0111 3a8.4 8.4 0 018.4 7.5c.1.4.1.8.1 1z"/></svg></span>
+        <span class="profile-row-label">WhatsApp</span>
+      </button>
+      <button type="button" class="profile-row" id="shareFacebookBtn">
+        <span class="profile-row-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 2h-3a5 5 0 00-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 011-1h3z"/></svg></span>
+        <span class="profile-row-label">Facebook</span>
+      </button>
+    </div>
+  </div>
+</div>
+
 <script src="js/config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
 <script src="js/supabase-client.js"></script>
 <script src="js/shared-utils.js"></script>
-<script src="js/video-player.js?v=1"></script>
+<script src="js/video-player.js?v=2"></script>
 <script src="js/watch-progress.js"></script>
 <script src="js/social.js"></script>
 <script src="js/comments-panel.js"></script>
 <script src="js/feed-data.js"></script>
-<script src="js/app.js?v=4"></script>
+<script src="js/app.js?v=5"></script>
 <script src="js/discover.js"></script>
+<script src="js/library.js"></script>
 <script src="js/watch.js?v=4"></script>
 <script src="js/auth.js"></script>
 <script src="js/profile.js"></script>

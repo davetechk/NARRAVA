@@ -39,6 +39,94 @@ function showToast(msg){
   setTimeout(()=>toast.classList.remove('show'), 2200);
 }
 
+// ================= Real sharing =================
+//
+// The one real share mechanism for a series — used by both the mobile
+// feed's shareBtn (app.js) and the desktop watch page's watchShareBtn
+// (watch.js), never a second implementation. navigator.share is the
+// browser's own real native share sheet (confirmed available on mobile
+// Chrome/Safari; genuinely absent on most desktop browsers, which is
+// exactly when the fallback below is needed, not a bug). No per-series
+// deep link exists anywhere in this app (a single index.html with no
+// URL routing) — the shared URL is honestly this same real page,
+// window.location.href, which does genuinely load Narrava; the series
+// name only ever appears in the share text, never implied by the URL.
+//
+// #shareSheetBackdrop only exists on index.html, not the admin pages
+// that also load this file — every lookup below is guarded so this
+// still loads cleanly there.
+const shareSheetBackdrop = document.getElementById('shareSheetBackdrop');
+let pendingShareData = null;
+
+function openShareFallback(shareData){
+  if(!shareSheetBackdrop) return;
+  pendingShareData = shareData;
+  shareSheetBackdrop.classList.add('open');
+}
+function closeShareFallback(){
+  if(!shareSheetBackdrop) return;
+  shareSheetBackdrop.classList.remove('open');
+  pendingShareData = null;
+}
+
+if(shareSheetBackdrop){
+  const shareSheetClose = document.getElementById('shareSheetClose');
+  const shareCopyLinkBtn = document.getElementById('shareCopyLinkBtn');
+  const shareWhatsAppBtn = document.getElementById('shareWhatsAppBtn');
+  const shareFacebookBtn = document.getElementById('shareFacebookBtn');
+
+  shareSheetClose.addEventListener('click', closeShareFallback);
+  shareSheetBackdrop.addEventListener('click', e => { if(e.target === shareSheetBackdrop) closeShareFallback(); });
+
+  // Real, working destinations only — a real clipboard write of this
+  // real page's own URL, and WhatsApp's/Facebook's own real
+  // no-login-required share endpoints. Never a platform icon with no
+  // real link handoff behind it (that's worse than not offering it).
+  shareCopyLinkBtn.addEventListener('click', async () => {
+    if(!pendingShareData) return;
+    try {
+      await navigator.clipboard.writeText(pendingShareData.url);
+      showToast('Link copied');
+    } catch(err){
+      console.error('Narrava: failed to copy share link', err);
+      showToast('Could not copy link — please try again');
+    }
+    closeShareFallback();
+  });
+  shareWhatsAppBtn.addEventListener('click', () => {
+    if(!pendingShareData) return;
+    const text = pendingShareData.text + ' ' + pendingShareData.url;
+    window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank', 'noopener');
+    closeShareFallback();
+  });
+  shareFacebookBtn.addEventListener('click', () => {
+    if(!pendingShareData) return;
+    window.open('https://www.facebook.com/sharer/sharer.php?u=' + encodeURIComponent(pendingShareData.url), '_blank', 'noopener');
+    closeShareFallback();
+  });
+}
+
+// Called with a real series title. Tries the real native share sheet
+// first; AbortError (the viewer closed it themselves) is not a failure
+// worth logging. Falls back to the popup above only when navigator.share
+// itself genuinely doesn't exist.
+async function shareSeries(title){
+  const shareData = {
+    title: 'Narrava',
+    text: 'Check out "' + title + '" on Narrava!',
+    url: window.location.href
+  };
+  if(navigator.share){
+    try {
+      await navigator.share(shareData);
+    } catch(err){
+      if(err && err.name !== 'AbortError') console.error('Narrava: native share failed', err);
+    }
+    return;
+  }
+  openShareFallback(shareData);
+}
+
 
 // Real, traced vector pulled directly from the actual logo file
 // (narrava/img/load_img_icon.svg) — inline, not an <img src>, so there
@@ -248,6 +336,20 @@ function narravaLoaderHtml(variant, label){
       NARRAVA_LOADER_ICON_SVG +
     '</div>' +
     (label ? '<div class="narrava-loading-label">' + escapeHtml(label) + '</div>' : '') +
+  '</div>';
+}
+
+// The honest state for a real, permanently failed load — every real
+// bounded retry (video-player.js's attachEpisodePlayback) has already
+// been exhausted by the time this ever gets shown, never guessed at
+// early. retryBtnId is the caller's own id to attach a real click
+// handler to (app.js/watch.js each wire their own — this only ever
+// builds the shared markup, never the retry behavior itself, which
+// differs per caller: re-running preloadVideo vs. watchPlayEpisode).
+function narravaLoadFailedHtml(retryBtnId){
+  return '<div class="narrava-loading-block">' +
+    '<div class="narrava-load-failed-text">Couldn’t load this episode</div>' +
+    '<button type="button" class="pill-cta-btn" id="' + retryBtnId + '">Try again</button>' +
   '</div>';
 }
 

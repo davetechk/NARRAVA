@@ -93,10 +93,36 @@ async function toggleSeriesLike(seriesId, currentlyLiked){
   }
 }
 
+// The Library tab's one real source (see library.js) — every series id
+// the signed-in viewer has actually saved, straight off series_saves,
+// same table toggleSeriesSave below writes to. Returns null (not an
+// empty Set) when nobody's signed in — deliberately getRealAccountUserId,
+// not getSignedInUserId: a real anonymous account isn't enough to see a
+// Library, only a genuine sign-up is, same real distinction
+// toggleSeriesSave below makes. Callers use the null/Set split to tell
+// "signed out (or anonymous-only)" apart from "signed in for real,
+// genuinely nothing saved" — those need two different honest empty
+// states, never the same one.
+async function fetchMySavedSeriesIds(){
+  const userId = await getRealAccountUserId();
+  if(!userId) return null;
+  try {
+    const { data, error } = await supabaseClient.from('series_saves').select('series_id').eq('user_id', userId);
+    if(error) throw error;
+    return new Set((data || []).map(row => row.series_id));
+  } catch(err){
+    console.error('Narrava: failed to fetch saved series', err);
+    return new Set();
+  }
+}
+
 // Same shape as toggleSeriesLike, against series_saves — personal only,
-// no public count (never asked for, saves don't need one).
+// no public count (never asked for, saves don't need one). Deliberately
+// getRealAccountUserId, not getSignedInUserId: saving a series still
+// needs a genuine, real (sign-up-backed) account — a real anonymous
+// account is not enough here, unlike like/comment/reply.
 async function toggleSeriesSave(seriesId, currentlySaved){
-  const userId = await getSignedInUserId();
+  const userId = await getRealAccountUserId();
   if(!userId){ openAuthModal('login'); return null; }
 
   try {

@@ -135,10 +135,12 @@ const methodsWrap = document.getElementById('methods');
 const payBtn = document.getElementById('payBtn');
 const ctaRow = document.querySelector('.ctarow');
 const discoverScreen = document.getElementById('discoverScreen');
+const libraryScreen = document.getElementById('libraryScreen');
 const profileScreen = document.getElementById('profileScreen');
 const watchScreen = document.getElementById('watchScreen');
 const navHome = document.getElementById('navHome');
 const navForYou = document.getElementById('navForYou');
+const navLibrary = document.getElementById('navLibrary');
 const navProfile = document.getElementById('navProfile');
 // Desktop-only top bar nav (>=900px, replaces the old left sidebar — see
 // styles.css). Same destinations as navHome/navForYou/navProfile above,
@@ -147,6 +149,7 @@ const navProfile = document.getElementById('navProfile');
 // navigation logic.
 const topbarHome = document.getElementById('topbarHome');
 const topbarForYou = document.getElementById('topbarForYou');
+const topbarLibrary = document.getElementById('topbarLibrary');
 const topbarProfile = document.getElementById('topbarProfile');
 const topbarSearchBtn = document.getElementById('topbarSearchBtn');
 const topbarProfileBtn = document.getElementById('topbarProfileBtn');
@@ -175,13 +178,16 @@ function showScreen(name){
   // the time render() runs, not the one being left.
   feed.classList.toggle('screen-hidden', name !== 'feed');
   discoverScreen.classList.toggle('screen-hidden', name !== 'discover');
+  libraryScreen.classList.toggle('screen-hidden', name !== 'library');
   profileScreen.classList.toggle('screen-hidden', name !== 'profile');
   watchScreen.classList.toggle('screen-hidden', name !== 'watch');
   navHome.classList.toggle('active', name === 'discover');
   navForYou.classList.toggle('active', name === 'feed');
+  navLibrary.classList.toggle('active', name === 'library');
   navProfile.classList.toggle('active', name === 'profile');
   topbarHome.classList.toggle('active', name === 'discover');
   topbarForYou.classList.toggle('active', name === 'feed');
+  topbarLibrary.classList.toggle('active', name === 'library');
   topbarProfile.classList.toggle('active', name === 'profile');
   document.body.classList.toggle('discover-active', name === 'discover');
   document.body.classList.toggle('feed-active', name === 'feed');
@@ -323,6 +329,12 @@ navForYou.addEventListener('click', ()=> showScreen('feed'));
 topbarHome.addEventListener('click', ()=> { showScreen('discover'); refreshContinueWatchingMap().then(renderContinueWatchingBar); });
 topbarForYou.addEventListener('click', ()=> showScreen('feed'));
 
+// Library: re-checked fresh every time the tab is opened (renderLibraryScreen,
+// library.js) rather than trusting a possibly-stale snapshot from earlier
+// this session — same reasoning as Home's own refreshContinueWatchingMap above.
+navLibrary.addEventListener('click', ()=> { showScreen('library'); renderLibraryScreen(); });
+topbarLibrary.addEventListener('click', ()=> { showScreen('library'); renderLibraryScreen(); });
+
 // Profile: check the current Supabase Auth session each time the tab is
 // opened (renderProfileScreen, defined in auth.js) rather than tracking
 // it continuously — simple, and sufficient since nothing else on screen
@@ -433,7 +445,7 @@ function preloadVideo(target){
   const entry = { video, ctl: null, ready: false };
   preloadCache[target.id] = entry;
 
-  attachEpisodePlayback(video, target.id).then((ctl) => {
+  attachEpisodePlayback(video, target.id, () => onEpisodeLoadFailed(target)).then((ctl) => {
     // Preload was torn down (maintainPreload dropped it, or the whole
     // feed navigated away) before the real signed URL/hls.js setup
     // resolved — nothing left to attach this real playback to.
@@ -455,6 +467,41 @@ function preloadVideo(target){
       // immediately instead of leaving it preloaded and unused.
       if(target.id === renderedMediaEpisodeId && currentVideoEl !== video) promotePreload(target);
     }, { once: true });
+  });
+}
+
+// Every real bounded retry (attachEpisodePlayback, video-player.js) has
+// now genuinely been exhausted for this episode — confirmed live: before
+// this existed, nothing upstream ever learned a load had failed, so a
+// preload that died just sat on a dead <video> forever while the loading
+// spinner (or, if the viewer had already swiped to it, the same spinner
+// on screen) never went anywhere. Drops the dead preload entry so the
+// next time this episode is actually needed (goTo/renderMedia calling
+// preloadVideo again), it gets a genuinely fresh attempt with its own
+// full set of retries — never a permanently poisoned cache entry. If
+// the viewer is looking at this exact episode right now, replaces the
+// loading spinner with the honest failure state immediately, rather than
+// leaving them staring at a spinner that's already dead underneath it.
+function onEpisodeLoadFailed(target){
+  const entry = preloadCache[target.id];
+  if(entry){
+    if(entry.ctl) entry.ctl.destroy();
+    entry.video.remove();
+    delete preloadCache[target.id];
+  }
+  if(target.id === renderedMediaEpisodeId && !currentVideoEl){
+    setFailedToLoadArt(target);
+  }
+}
+
+// The honest failure state in #bgvideo — real retry button wired to
+// genuinely redo the whole load (preloadVideo again, from scratch, not
+// just re-showing a spinner over the same dead attempt).
+function setFailedToLoadArt(target){
+  bgvideo.innerHTML = '<div class="bgvideo-loading">' + narravaLoadFailedHtml('bgvideoRetryBtn') + '</div>';
+  document.getElementById('bgvideoRetryBtn').addEventListener('click', () => {
+    setLoadingArt();
+    preloadVideo(target);
   });
 }
 
@@ -1089,10 +1136,14 @@ epBadge.addEventListener('click', openEpisodeGrid);
 episodeGridClose.addEventListener('click', closeEpisodeGrid);
 episodeGridBackdrop.addEventListener('click', closeEpisodeGrid);
 
+// Real sharing (shareSeries, shared-utils.js) — the browser's own native
+// share sheet where available, a small fallback popup where it isn't.
 document.getElementById('shareBtn').addEventListener('click', ()=>{
   const btn = document.getElementById('shareBtn');
   btn.classList.add('pulse');
   setTimeout(()=>btn.classList.remove('pulse'), 350);
+  if(slides.length === 0) return;
+  shareSeries(slides[idx].title);
 });
 
 document.getElementById('continueBtn').addEventListener('click', ()=>{
@@ -1211,6 +1262,11 @@ let resolveSlidesReady;
 const slidesReady = new Promise(resolve => { resolveSlidesReady = resolve; });
 
 async function init(){
+  // Real anonymous account bootstrap (watch-progress.js) — first thing
+  // this app does, before slides/continue-watching are even fetched, so
+  // every visitor already has a real, genuine account (anonymous or
+  // not) for the rest of init and everything after it.
+  await bootstrapAnonymousSession();
   const [fetchedSlides] = await Promise.all([fetchSlides(), refreshContinueWatchingMap()]);
   slides = fetchedSlides;
   slidesLoaded = true;

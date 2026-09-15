@@ -17,6 +17,16 @@
 // event, scrub-seeking, playback rate) is just the real, direct,
 // synchronous <video> element API — callers use it straight, no wrapper
 // needed for any of that.
+//
+// Real, bounded retry with real backoff for a genuinely failed load
+// (confirmed live: a fatal manifest/network error previously got exactly
+// one ineffective hls.js recovery call and then permanent, silent
+// failure — nothing ever told the caller, so preloadVideo/watchPlayEpisode
+// just sat on a loading spinner forever). MAX_LOAD_RETRIES real attempts
+// beyond the first, with real increasing delays between them — not
+// immediate machine-gun retries, and not infinite either.
+const MAX_LOAD_RETRIES = 3;
+const RETRY_BACKOFF_MS = [1000, 2000, 4000];
 
 // Called once per real episode a viewer is actually entitled to see.
 // Returns {playbackUrl, expiresAt} on success. Returns null on ANY
@@ -81,13 +91,28 @@ function narravaHlsXhrSetup(getAuthQuery){
 // requests the new auth — playback itself is never interrupted or
 // reloaded to do this, since the auth is re-read fresh on every
 // request hls.js makes (see narravaHlsXhrSetup), not baked in once.
-async function attachEpisodePlayback(videoEl, episodeId){
+//
+// onFailure (optional) is the real signal callers were never given
+// before: called at most once, only once every real bounded retry
+// attempt above has genuinely been exhausted — never for a transient
+// error still being retried, never guessed at speculatively. Every
+// real place a video gets loaded from (preloadVideo's warm-ahead
+// preloading, a normal swipe or the jump grid landing on it while
+// current, Continue Watching's resume, and the desktop watch page)
+// goes through this one function, so wiring the signal in here once
+// covers all of them — never a second retry/failure mechanism built
+// per caller.
+async function attachEpisodePlayback(videoEl, episodeId, onFailure){
   const signed = await fetchSignedPlaybackUrl(episodeId);
   if(!signed) return null;
 
   let authQuery = new URL(signed.playbackUrl).search;
   let refreshTimer = null;
+  let retryTimer = null;
   let destroyed = false;
+  let networkRetries = 0;
+  let mediaRetries = 0;
+  let nativeRetries = 0;
   const usingNativeHls = !(window.Hls && Hls.isSupported());
   if(usingNativeHls && !videoEl.canPlayType('application/vnd.apple.mpegurl')){
     return null; // genuinely no way to play HLS in this browser
@@ -132,7 +157,17 @@ async function attachEpisodePlayback(videoEl, episodeId){
   }
   scheduleRefresh(signed.expiresAt);
 
+  // Every real attempt genuinely exhausted — the one thing the old code
+  // never did. Fires onFailure at most once, then tears the real dead
+  // playback attempt down the same way any other teardown does.
+  function failPermanently(){
+    if(destroyed) return;
+    destroy();
+    if(onFailure) onFailure();
+  }
+
   let hls = null;
+  let onNativeVideoError = null;
   if(!usingNativeHls){
     hls = new Hls({ xhrSetup: narravaHlsXhrSetup(() => authQuery) });
     hls.on(Hls.Events.ERROR, (_evt, data) => {
@@ -144,12 +179,41 @@ async function attachEpisodePlayback(videoEl, episodeId){
         refreshAuth();
         return;
       }
-      if(data && data.fatal){
-        switch(data.type){
-          case Hls.ErrorTypes.NETWORK_ERROR: hls.startLoad(); break;
-          case Hls.ErrorTypes.MEDIA_ERROR: hls.recoverMediaError(); break;
-          default: destroy();
+      if(!(data && data.fatal)) return;
+
+      switch(data.type){
+        case Hls.ErrorTypes.NETWORK_ERROR: {
+          if(networkRetries >= MAX_LOAD_RETRIES){ failPermanently(); return; }
+          const delay = RETRY_BACKOFF_MS[Math.min(networkRetries, RETRY_BACKOFF_MS.length - 1)];
+          networkRetries++;
+          retryTimer = setTimeout(() => {
+            if(destroyed) return;
+            // Confirmed live: hls.startLoad() alone never actually
+            // recovers a fatal manifest-stage failure (manifestLoadError/
+            // manifestLoadTimeOut/manifestParsingError) — there's no
+            // manifest yet for it to resume loading from, so it silently
+            // no-ops, which is exactly how this got permanently stuck
+            // before with zero further errors ever firing. The real
+            // recovery there is re-fetching the manifest itself.
+            // startLoad() remains correct for a later-stage (level/
+            // fragment) failure, where a manifest genuinely did load.
+            if(data.details && data.details.indexOf('manifestLoad') === 0){
+              hls.loadSource(signed.playbackUrl);
+            } else {
+              hls.startLoad();
+            }
+          }, delay);
+          break;
         }
+        case Hls.ErrorTypes.MEDIA_ERROR: {
+          if(mediaRetries >= MAX_LOAD_RETRIES){ failPermanently(); return; }
+          const delay = RETRY_BACKOFF_MS[Math.min(mediaRetries, RETRY_BACKOFF_MS.length - 1)];
+          mediaRetries++;
+          retryTimer = setTimeout(() => { if(!destroyed) hls.recoverMediaError(); }, delay);
+          break;
+        }
+        default:
+          failPermanently();
       }
     });
     hls.loadSource(signed.playbackUrl);
@@ -158,7 +222,17 @@ async function attachEpisodePlayback(videoEl, episodeId){
     // Real native HLS support (Safari/iOS) — no hls.js needed; the
     // browser's own network stack fetches sub-playlists/segments
     // straight from the manifest's relative paths using this same
-    // signed URL's query, same as hls.js's first request does.
+    // signed URL's query, same as hls.js's first request does. Same
+    // real bounded retry+backoff as the hls.js path above — a genuine
+    // load failure here previously had no retry of any kind.
+    onNativeVideoError = () => {
+      if(destroyed) return;
+      if(nativeRetries >= MAX_LOAD_RETRIES){ failPermanently(); return; }
+      const delay = RETRY_BACKOFF_MS[Math.min(nativeRetries, RETRY_BACKOFF_MS.length - 1)];
+      nativeRetries++;
+      retryTimer = setTimeout(() => { if(!destroyed) videoEl.src = signed.playbackUrl; }, delay);
+    };
+    videoEl.addEventListener('error', onNativeVideoError);
     videoEl.src = signed.playbackUrl;
   }
 
@@ -166,8 +240,12 @@ async function attachEpisodePlayback(videoEl, episodeId){
     if(destroyed) return;
     destroyed = true;
     if(refreshTimer) clearTimeout(refreshTimer);
+    if(retryTimer) clearTimeout(retryTimer);
     if(hls){ hls.destroy(); }
-    else { videoEl.removeAttribute('src'); videoEl.load(); }
+    else {
+      if(onNativeVideoError) videoEl.removeEventListener('error', onNativeVideoError);
+      videoEl.removeAttribute('src'); videoEl.load();
+    }
   }
 
   return { hls, destroy };

@@ -37,6 +37,13 @@
   .narrava-loading-label{
     font-size:12.5px;color:var(--muted);letter-spacing:.2px;
   }
+  /* The honest failed-load state (narravaLoadFailedHtml, shared-utils.js)
+     reuses .narrava-loading-block's own centered layout — just text +
+     a real retry button in place of the animated loader. */
+  .narrava-load-failed-text{
+    font-size:13px;color:var(--text);text-align:center;
+    max-width:220px;
+  }
   .narrava-loader{
     position:relative;width:64px;height:64px;
     display:flex;align-items:center;justify-content:center;
@@ -998,6 +1005,58 @@
   }
   .shelf-back-btn{
     display:none;
+  }
+
+  /* Library screen: every series the signed-in viewer has actually
+     saved (series_saves via social.js — see library.js), reusing the
+     exact same .poster-card markup Discover already uses (posterCardHtml
+     in discover.js). .library-grid uses auto-fill instead of Discover's
+     fixed 2-column .poster-grid so it naturally gets more columns at the
+     wide desktop width on its own, without needing a separate
+     body.library-active override the way Discover's own grid does. */
+  .library{
+    position:absolute;
+    inset:0;
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+  }
+  .library-header{
+    padding:50px 18px 10px;
+  }
+  .library-title{
+    margin:0;
+    font-family:'Montserrat',sans-serif;
+    font-weight:800;
+    font-size:20px;
+    color:var(--text);
+  }
+  .library-body{
+    flex:1;
+    overflow-y:auto;
+    padding:6px 18px 96px;
+  }
+  .library-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fill, minmax(140px, 1fr));
+    gap:12px;
+  }
+  /* Generic small pill CTA — Library's own "Log in" empty-state button,
+     and (see narravaLoadFailedHtml, shared-utils.js) the real "Try
+     again" retry action on a genuinely failed video load. One shared
+     button style, not a new one invented per place that needs a CTA. */
+  .pill-cta-btn{
+    display:inline-block;
+    margin-top:14px;
+    background:var(--leaf);
+    color:#0D130E;
+    border:none;
+    font-family:'Montserrat',sans-serif;
+    font-weight:800;
+    font-size:13px;
+    padding:10px 22px;
+    border-radius:24px;
+    cursor:pointer;
   }
 
   /* Profile screen: always the same menu, logged in or out (DramaBox-

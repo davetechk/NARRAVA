@@ -77,7 +77,6 @@ async function fetchSlides() {
           title: series.title,
           synopsis: series.description || '',
           epBadge: 'EP ' + currentEp + ' · ' + totalEp,
-          progress: 0,
           currentEp: currentEp,
           totalEp: totalEp,
           // Real per-episode data (see app.js's enterMobileWatching,

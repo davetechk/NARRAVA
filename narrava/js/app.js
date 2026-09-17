@@ -191,7 +191,6 @@ const pager = document.getElementById('pager');
 const epBadge = document.getElementById('epBadge');
 const titleEl = document.getElementById('title');
 const synopsisEl = document.getElementById('synopsis');
-const progressFill = document.getElementById('progressFill');
 const likeCount = document.getElementById('likeCount');
 const likeBtn = document.getElementById('likeBtn');
 const bookmarkBtn = document.getElementById('bookmarkBtn');
@@ -883,7 +882,6 @@ function renderEmptyFeed(){
   spine.innerHTML = '';
   pager.innerHTML = '';
   epBadge.textContent = '';
-  progressFill.style.width = '0%';
   coinBalance.textContent = coins;
   ctaRow.classList.add('hidden');
 
@@ -927,7 +925,6 @@ function render(){
   epBadge.textContent = s.epBadge;
   titleEl.innerHTML = s.title.replace('\n','<br>');
   synopsisEl.textContent = s.synopsis;
-  progressFill.style.width = s.progress + '%';
   likeCount.textContent = s.likes;
   likeBtn.classList.toggle('liked', s.liked);
   bookmarkBtn.classList.toggle('saved', s.saved);
@@ -1278,11 +1275,22 @@ document.getElementById('shareBtn').addEventListener('click', ()=>{
   shareSeries(slides[idx].title);
 });
 
+// Real "enter the watching state" trigger — the same real mechanism as
+// the video's own tap target (playToggle below) and Discover/Continue
+// Watching's own opens (openSeriesInFeed/enterMobileWatching), not the
+// old fake progress-bump left over from the original mockup. Same
+// desktop-vs-mobile split as playToggle: desktop's own "For You" tab
+// keeps its simple no-episode-fetch behavior, real episode
+// fetch/resume is mobile-only.
 document.getElementById('continueBtn').addEventListener('click', ()=>{
   if(slides.length === 0) return;
+  if(window.matchMedia('(min-width: 900px)').matches){
+    feed.classList.add('watching');
+    showChrome();
+    return;
+  }
   const s = slides[idx];
-  s.progress = Math.min(100, s.progress + 14);
-  render();
+  enterMobileWatching(idx, continueWatchingMap.get(s.id));
 });
 
 // The one real unlock mechanism in this app — reused as-is (not

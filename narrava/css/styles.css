@@ -281,23 +281,22 @@
      still how play/pause works once watching (see playToggle's click
      handler in app.js).
      .info itself stays up (rather than collapsing whole), with only its
-     progress-bar/Continue button hidden individually — those are
-     browsing-preview-only, never part of the real watching chrome. The
-     small "EP X · Y" badge (.epbadge) needs to stay visible and
-     tappable while watching (it's what opens the real episode jump
-     grid, see app.js), and .unlock needs to be able to show the real
-     unlock prompt while watching too, whenever the episode landed on is
-     actually locked (driven by JS via .unlock.hidden below, not by this
-     blanket rule — it has to work the same in both states). Neither is
-     part of the real name/description/social-icons/scrub-bar group
-     below, and neither is ever hidden by it. */
+     Continue button hidden individually — that's browsing-preview-only,
+     never part of the real watching chrome. The small "EP X · Y" badge
+     (.epbadge) needs to stay visible and tappable while watching (it's
+     what opens the real episode jump grid, see app.js), and .unlock
+     needs to be able to show the real unlock prompt while watching too,
+     whenever the episode landed on is actually locked (driven by JS via
+     .unlock.hidden below, not by this blanket rule — it has to work the
+     same in both states). Neither is part of the real name/description/
+     social-icons/scrub-bar group below, and neither is ever hidden by
+     it. */
   .feed.watching .topbar,
   .feed.watching .spine,
   .feed.watching .pager,
   .feed.watching .vignette{
     display:none;
   }
-  .feed.watching .progressbar,
   .feed.watching .continue{
     display:none;
   }
@@ -474,7 +473,7 @@
     display:none;
     position:absolute;
     left:16px;right:16px;
-    bottom:146px;
+    bottom:16px;
     z-index:40;
     align-items:center;
     gap:10px;
@@ -522,6 +521,14 @@
     bottom:98px;
     z-index:40;
   }
+  /* Watching only: sits directly on top of the real scrub bar
+     (.video-controls, bottom:16px, ~8px tall) with no real gap between
+     them — confirmed directly, measured off the real rendered scrub
+     bar height. Browsing keeps .info's own bottom:98px above
+     unchanged, exactly as it's always been. */
+  .feed.watching .info{
+    bottom:24px;
+  }
   .epbadge{
     display:inline-block;
     font-size:11.5px;
@@ -551,19 +558,6 @@
     color:var(--muted);
     margin:0 0 12px;
     max-width:230px;
-  }
-  .progressbar{
-    height:3px;
-    background:rgba(255,255,255,0.14);
-    border-radius:3px;
-    overflow:hidden;
-    margin-bottom:14px;
-  }
-  .progressbar .fill{
-    height:100%;
-    background:var(--leaf);
-    border-radius:3px;
-    transition:width 0.6s ease;
   }
   .ctarow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
   .continue{
@@ -915,63 +909,108 @@
   }
   .cw-float-close svg{width:14px;height:14px;}
 
-  /* Real install prompt / real iOS instructions banner (see
-     js/pwa-install.js) — same floating-card slot and look as .cw-float
-     just above, gold-tinted instead of neutral so it reads as its own
-     distinct real moment, not another Continue Watching row. Hidden by
-     default; JS alone decides when .show is genuinely earned. */
-  .pwa-install-banner{
-    display:none;
+  /* Real install prompt / real iOS "Add to Home Screen" instructions
+     (see js/pwa-install.js) — a real, large popup centered in the
+     middle of the screen, its own dedicated styling, deliberately not
+     .cw-float's small floating-strip look (confirmed directly: that was
+     genuinely what this used to reuse, by mistake). Body-level and
+     fixed to the whole viewport like the auth/share modals, so it's
+     centered on the real screen even inside the boxed desktop mockup,
+     not confined to a small corner of it. Hidden/dismissed by default;
+     JS alone (pwa-install.js) ever opens it, and only at the two real
+     moments it's genuinely earned. */
+  .pwa-modal-backdrop{
+    position:fixed;inset:0;
+    background:rgba(4,7,5,0.7);
+    display:flex;align-items:center;justify-content:center;
+    padding:20px;
+    box-sizing:border-box;
+    opacity:0;pointer-events:none;
+    transition:opacity 0.25s ease;
+    z-index:130;
+  }
+  .pwa-modal-backdrop.open{opacity:1;pointer-events:auto;}
+  .pwa-modal{
+    position:relative;
+    width:100%;
+    max-width:340px;
+    background:var(--panel-2);
+    border:1px solid rgba(232,184,92,0.3);
+    border-radius:20px;
+    padding:32px 26px 26px;
+    box-shadow:0 24px 60px rgba(0,0,0,0.5);
+    text-align:center;
+    transform:translateY(10px);
+    transition:transform 0.25s ease;
+  }
+  .pwa-modal-backdrop.open .pwa-modal{transform:translateY(0);}
+  .pwa-modal-close{
     position:absolute;
-    left:12px;right:12px;
-    bottom:90px;
-    z-index:47;
-    align-items:flex-start;
-    gap:10px;
-    padding:12px;
-    border-radius:14px;
-    background:rgba(20,26,21,0.96);
-    backdrop-filter:blur(6px);
-    border:1px solid rgba(232,184,92,0.35);
-    box-shadow:0 8px 24px rgba(0,0,0,0.4);
+    top:14px;right:14px;
+    width:30px;height:30px;
+    border-radius:50%;
+    background:rgba(255,255,255,0.06);
+    border:1px solid rgba(255,255,255,0.12);
+    color:var(--muted);
+    display:flex;align-items:center;justify-content:center;
+    cursor:pointer;
   }
-  .pwa-install-banner.show{display:flex;}
-  .pwa-install-icon{
-    width:42px;height:42px;
-    border-radius:10px;
-    flex-shrink:0;
+  .pwa-modal-close svg{width:15px;height:15px;}
+  .pwa-modal-icon{
+    width:72px;height:72px;
+    margin:0 auto 18px;
     display:block;
-    background:var(--ink);
+    object-fit:contain;
   }
-  .pwa-install-info{flex:1;min-width:0;padding-top:1px;}
-  .pwa-install-title{font-size:13px;font-weight:800;color:#fff;}
-  .pwa-install-sub{
-    font-size:11.5px;color:var(--muted);
-    margin-top:3px;line-height:1.4;
-    display:flex;align-items:center;gap:5px;
+  .pwa-modal-title{
+    font-family:'Montserrat',sans-serif;
+    font-weight:800;
+    font-size:20px;
+    color:#fff;
+    margin:0 0 10px;
   }
-  .pwa-install-sub svg{width:13px;height:13px;flex-shrink:0;color:var(--gold);}
-  .pwa-install-action{
-    flex-shrink:0;
+  .pwa-modal-message{
+    font-size:14px;
+    line-height:1.5;
+    color:var(--muted);
+    margin:0 0 26px;
+  }
+  .pwa-modal-message-ios{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:7px;
+  }
+  .pwa-modal-message-ios svg{width:16px;height:16px;flex-shrink:0;color:var(--gold);}
+  .pwa-modal-actions{
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+  }
+  .pwa-modal-btn-primary{
+    width:100%;
     background:var(--leaf);
     color:#0D130E;
     border:none;
     font-family:'Montserrat',sans-serif;
-    font-weight:800;font-size:12.5px;
-    padding:9px 16px;
-    border-radius:999px;
+    font-weight:800;font-size:14.5px;
+    padding:13px;
+    border-radius:12px;
     cursor:pointer;
-    margin-top:2px;
   }
-  .pwa-install-close{
-    flex-shrink:0;
-    width:22px;height:22px;
-    display:flex;align-items:center;justify-content:center;
-    background:none;border:none;
+  .pwa-modal-btn-primary:active{background:var(--leaf-deep); color:#fff;}
+  .pwa-modal-btn-secondary{
+    width:100%;
+    background:none;
     color:var(--muted);
+    border:1px solid rgba(255,255,255,0.14);
+    font-family:'Montserrat',sans-serif;
+    font-weight:700;font-size:14px;
+    padding:12px;
+    border-radius:12px;
     cursor:pointer;
   }
-  .pwa-install-close svg{width:14px;height:14px;}
+  .pwa-modal-btn-secondary:active{background:rgba(255,255,255,0.06);}
 
   /* Profile screen's own always-available install trigger — only ever
      rendered once a real beforeinstallprompt has actually fired (see
@@ -1996,9 +2035,7 @@
     .bottomnav,
     .cw-float,
     .cw-float.show,
-    body.discover-active .cw-float.show,
-    .pwa-install-banner,
-    .pwa-install-banner.show{
+    body.discover-active .cw-float.show{
       display:none;
     }
 
@@ -2432,11 +2469,18 @@
       overflow:hidden;
       box-shadow:0 20px 60px -20px rgba(0,0,0,0.6);
     }
+    /* Anchored to the bottom of the row, not vertically centered
+       alongside the video — confirmed directly: centering them made the
+       real name/description/Continue button (and the action icons
+       beside them) read as sitting in the middle of the screen instead
+       of at the bottom, same real mistake this replaces. */
     body.feed-active .actionrail{
       position:static;
       right:auto;
       bottom:auto;
       flex-shrink:0;
+      align-self:flex-end;
+      margin-bottom:64px;
     }
     body.feed-active .info{
       position:static;
@@ -2446,6 +2490,8 @@
       width:min(320px, 26vw);
       max-width:360px;
       flex-shrink:0;
+      align-self:flex-end;
+      margin-bottom:64px;
     }
     body.feed-active .info .title{
       font-size:34px;

@@ -24,13 +24,20 @@ const LS_INITIAL_SHOWN = 'narrava_pwa_initial_shown';
 const LS_SECOND_SHOWN = 'narrava_pwa_second_shown';
 const LS_WATCHED_EPISODE = 'narrava_pwa_watched_episode'; // set by watch-progress.js
 
-const pwaBanner = document.getElementById('pwaInstallBanner');
+const pwaModalBackdrop = document.getElementById('pwaModalBackdrop');
+const pwaModalBody = document.getElementById('pwaModalBody');
+const pwaModalClose = document.getElementById('pwaModalClose');
 
-let deferredInstallEvent = null; // the real beforeinstallprompt event, captured and reused for both the banner's own button and the Profile screen's
-let bannerVisible = false;
+let deferredInstallEvent = null; // the real beforeinstallprompt event, captured and reused for both the popup's own button and the Profile screen's
+let modalVisible = false;
 
-const PWA_CLOSE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 const PWA_SHARE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v10"/><path d="M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/></svg>';
+
+pwaModalClose.addEventListener('click', hideModal);
+// Tapping the dimmed backdrop itself, outside the real card, is the
+// same real cancel as the close button — matching every other modal
+// in this app (auth/share/username).
+pwaModalBackdrop.addEventListener('click', (e) => { if(e.target === pwaModalBackdrop) hideModal(); });
 
 function isStandaloneDisplay(){
   return window.matchMedia('(display-mode: standalone)').matches ||
@@ -70,9 +77,9 @@ function notifyInstallAvailabilityChanged(){
   window.dispatchEvent(new Event('narrava:pwa-install-changed'));
 }
 
-function hideBanner(){
-  bannerVisible = false;
-  if(pwaBanner) pwaBanner.classList.remove('show');
+function hideModal(){
+  modalVisible = false;
+  pwaModalBackdrop.classList.remove('open');
 }
 
 async function triggerInstallPrompt(){
@@ -88,41 +95,45 @@ async function triggerInstallPrompt(){
   notifyInstallAvailabilityChanged();
 }
 
-function renderBanner(){
-  if(!pwaBanner) return;
+// A real, large popup centered on screen — not the small Continue
+// Watching-style strip this used to (mistakenly) reuse. Android/Chrome
+// gets a plain, honest message plus the one real Install action; iOS
+// Safari gets the real, clear two-step instructions instead, since
+// nothing there can ever trigger a real install by itself. Either way
+// there's always a real, clearly labeled Cancel button, on top of the
+// real close (✕) in the corner.
+function renderModal(){
   const isAndroidVariant = !!deferredInstallEvent;
 
-  const subHtml = isAndroidVariant
-    ? '<div class="pwa-install-sub">Add it to your home screen for faster, full-screen watching.</div>'
-    : '<div class="pwa-install-sub">' + PWA_SHARE_ICON + '<span>Tap Share, then "Add to Home Screen"</span></div>';
+  const messageHtml = isAndroidVariant
+    ? '<div class="pwa-modal-message">Tap Install to add Narrava to your home screen.</div>'
+    : '<div class="pwa-modal-message pwa-modal-message-ios">' + PWA_SHARE_ICON + '<span>Tap Share, then "Add to Home Screen"</span></div>';
 
-  const actionHtml = isAndroidVariant
-    ? '<button type="button" class="pwa-install-action" id="pwaInstallActionBtn">Install</button>'
-    : '';
+  const actionsHtml = isAndroidVariant
+    ? '<button type="button" class="pwa-modal-btn-primary" id="pwaModalInstallBtn">Install</button>' +
+      '<button type="button" class="pwa-modal-btn-secondary" id="pwaModalCancelBtn">Cancel</button>'
+    : '<button type="button" class="pwa-modal-btn-secondary" id="pwaModalCancelBtn">Cancel</button>';
 
-  pwaBanner.innerHTML =
-    '<img class="pwa-install-icon" src="img/icon-192.png" alt="">' +
-    '<div class="pwa-install-info">' +
-      '<div class="pwa-install-title">Install Narrava</div>' +
-      subHtml +
-    '</div>' +
-    actionHtml +
-    '<button type="button" class="pwa-install-close" id="pwaInstallCloseBtn" aria-label="Close">' + PWA_CLOSE_ICON + '</button>';
+  pwaModalBody.innerHTML =
+    '<img class="pwa-modal-icon" src="img/icon-192.png" alt="">' +
+    '<div class="pwa-modal-title">Install Narrava</div>' +
+    messageHtml +
+    '<div class="pwa-modal-actions">' + actionsHtml + '</div>';
 
-  const actionBtn = document.getElementById('pwaInstallActionBtn');
-  if(actionBtn) actionBtn.addEventListener('click', () => { hideBanner(); triggerInstallPrompt(); });
+  const installBtn = document.getElementById('pwaModalInstallBtn');
+  if(installBtn) installBtn.addEventListener('click', () => { hideModal(); triggerInstallPrompt(); });
 
-  // Tapping close only ever dismisses this one banner — the same real
+  // Tapping Cancel only ever dismisses this one popup — the same real
   // timing rules below still decide if/when the other real chance
   // shows later, nothing about that is affected by this tap.
-  document.getElementById('pwaInstallCloseBtn').addEventListener('click', hideBanner);
+  document.getElementById('pwaModalCancelBtn').addEventListener('click', hideModal);
 }
 
-function showBanner(){
-  if(!pwaBanner || bannerVisible) return;
-  renderBanner();
-  bannerVisible = true;
-  pwaBanner.classList.add('show');
+function showModal(){
+  if(modalVisible) return;
+  renderModal();
+  modalVisible = true;
+  pwaModalBackdrop.classList.add('open');
 }
 
 // The one real gate for both real chances: never once actually
@@ -130,21 +141,21 @@ function showBanner(){
 // real moments below — a normal visit (first), and returning to Home
 // after genuinely watching part of an episode (second, and last).
 function evaluateInstallPrompt(){
-  if(bannerVisible) return;
+  if(modalVisible) return;
   if(isStandaloneDisplay()) return;
   if(!isMobileWidth()) return;
   if(!canOfferInstallHere()) return;
 
   if(!localStorage.getItem(LS_INITIAL_SHOWN)){
     localStorage.setItem(LS_INITIAL_SHOWN, '1');
-    showBanner();
+    showModal();
     return;
   }
   if(localStorage.getItem(LS_SECOND_SHOWN)) return;
   if(!localStorage.getItem(LS_WATCHED_EPISODE)) return;
 
   localStorage.setItem(LS_SECOND_SHOWN, '1');
-  showBanner();
+  showModal();
 }
 
 // Called by app.js's showScreen() every time the real Home screen
@@ -162,7 +173,7 @@ window.addEventListener('beforeinstallprompt', (e) => {
 
 window.addEventListener('appinstalled', () => {
   deferredInstallEvent = null;
-  hideBanner();
+  hideModal();
   notifyInstallAvailabilityChanged();
 });
 

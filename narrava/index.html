@@ -153,7 +153,6 @@
         <div class="epbadge" id="epBadge">EP 12 · 64</div>
         <h2 class="title" id="title">MIDNIGHT HEIR</h2>
         <p class="synopsis" id="synopsis">She inherited his empire. He wants it back — and her too.</p>
-        <div class="progressbar"><div class="fill" id="progressFill" style="width:38%"></div></div>
         <div class="ctarow">
           <button class="continue" id="continueBtn">▶ Continue</button>
           <button class="unlock" id="unlockBtn">
@@ -355,14 +354,6 @@
          otherwise via the .show class, so it never reserves space. -->
     <div class="cw-float" id="cwFloat"></div>
 
-    <!-- Real install prompt / real iOS "Add to Home Screen" instructions
-         (see js/pwa-install.js) — same floating-banner slot and styling
-         as .cw-float just above, DramaBox-style: app icon, short pitch,
-         one real action, and a real close button that only ever
-         dismisses this one banner. Empty/hidden by default via .show,
-         shown only at the two real moments pwa-install.js decides on. -->
-    <div class="pwa-install-banner" id="pwaInstallBanner"></div>
-
     <div class="bottomnav">
       <div class="navitem active" id="navHome">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-7 9 7M5 10v10h5v-6h4v6h5V10"/></svg>
@@ -424,6 +415,25 @@
         <span class="profile-row-label">Facebook</span>
       </button>
     </div>
+  </div>
+</div>
+
+<!-- Real install prompt / real iOS "Add to Home Screen" instructions
+     (see js/pwa-install.js) — a real, large, centered popup with its
+     own dedicated styling (.pwa-modal-*, below), deliberately NOT
+     .cw-float's small floating-strip look (that was a real mistake this
+     replaces, confirmed directly). Body-level and full-viewport like
+     the auth/share modals above, so it's genuinely centered on screen,
+     not confined to the small phone-frame box on desktop. Empty by
+     default; pwa-install.js fills pwaModalBody per platform and toggles
+     .open — never rendered at all unless a real install path (a
+     captured beforeinstallprompt, or real iOS Safari) actually exists. -->
+<div class="pwa-modal-backdrop" id="pwaModalBackdrop">
+  <div class="pwa-modal">
+    <button class="pwa-modal-close" id="pwaModalClose" type="button" aria-label="Close">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+    <div id="pwaModalBody"></div>
   </div>
 </div>
 

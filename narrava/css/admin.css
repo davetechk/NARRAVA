@@ -359,6 +359,18 @@ table.admin-table tbody tr:hover{background:rgba(255,255,255,0.02);}
 }
 .admin-placeholder strong{display:block;color:var(--text);font-size:16px;margin-bottom:8px;}
 
+/* ---------- Settings rows (admin/system-settings.html) ---------- */
+
+.admin-settings-row{
+  display:flex;align-items:center;justify-content:space-between;gap:20px;
+  padding:18px 0;border-bottom:1px solid rgba(255,255,255,0.06);
+}
+.admin-settings-row:last-child{border-bottom:none;}
+.admin-settings-row-text{min-width:0;max-width:520px;}
+.admin-settings-row-text .admin-row-sub{margin-top:4px;line-height:1.5;}
+.admin-settings-inline-form{display:flex;gap:10px;align-items:center;flex-shrink:0;}
+.admin-settings-number{width:80px;text-align:center;flex-shrink:0;}
+
 /* ---------- Inline edit / delete-confirm rows (used inside tables) ---------- */
 
 .admin-inline-form{padding:14px 4px;}

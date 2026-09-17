@@ -915,6 +915,82 @@
   }
   .cw-float-close svg{width:14px;height:14px;}
 
+  /* Real install prompt / real iOS instructions banner (see
+     js/pwa-install.js) — same floating-card slot and look as .cw-float
+     just above, gold-tinted instead of neutral so it reads as its own
+     distinct real moment, not another Continue Watching row. Hidden by
+     default; JS alone decides when .show is genuinely earned. */
+  .pwa-install-banner{
+    display:none;
+    position:absolute;
+    left:12px;right:12px;
+    bottom:90px;
+    z-index:47;
+    align-items:flex-start;
+    gap:10px;
+    padding:12px;
+    border-radius:14px;
+    background:rgba(20,26,21,0.96);
+    backdrop-filter:blur(6px);
+    border:1px solid rgba(232,184,92,0.35);
+    box-shadow:0 8px 24px rgba(0,0,0,0.4);
+  }
+  .pwa-install-banner.show{display:flex;}
+  .pwa-install-icon{
+    width:42px;height:42px;
+    border-radius:10px;
+    flex-shrink:0;
+    display:block;
+    background:var(--ink);
+  }
+  .pwa-install-info{flex:1;min-width:0;padding-top:1px;}
+  .pwa-install-title{font-size:13px;font-weight:800;color:#fff;}
+  .pwa-install-sub{
+    font-size:11.5px;color:var(--muted);
+    margin-top:3px;line-height:1.4;
+    display:flex;align-items:center;gap:5px;
+  }
+  .pwa-install-sub svg{width:13px;height:13px;flex-shrink:0;color:var(--gold);}
+  .pwa-install-action{
+    flex-shrink:0;
+    background:var(--leaf);
+    color:#0D130E;
+    border:none;
+    font-family:'Montserrat',sans-serif;
+    font-weight:800;font-size:12.5px;
+    padding:9px 16px;
+    border-radius:999px;
+    cursor:pointer;
+    margin-top:2px;
+  }
+  .pwa-install-close{
+    flex-shrink:0;
+    width:22px;height:22px;
+    display:flex;align-items:center;justify-content:center;
+    background:none;border:none;
+    color:var(--muted);
+    cursor:pointer;
+  }
+  .pwa-install-close svg{width:14px;height:14px;}
+
+  /* Profile screen's own always-available install trigger — only ever
+     rendered once a real beforeinstallprompt has actually fired (see
+     renderProfileMenu in profile.js), so it's never a dead button. */
+  .profile-install-btn{
+    flex-shrink:0;
+    display:flex;align-items:center;gap:6px;
+    background:rgba(232,184,92,0.14);
+    border:1px solid rgba(232,184,92,0.4);
+    color:var(--gold);
+    font-family:'Montserrat',sans-serif;
+    font-weight:800;font-size:11.5px;
+    padding:8px 12px;
+    border-radius:999px;
+    cursor:pointer;
+    white-space:nowrap;
+  }
+  .profile-install-btn svg{width:14px;height:14px;flex-shrink:0;}
+
   .discover-tabs{
     display:flex;gap:8px;
     padding:14px 18px 10px;
@@ -1920,7 +1996,9 @@
     .bottomnav,
     .cw-float,
     .cw-float.show,
-    body.discover-active .cw-float.show{
+    body.discover-active .cw-float.show,
+    .pwa-install-banner,
+    .pwa-install-banner.show{
       display:none;
     }
 

@@ -71,8 +71,13 @@ function renderProfileMenu(){
   // has a real profiles row and a real coin_balance, nothing broken there.
   const isRealAccount = loggedIn && !currentSession.user.is_anonymous;
 
+  // Once a real username (profiles.display_name) is actually set, show
+  // that in place of the email — currentDisplayName is already loaded
+  // by checkIsAdmin() before this ever runs, straight off the same real
+  // profiles row the username itself was added to, so there's no separate
+  // fetch or flash of the email first.
   const identityHtml = isRealAccount
-    ? '<div class="profile-id"><div class="profile-email">' + escapeHtml(currentSession.user.email) + '</div></div>'
+    ? '<div class="profile-id"><div class="profile-email" id="profileIdentityValue">' + escapeHtml(currentDisplayName || currentSession.user.email) + '</div></div>'
     : '<button type="button" class="profile-id profile-login-row" id="profileLoginRow">' +
         '<span>Log in</span>' + PROFILE_ICONS.chevron +
       '</button>';
@@ -85,6 +90,7 @@ function renderProfileMenu(){
     '<div class="profile-header">' +
       '<div class="profile-avatar">' + PROFILE_ICONS.avatar + '</div>' +
       identityHtml +
+      pwaInstallButtonHtml() +
     '</div>' +
 
     '<button type="button" class="profile-banner" id="membershipBanner">' +
@@ -132,7 +138,33 @@ function renderProfileMenu(){
   if(loggedIn) loadWalletBalance();
 }
 
+// Always-available install trigger, near the top of the Profile screen
+// — but only ever rendered once a real beforeinstallprompt has actually
+// fired (see pwa-install.js's narravaPwaCanInstall()), so this is never
+// a dead button. iOS Safari never gets a real beforeinstallprompt at
+// all (Apple's own genuine restriction), so it correctly never renders
+// there either — the real per-visit instructions banner is the only
+// install surface on that platform, not a fake button here.
+function pwaInstallButtonHtml(){
+  if(typeof window.narravaPwaCanInstall !== 'function' || !window.narravaPwaCanInstall()) return '';
+  return '<button type="button" class="profile-install-btn" id="profileInstallBtn">' +
+    PROFILE_ICONS.download + '<span>Install App</span></button>';
+}
+
+// Re-render whenever pwa-install.js's own real availability actually
+// changes (beforeinstallprompt firing after this screen already
+// rendered, or a real install completing) — only while Profile is
+// genuinely the visible screen, so this never fights other screens.
+window.addEventListener('narrava:pwa-install-changed', () => {
+  if(profileScreen && !profileScreen.classList.contains('screen-hidden')) renderProfileMenu();
+});
+
 function wireProfileRows(loggedIn){
+  const installBtn = document.getElementById('profileInstallBtn');
+  if(installBtn) installBtn.addEventListener('click', () => {
+    if(typeof window.narravaPwaTriggerInstall === 'function') window.narravaPwaTriggerInstall();
+  });
+
   const loginRow = document.getElementById('profileLoginRow');
   if(loginRow) loginRow.addEventListener('click', () => openAuthModal('login'));
 
@@ -178,48 +210,53 @@ function wireProfileRows(loggedIn){
   }
 }
 
-// Same pattern as loadWalletBalance below: a normal select-own read on
-// the current user's own profiles row, governed by the existing RLS
-// policy — this only decides whether the Admin Panel row is drawn, the
-// real gate is the admin-only RLS policies on series / series_genres.
+// A normal select-own read on the current user's own profiles row,
+// governed by the existing RLS policy. Decides whether the Admin Panel
+// row is drawn (the real gate is the admin-only RLS policies on
+// series/series_genres) AND loads the real username up front, before
+// renderProfileMenu ever runs — so the identity row can show it
+// immediately instead of the email, with no separate fetch or flash.
 async function checkIsAdmin(){
-  if(!currentSession){ isAdmin = false; return; }
+  if(!currentSession){ isAdmin = false; currentDisplayName = null; return; }
 
   try {
     const { data, error } = await supabaseClient
       .from('profiles')
-      .select('is_admin')
+      .select('is_admin, display_name')
       .eq('id', currentSession.user.id)
       .single();
 
     if(error) throw error;
     isAdmin = !!(data && data.is_admin);
+    currentDisplayName = (data && data.display_name && data.display_name.trim()) ? data.display_name.trim() : null;
   } catch(err){
     console.error('Narrava: failed to check admin status', err);
     isAdmin = false;
+    currentDisplayName = null;
   }
 }
 
 async function loadWalletBalance(){
   const walletEl = document.getElementById('walletBalanceValue');
+  // currentDisplayName is already loaded by checkIsAdmin() before this
+  // ever runs, so the Username row can show it straight away — no need
+  // to wait on this (coin_balance-only) fetch to resolve it.
   const usernameEl = document.getElementById('usernameValue');
+  if(usernameEl) usernameEl.textContent = currentDisplayName || 'Not set';
   if(!currentSession) return;
 
   try {
     const { data, error } = await supabaseClient
       .from('profiles')
-      .select('coin_balance, display_name')
+      .select('coin_balance')
       .eq('id', currentSession.user.id)
       .single();
 
     if(error) throw error;
     if(walletEl) walletEl.textContent = data.coin_balance;
-    currentDisplayName = (data.display_name && data.display_name.trim()) ? data.display_name.trim() : null;
-    if(usernameEl) usernameEl.textContent = currentDisplayName || 'Not set';
   } catch(err){
-    console.error('Narrava: failed to load wallet balance / username', err);
+    console.error('Narrava: failed to load wallet balance', err);
     if(walletEl) walletEl.textContent = '—';
-    if(usernameEl) usernameEl.textContent = '—';
   }
 }
 
@@ -264,6 +301,11 @@ usernameForm.addEventListener('submit', async (e) => {
     currentDisplayName = name || null;
     const usernameEl = document.getElementById('usernameValue');
     if(usernameEl) usernameEl.textContent = currentDisplayName || 'Not set';
+    // Identity row at the top shows this same real name in place of the
+    // email once it's set — update it live rather than waiting on the
+    // next full renderProfileMenu().
+    const identityEl = document.getElementById('profileIdentityValue');
+    if(identityEl) identityEl.textContent = currentDisplayName || currentSession.user.email;
     closeUsernameModal();
     showToast('Username updated ✓');
   } catch(err){

@@ -8,6 +8,17 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/styles.css?v=2">
+
+<!-- Real PWA installability (see js/pwa-install.js + sw.js): a real
+     manifest + a real registered service worker are both genuine
+     prerequisites for Chrome/Android to ever fire beforeinstallprompt
+     at all, not just decoration. -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0D130E">
+<link rel="apple-touch-icon" href="img/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Narrava">
 </head>
 <body class="discover-active">
 
@@ -344,6 +355,14 @@
          otherwise via the .show class, so it never reserves space. -->
     <div class="cw-float" id="cwFloat"></div>
 
+    <!-- Real install prompt / real iOS "Add to Home Screen" instructions
+         (see js/pwa-install.js) — same floating-banner slot and styling
+         as .cw-float just above, DramaBox-style: app icon, short pitch,
+         one real action, and a real close button that only ever
+         dismisses this one banner. Empty/hidden by default via .show,
+         shown only at the two real moments pwa-install.js decides on. -->
+    <div class="pwa-install-banner" id="pwaInstallBanner"></div>
+
     <div class="bottomnav">
       <div class="navitem active" id="navHome">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-7 9 7M5 10v10h5v-6h4v6h5V10"/></svg>
@@ -446,5 +465,6 @@
 <script src="js/watch.js?v=5"></script>
 <script src="js/auth.js"></script>
 <script src="js/profile.js?v=1"></script>
+<script src="js/pwa-install.js?v=1"></script>
 </body>
 </html>

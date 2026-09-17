@@ -62,11 +62,26 @@ async function bootstrapAnonymousSession(){
   }
 }
 
+// The real "actually watched at least part of an episode" signal used
+// by pwa-install.js to decide whether a second install chance is ever
+// earned — a real 3+ seconds of real position, not just opening one.
+// Set here (not deeper in playback) since every real playback path,
+// feed or watch.js, already funnels position saves through this one
+// function.
+const PWA_WATCHED_EPISODE_KEY = 'narrava_pwa_watched_episode';
+function markEpisodeWatchedForInstallPrompt(positionSeconds){
+  if(positionSeconds < 3) return;
+  try {
+    if(!localStorage.getItem(PWA_WATCHED_EPISODE_KEY)) localStorage.setItem(PWA_WATCHED_EPISODE_KEY, '1');
+  } catch(err){ /* private mode / storage disabled — the second install chance just never fires, nothing else depends on this */ }
+}
+
 // Upserts the viewer's position in one episode. Silently does nothing
 // (no error surfaced to the user) if nobody is signed in, since there's
 // no user_id to attach the row to.
 async function saveWatchProgress(episodeId, seriesId, positionSeconds){
   if(!episodeId || !seriesId) return;
+  markEpisodeWatchedForInstallPrompt(positionSeconds);
   const userId = await getSignedInUserId();
   if(!userId) return;
 

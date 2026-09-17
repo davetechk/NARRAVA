@@ -293,6 +293,13 @@ function showScreen(name){
   // itself calls showScreen('discover') before opening it, so this
   // no-ops harmlessly in that order rather than fighting it.
   closeTopbarSearch();
+
+  // The real "returned to the home screen" moment pwa-install.js waits
+  // for to offer its one real second install chance — see
+  // notifyHomeScreenShown() there, which no-ops unless that chance is
+  // genuinely earned (already watched part of an episode, first chance
+  // already shown, second chance not shown yet).
+  if(name === 'discover' && typeof notifyHomeScreenShown === 'function') notifyHomeScreenShown();
 }
 
 // Continue Watching: {series_id -> latest get_continue_watching row for

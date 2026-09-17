@@ -52,8 +52,22 @@
 // already shows).
 const REPLIES_INITIAL_BATCH = 5;
 
+// A real, stable identifier for whoever hasn't set a real username yet
+// (profiles.display_name — see profile.js) — drawn directly from that
+// account's own real, permanent user_id (get_series_comments already
+// returns it, used elsewhere here for the "is this my own comment"
+// check), the same slice every time for that same account, never
+// random and never invented fresh per render. Replaces the old flat
+// "Narrava viewer" label every nameless commenter used to share
+// identically, which made two different anonymous or unnamed accounts
+// genuinely indistinguishable in a real thread.
+function fallbackViewerName(userId){
+  const slice = String(userId || '').replace(/-/g, '').slice(0, 6).toUpperCase();
+  return slice ? 'Viewer ' + slice : 'Narrava viewer';
+}
+
 function commentDisplayName(c){
-  return (c.display_name && c.display_name.trim()) ? c.display_name.trim() : 'Narrava viewer';
+  return (c.display_name && c.display_name.trim()) ? c.display_name.trim() : fallbackViewerName(c.user_id);
 }
 
 // Deterministic color from the name so the same person always gets the

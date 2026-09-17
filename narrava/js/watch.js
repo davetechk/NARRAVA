@@ -265,11 +265,16 @@ function renderWatchEpisodes(){
   renderWatchRanges();
 
   const freeCount = watchFreeCount();
+  // Free Mode (app_settings, see app.js's appSettings) overrides this
+  // series' own real free_episode_count the exact same way the mobile
+  // feed's isEpisodeLocked does — nothing locked, full stop, the real
+  // per-series count itself untouched either way.
+  const freeModeOn = appSettings.free_mode_enabled;
   const start = watchActiveRange * WATCH_RANGE_SIZE;
   const visible = watchEpisodes.slice(start, start + WATCH_RANGE_SIZE);
 
   watchEpisodeGrid.innerHTML = visible
-    .map(ep => watchEpCardHtml(ep, ep.episode_number > freeCount))
+    .map(ep => watchEpCardHtml(ep, !freeModeOn && ep.episode_number > freeCount))
     .join('');
   watchEpisodeGrid.querySelectorAll('.watch-ep-card:not(.locked)').forEach(btn => {
     btn.addEventListener('click', () => watchPlayEpisode(watchEpisodes.find(e => e.id === btn.dataset.epId)));

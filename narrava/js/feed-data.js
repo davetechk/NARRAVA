@@ -58,8 +58,12 @@ async function fetchSlides() {
         // already uses — computed here too since fetchSlides already has
         // this series' first episode in hand, so the browsing preview is
         // honest from the very first render, not just once someone
-        // actually enters the watching state.
-        const locked = currentEp > freeEpisodeCount;
+        // actually enters the watching state. appSettings (app.js) is
+        // already real by the time this runs — fetchSlides is only ever
+        // called from init(), which already awaited appSettingsReady
+        // first. Free Mode on means nothing is locked, full stop, same
+        // real override isEpisodeLocked (app.js) applies everywhere else.
+        const locked = !appSettings.free_mode_enabled && currentEp > freeEpisodeCount;
 
         return {
           id: series.id,

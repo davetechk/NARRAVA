@@ -16,6 +16,14 @@ const profilePanel = document.getElementById('profilePanel');
 
 let currentSession = null; // Supabase session, or null when signed out
 let isAdmin = false; // profiles.is_admin for the current session, false when signed out
+let currentDisplayName = null; // profiles.display_name for the current session — null until loadProfileExtras resolves, and genuinely null/empty when nobody's actually set one yet
+
+const usernameModalBackdrop = document.getElementById('usernameModalBackdrop');
+const usernameModalClose = document.getElementById('usernameModalClose');
+const usernameForm = document.getElementById('usernameForm');
+const usernameInput = document.getElementById('usernameInput');
+const usernameError = document.getElementById('usernameError');
+const usernameSubmitBtn = document.getElementById('usernameSubmitBtn');
 
 const PROFILE_ICONS = {
   chevron: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>',
@@ -29,7 +37,8 @@ const PROFILE_ICONS = {
   help: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 015 .5c0 1.7-2.5 1.7-2.5 3.5M12 17h.01"/></svg>',
   signout: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>',
   avatar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>',
-  admin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>'
+  admin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg>',
+  username: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>'
 };
 
 function menuRow(id, label, icon, valueHtml){
@@ -86,6 +95,10 @@ function renderProfileMenu(){
       PROFILE_ICONS.chevron +
     '</button>' +
 
+    (loggedIn
+      ? '<div class="profile-menu">' + menuRow('rowUsername', 'Username', PROFILE_ICONS.username, '<span class="profile-row-value" id="usernameValue">…</span>') + '</div>'
+      : '') +
+
     '<div class="profile-features">' +
       '<div class="profile-feature">' + PROFILE_ICONS.rewards + '<span>Originals</span></div>' +
       '<div class="profile-feature">' + PROFILE_ICONS.topup + '<span>Daily Coins</span></div>' +
@@ -136,6 +149,9 @@ function wireProfileRows(loggedIn){
     if(!loggedIn) openAuthModal('login');
   });
 
+  const usernameRow = document.getElementById('rowUsername');
+  if(usernameRow) usernameRow.addEventListener('click', openUsernameModal);
+
   ['rowRewards', 'rowGifts', 'rowHistory', 'rowDownload', 'rowLanguage', 'rowHelp'].forEach(id => {
     document.getElementById(id).addEventListener('click', () => showToast('Coming soon'));
   });
@@ -155,6 +171,7 @@ function wireProfileRows(loggedIn){
 
       currentSession = null;
       isAdmin = false;
+      currentDisplayName = null;
       renderProfileMenu();
       refreshContinueWatchingMap().then(renderContinueWatchingBar); // app.js/discover.js: nobody's signed in now, so the floating bar must go away too
     });
@@ -184,23 +201,80 @@ async function checkIsAdmin(){
 }
 
 async function loadWalletBalance(){
-  const el = document.getElementById('walletBalanceValue');
-  if(!el || !currentSession) return;
+  const walletEl = document.getElementById('walletBalanceValue');
+  const usernameEl = document.getElementById('usernameValue');
+  if(!currentSession) return;
 
   try {
     const { data, error } = await supabaseClient
       .from('profiles')
-      .select('coin_balance')
+      .select('coin_balance, display_name')
       .eq('id', currentSession.user.id)
       .single();
 
     if(error) throw error;
-    el.textContent = data.coin_balance;
+    if(walletEl) walletEl.textContent = data.coin_balance;
+    currentDisplayName = (data.display_name && data.display_name.trim()) ? data.display_name.trim() : null;
+    if(usernameEl) usernameEl.textContent = currentDisplayName || 'Not set';
   } catch(err){
-    console.error('Narrava: failed to load wallet balance', err);
-    el.textContent = '—';
+    console.error('Narrava: failed to load wallet balance / username', err);
+    if(walletEl) walletEl.textContent = '—';
+    if(usernameEl) usernameEl.textContent = '—';
   }
 }
+
+// Real write to the one column this is actually allowed to touch —
+// confirmed live before this was built: a real, signed-in, non-admin
+// account can update its own display_name, but coin_balance/is_admin
+// are genuinely refused ("permission denied for table profiles") even
+// on that same row. Once saved, this exact value is what
+// get_series_comments already returns as display_name for every
+// comment/reply this account posts (comments-panel.js) — nothing else
+// needs to change there.
+function openUsernameModal(){
+  usernameError.textContent = '';
+  usernameError.classList.remove('show');
+  usernameInput.value = currentDisplayName || '';
+  usernameModalBackdrop.classList.add('open');
+  setTimeout(() => usernameInput.focus(), 150);
+}
+function closeUsernameModal(){
+  usernameModalBackdrop.classList.remove('open');
+}
+usernameModalClose.addEventListener('click', closeUsernameModal);
+usernameModalBackdrop.addEventListener('click', e => { if(e.target === usernameModalBackdrop) closeUsernameModal(); });
+
+usernameForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if(!currentSession) return;
+
+  const name = usernameInput.value.trim();
+  usernameError.textContent = '';
+  usernameError.classList.remove('show');
+  usernameSubmitBtn.disabled = true;
+  usernameSubmitBtn.textContent = 'Saving…';
+
+  try {
+    const { error } = await supabaseClient
+      .from('profiles')
+      .update({ display_name: name || null })
+      .eq('id', currentSession.user.id);
+    if(error) throw error;
+
+    currentDisplayName = name || null;
+    const usernameEl = document.getElementById('usernameValue');
+    if(usernameEl) usernameEl.textContent = currentDisplayName || 'Not set';
+    closeUsernameModal();
+    showToast('Username updated ✓');
+  } catch(err){
+    console.error('Narrava: failed to update username', err);
+    usernameError.textContent = 'Could not save — please try again.';
+    usernameError.classList.add('show');
+  } finally {
+    usernameSubmitBtn.disabled = false;
+    usernameSubmitBtn.textContent = 'Save';
+  }
+});
 
 // Entry point, called from app.js each time the Profile tab is opened.
 async function renderProfileScreen(){

@@ -302,14 +302,19 @@ const HERO_VISIBLE = 4;
 let heroBgEl, heroTitleEl, heroTagsEl, heroDescEl, heroLeftEl, heroTrackEl;
 let heroThumbEls = [];
 
-// Up to 5 series with a non-null featured_at, most recently featured
-// first. If none are featured yet (no admin panel exists to set this),
-// fall back to one random series so the hero never just goes blank.
+// Up to appSettings.featured_series_count (app_settings, System
+// Settings — see app.js's loadAppSettings; real admin panel now exists
+// to set this) series with a non-null featured_at, most recently
+// featured first. If none are featured yet, fall back to one random
+// series so the hero never just goes blank.
 function pickHeroItems(){
+  const count = (typeof appSettings.featured_series_count === 'number' && appSettings.featured_series_count >= 0)
+    ? appSettings.featured_series_count
+    : 5;
   const featured = slides
     .filter(s => s.featuredAt)
     .sort((a, b) => new Date(b.featuredAt) - new Date(a.featuredAt))
-    .slice(0, 5);
+    .slice(0, count);
 
   if(featured.length > 0) return featured;
   if(slides.length === 0) return [];
@@ -595,6 +600,16 @@ function renderContinueWatchingBar(){
 }
 
 async function initDiscover(){
+  // Real maintenance mode check — same one real appSettingsReady/
+  // appSettings app.js's own init() already awaits and checks first;
+  // registered right after app.js's own equivalent check, so if
+  // maintenance mode is on, app.js's init() has already replaced the
+  // real page with the honest back-soon screen by the time this runs,
+  // and this never writes so much as a loading spinner into what's now
+  // a page that no longer exists.
+  await appSettingsReady;
+  if(appSettings.maintenance_mode_enabled) return;
+
   // Real loading state for Home's own real first wait — genres, the
   // genre links, and `slides` itself (app.js) are all real reads still
   // in flight the moment this screen is ever seen. Which of these three

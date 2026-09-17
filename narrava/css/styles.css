@@ -12,6 +12,23 @@
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
 
+  /* Real maintenance mode (app_settings.maintenance_mode_enabled — see
+     app.js's renderMaintenanceMode) — replaces the entire real page,
+     nothing else loads underneath it. The admin panel (admin/*.html)
+     never loads this file's own JS-driven takeover — it's a completely
+     separate set of pages — so it stays reachable regardless. */
+  .maintenance-screen{
+    position:fixed;inset:0;
+    display:flex;align-items:center;justify-content:center;
+    flex-direction:column;
+    gap:10px;
+    background:var(--ink);color:var(--text);
+    font-family:'Montserrat',sans-serif;
+    text-align:center;padding:24px;
+  }
+  .maintenance-title{font-weight:800;font-size:22px;}
+  .maintenance-sub{color:var(--muted);font-size:14px;max-width:320px;line-height:1.5;}
+
   /* ============ Loading states (shared, main app + admin) ============
      Two variants, already reviewed and picked — structure/animation
      kept exactly as built (see loading-animations.html): a gentle pulse

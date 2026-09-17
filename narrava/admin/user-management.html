@@ -9,7 +9,7 @@
 <link rel="stylesheet" href="../css/styles.css">
 <link rel="stylesheet" href="../css/admin.css">
 </head>
-<body class="admin-page" data-page="user-management" data-title="User Management">
+<body class="admin-page" data-page="user-management">
 
 <div class="toast" id="toast"></div>
 
@@ -22,7 +22,13 @@
         <div class="admin-topbar-sub">Manage registered accounts</div>
       </div>
     </div>
-    <div id="comingSoonBody"></div>
+
+    <div id="userStatsRow"></div>
+
+    <div class="admin-panel">
+      <div class="admin-panel-head"><div><h2>All Users</h2><div class="admin-panel-sub" id="userTableSub"></div></div></div>
+      <div id="userTableWrap"></div>
+    </div>
   </main>
 </div>
 
@@ -31,6 +37,6 @@
 <script src="../js/supabase-client.js"></script>
 <script src="../js/shared-utils.js"></script>
 <script src="../js/admin-shared.js"></script>
-<script src="../js/admin-coming-soon.js"></script>
+<script src="../js/admin-users.js"></script>
 </body>
 </html>

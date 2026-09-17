@@ -55,6 +55,54 @@ let slidesLoaded = false; // real fetchSlides() has actually resolved — see re
 let idx = 0;
 let coins = 3;
 
+// Real System Settings (app_settings, admin/system-settings.html) — one
+// real row, publicly readable, admin-only to write (confirmed live).
+// Safe defaults here (nothing overridden, maintenance off, 5 featured)
+// match today's real behavior exactly, so a failed fetch never silently
+// changes anything — it just falls back to acting as if the settings
+// screen had never been touched.
+//
+// Fetched once, immediately at script load (not inside init(), and not
+// awaited by anything until it actually needs the answer) so both this
+// file's own init() and discover.js's initDiscover() can await the same
+// one real appSettingsReady promise before doing anything — the same
+// real pattern slidesReady/continueWatchingReady already use for
+// exactly this "don't act before the real data is in" reason.
+let appSettings = { free_mode_enabled: false, maintenance_mode_enabled: false, featured_series_count: 5 };
+let resolveAppSettingsReady;
+const appSettingsReady = new Promise(resolve => { resolveAppSettingsReady = resolve; });
+
+async function loadAppSettings(){
+  try {
+    const { data, error } = await supabaseClient
+      .from('app_settings')
+      .select('free_mode_enabled, maintenance_mode_enabled, featured_series_count')
+      .eq('id', true)
+      .single();
+    if(error) throw error;
+    if(data) appSettings = data;
+  } catch(err){
+    console.error('Narrava: failed to load app settings — falling back to safe defaults (nothing overridden)', err);
+  }
+  resolveAppSettingsReady();
+}
+loadAppSettings();
+
+// Real maintenance mode (see init() below and discover.js's
+// initDiscover(), both of which bail out before loading anything real
+// once appSettingsReady confirms it's on) — replaces the entire real
+// page with one plain, honest message, nothing else. The admin panel
+// lives under admin/*.html, an entirely separate set of pages this
+// function never touches, so it stays fully reachable regardless —
+// confirmed live, not just assumed from separate file boundaries.
+function renderMaintenanceMode(){
+  document.body.innerHTML =
+    '<div class="maintenance-screen">' +
+      '<div class="maintenance-title">We’ll be back soon</div>' +
+      '<div class="maintenance-sub">Narrava is temporarily down for maintenance. Please check back shortly.</div>' +
+    '</div>';
+}
+
 // Real video playback state — a real native <video> element plus hls.js
 // (video-player.js), identity is the real EPISODE id throughout (see
 // header comment above), not the series/slide id, since one slide can
@@ -273,11 +321,16 @@ const continueWatchingReady = new Promise(resolve => { resolveContinueWatchingRe
 
 // Real per-episode lock check — a real episode number past the series'
 // own real free_episode_count is locked, unless its real id has already
-// been fake-unlocked (coins) this session. Exactly the same rule the
-// desktop watch page's own grid already uses (watch.js's
-// watchFreeCount/watchEpCardHtml) — this is the one real source for it
-// on mobile too, not a second version of the same check.
+// been fake-unlocked (coins) this session, or Free Mode (app_settings,
+// see loadAppSettings above) is genuinely on — the series' own real
+// free_episode_count is never touched either way, only this decision
+// ignores it while Free Mode is on, exactly as if every episode were
+// within it. Exactly the same rule the desktop watch page's own grid
+// already uses (watch.js's watchFreeCount/watchEpCardHtml) — this is
+// the one real source for it on mobile too, not a second version of
+// the same check.
 function isEpisodeLocked(s, ep){
+  if(appSettings.free_mode_enabled) return false;
   return ep.episode_number > (s.freeEpisodeCount || 0) && !s.unlockedEpisodeIds.has(ep.id);
 }
 
@@ -1334,6 +1387,17 @@ let resolveSlidesReady;
 const slidesReady = new Promise(resolve => { resolveSlidesReady = resolve; });
 
 async function init(){
+  // Real maintenance mode check — the one thing that happens before
+  // literally anything else, including the anonymous account bootstrap.
+  // On, this renders the honest back-soon screen and returns — nothing
+  // else in this function (or discover.js's own initDiscover, gated the
+  // same real way) ever runs.
+  await appSettingsReady;
+  if(appSettings.maintenance_mode_enabled){
+    renderMaintenanceMode();
+    return;
+  }
+
   // Real anonymous account bootstrap (watch-progress.js) — first thing
   // this app does, before slides/continue-watching are even fetched, so
   // every visitor already has a real, genuine account (anonymous or

@@ -9,7 +9,7 @@
 <link rel="stylesheet" href="../css/styles.css">
 <link rel="stylesheet" href="../css/admin.css">
 </head>
-<body class="admin-page" data-page="system-settings" data-title="System Settings">
+<body class="admin-page" data-page="system-settings">
 
 <div class="toast" id="toast"></div>
 
@@ -22,7 +22,11 @@
         <div class="admin-topbar-sub">Platform-wide configuration</div>
       </div>
     </div>
-    <div id="comingSoonBody"></div>
+
+    <div class="admin-panel">
+      <div class="admin-panel-head"><div><h2>Platform Controls</h2><div class="admin-panel-sub">Real, live settings — every change here takes effect immediately on the real app</div></div></div>
+      <div id="settingsRows"></div>
+    </div>
   </main>
 </div>
 
@@ -31,6 +35,6 @@
 <script src="../js/supabase-client.js"></script>
 <script src="../js/shared-utils.js"></script>
 <script src="../js/admin-shared.js"></script>
-<script src="../js/admin-coming-soon.js"></script>
+<script src="../js/admin-settings.js"></script>
 </body>
 </html>

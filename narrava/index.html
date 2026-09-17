@@ -408,6 +408,28 @@
   </div>
 </div>
 
+<!-- Real username (writes to profiles.display_name — see profile.js).
+     Body-level like the share/auth modals above, reusing the exact same
+     .auth-modal-backdrop/.auth-card shell rather than a new one built
+     for this. Once set, this exact name is what get_series_comments
+     already returns as display_name for every comment/reply this
+     account posts (comments-panel.js) — nothing else needs to change
+     there for a real name to actually show. -->
+<div class="auth-modal-backdrop" id="usernameModalBackdrop">
+  <div class="auth-modal">
+    <button class="auth-modal-close" id="usernameModalClose" type="button" aria-label="Close">✕</button>
+    <div class="auth-card">
+      <div class="auth-title">Set Username</div>
+      <div class="auth-error" id="usernameError"></div>
+      <form id="usernameForm" novalidate>
+        <label class="auth-label" for="usernameInput">Display name</label>
+        <input class="auth-input" type="text" id="usernameInput" maxlength="30" autocomplete="off" placeholder="How you’ll appear in comments">
+        <button class="auth-submit" type="submit" id="usernameSubmitBtn">Save</button>
+      </form>
+    </div>
+  </div>
+</div>
+
 <script src="js/config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
@@ -416,13 +438,13 @@
 <script src="js/video-player.js?v=2"></script>
 <script src="js/watch-progress.js"></script>
 <script src="js/social.js"></script>
-<script src="js/comments-panel.js"></script>
-<script src="js/feed-data.js"></script>
-<script src="js/app.js?v=6"></script>
-<script src="js/discover.js"></script>
+<script src="js/comments-panel.js?v=1"></script>
+<script src="js/feed-data.js?v=1"></script>
+<script src="js/app.js?v=7"></script>
+<script src="js/discover.js?v=1"></script>
 <script src="js/library.js"></script>
-<script src="js/watch.js?v=4"></script>
+<script src="js/watch.js?v=5"></script>
 <script src="js/auth.js"></script>
-<script src="js/profile.js"></script>
+<script src="js/profile.js?v=1"></script>
 </body>
 </html>

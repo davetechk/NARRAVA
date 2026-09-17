@@ -197,6 +197,7 @@ body.admin-page{
 
 .admin-stats-row{display:grid;grid-template-columns:repeat(5, 1fr);gap:14px;margin-bottom:22px;}
 .admin-stats-row.cols-4{grid-template-columns:repeat(4, 1fr);}
+.admin-stats-row.cols-3{grid-template-columns:repeat(3, 1fr);}
 .admin-stat-card{
   background:var(--panel-2);border:1px solid rgba(255,255,255,0.08);
   border-radius:14px;padding:16px;display:flex;gap:12px;align-items:flex-start;
@@ -243,6 +244,8 @@ body.admin-page{
 .admin-helper-text{font-size:11.5px;color:var(--muted);margin:4px 0 14px;}
 
 .admin-btn{border:none;border-radius:8px;padding:10px 18px;font-size:13px;font-weight:800;cursor:pointer;white-space:nowrap;font-family:'Montserrat',sans-serif;}
+.admin-btn.small{padding:7px 14px;font-size:12px;border-radius:7px;}
+.admin-btn:disabled{opacity:0.6;cursor:default;}
 .admin-btn-primary{background:var(--leaf);color:#0D130E;}
 .admin-btn-primary:hover{background:var(--leaf-light);}
 .admin-btn-primary:disabled{opacity:0.6;cursor:default;}
@@ -337,6 +340,7 @@ table.admin-table tbody tr:hover{background:rgba(255,255,255,0.02);}
 .admin-badge{font-size:11px;font-weight:800;padding:4px 10px;border-radius:20px;display:inline-block;white-space:nowrap;border:none;cursor:default;font-family:'Montserrat',sans-serif;}
 .admin-badge.green{background:rgba(125,179,89,0.18);color:var(--leaf-light);}
 .admin-badge.gray{background:rgba(255,255,255,0.06);color:var(--muted);border:1px solid rgba(255,255,255,0.1);}
+.admin-badge.red{background:rgba(242,160,160,0.16);color:#F2A0A0;}
 .admin-badge.clickable{cursor:pointer;}
 .admin-badge.clickable:disabled{opacity:0.6;cursor:default;}
 

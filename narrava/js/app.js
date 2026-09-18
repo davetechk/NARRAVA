@@ -1418,6 +1418,13 @@ async function init(){
   // every visitor already has a real, genuine account (anonymous or
   // not) for the rest of init and everything after it.
   await bootstrapAnonymousSession();
+
+  // Real visit logging (visit-log.js) — once per real page load of the
+  // actual consumer app, now that a real account genuinely exists to
+  // attribute it to. Fire-and-forget: invisible to the viewer, so it
+  // never delays real content on a slow connection.
+  logPageVisit();
+
   const [fetchedSlides] = await Promise.all([fetchSlides(), refreshContinueWatchingMap()]);
   slides = fetchedSlides;
   slidesLoaded = true;

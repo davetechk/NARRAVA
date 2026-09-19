@@ -1272,7 +1272,7 @@ document.getElementById('shareBtn').addEventListener('click', ()=>{
   btn.classList.add('pulse');
   setTimeout(()=>btn.classList.remove('pulse'), 350);
   if(slides.length === 0) return;
-  shareSeries(slides[idx].title);
+  shareSeries(slides[idx].title, slides[idx].id);
 });
 
 // Real "enter the watching state" trigger — the same real mechanism as
@@ -1432,6 +1432,40 @@ async function init(){
   render();
   resolveSlidesReady();
   resolveContinueWatchingReady();
+
+  // A shared series link (#series=<id>, see seriesShareUrl in
+  // shared-utils.js) — only ever acted on here, after maintenance mode
+  // has had its say and real slides exist to look the series up in.
+  openDeepLinkedSeries();
 }
+
+// Opens straight into the series a shared link names, through the exact
+// same openSeriesInFeed every poster tap uses — so the normal lock rule
+// (isEpisodeLocked/setActiveEpisode), Free Mode, and resume all apply
+// exactly as they do everywhere else; the link itself carries nothing
+// about episodes or unlocks. The fragment is cleared once read so a
+// refresh (or Back) lands on normal Home instead of re-opening it. An id
+// that matches nothing in `slides` (a draft, a deleted series, a mangled
+// link) just leaves the viewer on Home with a short honest note.
+function openDeepLinkedSeries(){
+  const seriesId = seriesIdFromLocationHash();
+  if(!seriesId) return;
+  history.replaceState(null, '', window.location.pathname + window.location.search);
+
+  const i = slides.findIndex(s => s.id === seriesId);
+  if(i === -1){
+    showToast('That series isn’t available');
+    return;
+  }
+  openSeriesInFeed(i);
+}
+
+// Someone pasting a second series link into a tab where Narrava is
+// already open only changes the fragment (no reload), so init()'s own
+// call above never runs for it. Before slides exist, init() will pick
+// the fragment up itself, so this only acts once they're loaded.
+window.addEventListener('hashchange', () => {
+  if(slidesLoaded) openDeepLinkedSeries();
+});
 
 init();

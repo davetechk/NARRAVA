@@ -444,5 +444,5 @@ watchSaveBtn.addEventListener('click', async () => {
 watchShareBtn.addEventListener('click', () => {
   watchShareBtn.classList.add('pulse');
   setTimeout(() => watchShareBtn.classList.remove('pulse'), 350);
-  if(watchSlide) shareSeries(watchSlide.title);
+  if(watchSlide) shareSeries(watchSlide.title, watchSlide.id);
 });

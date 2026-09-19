@@ -529,12 +529,13 @@
   .feed.watching .info{
     bottom:24px;
   }
-  /* Watching only: the social icons' own bottom edge sits on the same
-     line as .info's (24px), directly above the scrub bar, instead of
-     floating at browsing's 172px. Browsing keeps .actionrail's own
-     bottom:172px above, unchanged. */
+  /* Watching only: the social icons sit directly above the scrub bar
+     instead of floating at browsing's 172px. Raised 12px above .info's
+     own 24px baseline (36px) so they don't read as too low — only the
+     rail moves; .info and the scrub bar keep their own positions.
+     Browsing keeps .actionrail's own bottom:172px above, unchanged. */
   .feed.watching .actionrail{
-    bottom:24px;
+    bottom:36px;
   }
   .epbadge{
     display:inline-block;

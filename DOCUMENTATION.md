@@ -5,7 +5,7 @@
 > as it has been kept up, and fix anything you find that has drifted. Move things out of
 > "Not built yet" only when they genuinely work.
 >
-> Last reviewed against the code: 2026-09-18.
+> Last reviewed against the code: 2026-09-19.
 
 # Narrava
 
@@ -205,8 +205,26 @@ All in `social.js` and `comments-panel.js`, against real tables (`series_likes`,
 - Deleting a comment is allowed for its author and for admins, decided by the database's
   policy. The code just attempts it. Deleting a comment also deletes its replies (a database
   cascade, not front-end code).
-- Sharing uses the browser's native share sheet, with a small popup as a fallback. It shares the
-  current page URL, not a deep link to a series.
+- **Sharing and deep links.** Share uses the browser's native share sheet, with a small popup
+  (copy link / WhatsApp / Facebook) as a fallback. Each series has its own link: the app's page
+  plus `#series=<series id>`, for example `https://your-host/index.html#series=1c01…`. Opening
+  such a link goes straight into that series (the mobile watching view, or the desktop watch
+  page) through the same `openSeriesInFeed` every poster tap uses. The link is built by
+  `seriesShareUrl()` and read by `seriesIdFromLocationHash()`, both in `shared-utils.js`, and
+  acted on by `openDeepLinkedSeries()` in `app.js` once the series list has loaded. Details:
+  - It is a `#` fragment on purpose: the app is one static page, a fragment never reaches the
+    server, and the service worker never sees it, so no hosting or `sw.js` changes are needed.
+  - The link only names a series. It carries no episode and no unlock, so it can't get around a
+    lock: the recipient's app applies the normal rule (`free_episode_count` / Free Mode) itself.
+    Extra parts of the fragment (such as `&ep=15`) are ignored. If the recipient has saved
+    progress in that series, it resumes there like any other open.
+  - The fragment is removed from the address bar after it's read, so refreshing goes to normal
+    Home. Pasting a second link into a tab where Narrava is already open also works.
+  - An id that isn't in the loaded series list (a draft, a deleted series, a mangled link)
+    leaves the viewer on Home with a short "That series isn't available" message. With
+    Maintenance Mode on, links are not acted on.
+  - There are no social preview cards (title/image when the link is pasted into a chat): those
+    need a server to render tags per link, and this is a static site.
 
 ## The admin panel
 
@@ -283,7 +301,7 @@ own files, which leads to the first gotcha below.
 
 **1. The service worker can keep serving old files after you deploy.** `sw.js` answers requests
 for the app's own files from its cache first and only goes to the network when it has nothing
-cached. The cache name is `narrava-shell-v1` and old caches are deleted only when the name
+cached. The cache name is currently `narrava-shell-v2` and old caches are deleted only when the name
 *changes*. So after changing any app file, people who have already visited can keep getting the
 old version. **Bump `CACHE_NAME` in `sw.js` whenever you ship a change.** The service worker's
 scope is the whole `narrava/` folder, so this affects the **admin pages too**, not only the
@@ -386,4 +404,3 @@ Do not describe any of this as working.
 - **Rankings** (no view tracking) and **VIP** (posters do nothing).
 - **Converting an anonymous account into a real one** when someone signs up (see Accounts).
 - **Episode durations**, which are never recorded.
-- **Series-specific share links.**

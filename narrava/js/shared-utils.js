@@ -46,11 +46,18 @@ function showToast(msg){
 // (watch.js), never a second implementation. navigator.share is the
 // browser's own real native share sheet (confirmed available on mobile
 // Chrome/Safari; genuinely absent on most desktop browsers, which is
-// exactly when the fallback below is needed, not a bug). No per-series
-// deep link exists anywhere in this app (a single index.html with no
-// URL routing) — the shared URL is honestly this same real page,
-// window.location.href, which does genuinely load Narrava; the series
-// name only ever appears in the share text, never implied by the URL.
+// exactly when the fallback below is needed, not a bug).
+//
+// Each series has its own real link: this same page plus a
+// "#series=<series id>" fragment (seriesShareUrl below). The fragment —
+// not a query string or a path — is deliberate: index.html is a single
+// static page with no server-side routing, a fragment never reaches the
+// server, and sw.js never sees it, so it needs no hosting or
+// service-worker changes. app.js's openDeepLinkedSeries reads it
+// (seriesIdFromLocationHash) and opens straight into that series. The
+// link only says *which series* — it carries no episode and no unlock
+// state, so it can't be used to get around a lock: the recipient's app
+// applies the normal lock rule (free_episode_count / Free Mode) itself.
 //
 // #shareSheetBackdrop only exists on index.html, not the admin pages
 // that also load this file — every lookup below is guarded so this
@@ -106,15 +113,32 @@ if(shareSheetBackdrop){
   });
 }
 
-// Called with a real series title. Tries the real native share sheet
-// first; AbortError (the viewer closed it themselves) is not a failure
-// worth logging. Falls back to the popup above only when navigator.share
-// itself genuinely doesn't exist.
-async function shareSeries(title){
+// The one place the link format is defined — build (seriesShareUrl) and
+// parse (seriesIdFromLocationHash) live side by side so they can't drift.
+// Built from origin + pathname only, so it works wherever the app is
+// hosted (root or a subfolder) and never carries along unrelated query
+// strings or a fragment from the current page.
+function seriesShareUrl(seriesId){
+  return window.location.origin + window.location.pathname + '#series=' + encodeURIComponent(seriesId);
+}
+
+// Returns the series id in the current URL's fragment, or null if there
+// isn't one (or it's malformed).
+function seriesIdFromLocationHash(){
+  const match = /^#series=([^&]+)/.exec(window.location.hash);
+  if(!match) return null;
+  try { return decodeURIComponent(match[1]); } catch(_err){ return null; }
+}
+
+// Called with the real series the viewer is looking at. Tries the real
+// native share sheet first; AbortError (the viewer closed it themselves)
+// is not a failure worth logging. Falls back to the popup above only when
+// navigator.share itself genuinely doesn't exist.
+async function shareSeries(title, seriesId){
   const shareData = {
     title: 'Narrava',
     text: 'Check out "' + title + '" on Narrava!',
-    url: window.location.href
+    url: seriesShareUrl(seriesId)
   };
   if(navigator.share){
     try {

@@ -1,0 +1,389 @@
+> **Keep this file current.** It only stays useful if it matches the code. Whenever a real
+> feature is added, removed, or meaningfully changed (a new screen, a new Supabase table or
+> function, a change to how sign-in, video, or the admin panel works), update this file in the
+> same piece of work. If you are a new session opening this file: read it, trust it only as far
+> as it has been kept up, and fix anything you find that has drifted. Move things out of
+> "Not built yet" only when they genuinely work.
+>
+> Last reviewed against the code: 2026-09-18.
+
+# Narrava
+
+## What it is
+
+Narrava is a web app for watching short vertical drama series, the kind where a series is
+dozens of one-to-two-minute episodes and you swipe from one to the next. It runs in a phone
+browser (and can be installed to the home screen), and it has a wider desktop layout. Anyone
+can open it and start watching without signing up. A separate admin panel lets the team create
+series, upload episodes, and manage the catalogue and users.
+
+There is no server code in this repo. The app is plain HTML, CSS and JavaScript files. All data,
+sign-in, and business rules live in **Supabase** (database, auth, storage, small server
+functions), and all video lives on **Bunny Stream**.
+
+**How this document was written:** by reading the code in this repo. It was not checked against
+the live Supabase project. Where a behaviour depends on something in Supabase that this repo
+can't show (a policy, a function's internals), the text says so.
+
+## What is real and what isn't
+
+Working: browsing and search, watching episodes (mobile swipe feed and desktop watch page),
+resuming where you left off, likes, saves, threaded comments, usernames, email sign-up and
+log-in, anonymous accounts, the installable app, and the full admin panel described below.
+
+**Not built:** payments, and everything that hangs off them. The coin balance shown in the
+app is not a real economy. See [Not built yet](#not-built-yet) for exactly what exists and what
+doesn't. Nothing else in this document should be read as implying otherwise.
+
+## How the pieces fit
+
+```
+Browser (static files in narrava/)          Supabase                       Bunny Stream
+  index.html + js/*.js   ── supabase-js ──▶ Auth, Postgres (RLS),      
+  admin/*.html + js/admin-*.js               Storage, Edge Functions ──▶ video storage + HLS
+        │                                           ▲
+        └── video: asks an Edge Function for a signed link, then plays it from Bunny
+```
+
+- **`narrava/index.html`**: the whole consumer app in one page. Every screen (Home, For You,
+  Library, Profile, the desktop watch page) is a `<div>` in this file that gets shown or hidden.
+  It is not a multi-page site.
+- **`narrava/admin/*.html`**: the admin panel. Separate pages, one per section, sharing
+  `js/admin-shared.js`.
+- **`narrava/js/`**: all the logic. There is no build step, no bundler, no `package.json`, no
+  modules. Every file is a plain script that defines global functions, and `index.html` loads
+  them in a specific order (see [Gotchas](#things-that-are-easy-to-get-wrong)).
+- **`narrava/css/`**: `styles.css` (the app, and also used by admin) and `admin.css` (admin only).
+- **`narrava/sw.js`, `manifest.json`, `img/`**: the installable-app pieces.
+- **`js/config.js`**: the Supabase URL and the *anon* (public) key. These are meant to be in the
+  browser; what the key can actually do is decided by database policies. A service-role key must
+  never be added anywhere in this repo.
+- **`loading-animations.html`, `narrava-desktop-mockup.html`, `DRAMABOX screehshots/`, and the
+  loose `.png` files in the root**: design references and old mockups. They are not part of the
+  app and nothing loads them.
+
+**Running it locally:** serve the `narrava/` folder with any static file server (for example
+`python -m http.server` from inside `narrava/`) and open it over `http://localhost`. Don't open
+`index.html` straight from disk: the service worker and the Supabase calls need a real origin.
+There is no deploy configuration in this repo, so where it's hosted isn't recorded here.
+
+**External libraries**, loaded from a CDN in the HTML: `supabase-js` v2 (floating on the v2
+major), `hls.js` 1.5.17, and `tus-js-client` 4.2.2 (admin pages that upload video).
+
+## The consumer app
+
+**Screens** (bottom bar on mobile, top bar on desktop): Home (the default), For You, Library,
+Profile. On desktop, opening a series goes to a dedicated Watch page instead.
+
+- **Home** (`discover.js`): on mobile, a search box, tabs, and a poster grid. Popular is just
+  the order the database returns; New sorts by creation date; Categories filters by genre;
+  Rankings and VIP are placeholders (Rankings says plainly that view counts aren't tracked; VIP
+  posters do nothing when tapped). On desktop: a rotating banner of featured series plus
+  horizontal shelves (New Release, Top, then one per genre that has series). "Top" is not a
+  popularity ranking. It puts featured series first, and it says so on screen.
+- **For You** (`app.js`): the mobile swipe feed. One series at a time, full screen. Tapping
+  enters "watching" that series: swipe up/down now moves between that series' *episodes*
+  (stops at episode 1 going back; rolls into the next series after the last episode). The small
+  "EP 3 · 12" badge opens a grid to jump to any episode. Tap toggles the on-screen controls
+  and pause; press-and-hold plays at 2×. The controls auto-hide two seconds after playback
+  starts.
+- **Library** (`library.js`): series you've saved. Needs a real (non-anonymous) account.
+- **Profile** (`profile.js`): log in / sign out, username, install-app button, wallet balance
+  (see below), and an Admin Panel link that only appears if you're an admin. Most of the other
+  rows (Earn Rewards, Gifts, History, Download, Language, Help) just show a "coming soon" toast.
+- **Watch page (desktop only)** (`watch.js`): video, breadcrumb, like/save/share/comments, and
+  a numbered episode grid.
+
+Mobile vs. desktop is decided at **900px** wide, both in CSS and in JavaScript
+(`matchMedia('(min-width: 900px)')`). If you ever change the breakpoint, change it in both
+places. The desktop "For You" tab reuses the mobile feed with simpler behaviour and does not
+have per-episode swiping.
+
+**Data loading** (`feed-data.js`): on startup the app loads every series that has at least one
+episode, plus that first episode of each, and turns them into "slides". A series' *full*
+episode list is fetched only when someone actually starts watching it.
+
+## Accounts and sign-in
+
+There are three kinds of visitor, all handled with Supabase Auth:
+
+1. **Anonymous.** On every page load, before anything else runs, `bootstrapAnonymousSession()`
+   (`watch-progress.js`) checks for an existing session and, if there isn't one, calls
+   `signInAnonymously()`. Everybody therefore has a real user id from their first visit, with no
+   sign-up. That id is what likes, comments, and watch progress are attached to. It requires
+   **"Allow anonymous sign-ins"** to be turned on in the Supabase project's Auth settings; if
+   it's off, the failure is only logged to the console and those features silently stop working.
+2. **Real account.** Email and password, through the popup in `auth.js` (`signUp` /
+   `signInWithPassword`). If the project has email confirmation on, sign-up ends with "check
+   your email" and the person must confirm before logging in.
+3. **Admin.** A real account whose row in the `profiles` table has `is_admin = true`. Nothing
+   in this repo sets that flag; it has to be set in the database.
+
+Two helper functions in `watch-progress.js` express the difference, and it's worth knowing which
+one a feature uses:
+
+| Feature | Needs | Helper |
+|---|---|---|
+| Watch progress, like, comment, reply, comment-like | any session, anonymous is fine | `getSignedInUserId()` |
+| Save (bookmark), Library tab | a real, non-anonymous account | `getRealAccountUserId()` |
+
+When a signed-out or wrong-kind visitor taps an action that needs more, the app opens the
+log-in popup instead of failing silently.
+
+**Signing up does not upgrade the anonymous account.** `auth.js` calls plain `signUp` /
+`signInWithPassword`, not a "convert this anonymous user" call. So a person who watched and
+liked things anonymously, then signs up or logs in, ends up on a *different* user id, and their
+earlier watch history and likes don't come with them. Fixing that is a real piece of work
+(Supabase supports linking an identity to an anonymous user), and hasn't been done.
+
+**Sign-out** ends the session but doesn't create a new anonymous one until the next page load.
+Until then, like/comment prompts the log-in popup.
+
+Every user (anonymous included) gets a `profiles` row, created by a database trigger (not in
+this repo). A user can edit their own `display_name` (the "username", which is what shows next
+to their comments), but not `coin_balance` or `is_admin`. The database enforces that, not the
+front end.
+
+The consumer app and the admin panel share one browser session (same origin, same default
+storage). Logging into the admin panel replaces whatever session that browser had, and signing
+out of it leaves the browser with no session until the consumer app is next opened.
+
+## Video: how playback and signed links work
+
+Videos are stored and encoded on Bunny Stream. The `episodes` table stores each episode's
+`bunny_video_id`. The browser never gets a permanent public video URL.
+
+1. To play an episode, `video-player.js` calls the Supabase Edge Function
+   **`bunny-signed-playback-url`** with the user's login token and the episode id.
+2. The function either refuses (no session, or its own "not allowed to watch this" check), or
+   returns a short-lived signed HLS URL plus an expiry time (about 10 minutes).
+3. `hls.js` plays that URL in a normal `<video>` element (Safari plays HLS natively and skips
+   hls.js). Two behaviours worth knowing:
+   - Bunny's signature sits in the query string of the *master* playlist URL, but the
+     playlist refers to its sub-playlists and segments by relative path, and relative URLs drop
+     the query string. So `narravaHlsXhrSetup` re-attaches the signature to every request
+     hls.js makes. It detects "already has the signature" by looking for `token=` in the URL.
+   - About 30 seconds before expiry, the player fetches a fresh signed URL and swaps the
+     signature in for future requests, without interrupting playback. (On native-HLS Safari the
+     only way is to reassign `src`, so it saves and restores the position and paused state.)
+4. **A refusal is final.** If the function says no, the code never falls back to another URL.
+5. If loading fails, it retries up to 3 times with 1s / 2s / 4s waits, then shows a "couldn't
+   load, retry" state.
+
+On the mobile feed, the *next* episode is quietly loaded off-screen while you watch the current
+one, so a swipe usually lands on something already buffered. At most one preload runs at a time.
+Leaving the feed tears down the video and its timers properly (`destroy()`); anything new that
+plays video must do the same, or `hls.js` keeps downloading in the background.
+
+**A freshly uploaded episode can fail to play for a few minutes.** The admin upload saves the
+episode row as soon as the file has gone to Bunny, but Bunny then needs time to encode it. The
+admin panel says so in a toast. Until encoding finishes, playback will fail and go through the
+retry/failure path above.
+
+## Watch progress and Continue Watching
+
+While something plays, the position is saved to `watch_progress` (one row per user + episode,
+upserted) every 15 seconds, on pause, and when leaving the episode. Reading it back uses the
+`get_continue_watching` database function, which returns the viewer's in-progress rows.
+
+That one result feeds two things: opening any series silently resumes at the saved episode and
+position (if more than half a second in), and on mobile Home a small floating "Continue" bar
+shows the most recent one (dismissing it lasts only until the next page load).
+
+## Likes, saves, comments
+
+All in `social.js` and `comments-panel.js`, against real tables (`series_likes`, `series_saves`,
+`series_comments`, `comment_likes`).
+
+- Like count comes from the `get_series_like_count` function. Saves are personal, with no public
+  count.
+- Comments come from one function, `get_series_comments`, which returns every comment and reply
+  for a series in a flat list, with like counts, whether *you* liked each, and the author's
+  display name. The front end builds the threads from `parent_comment_id`. Replies can nest to
+  any depth. Only top-level comments get a "N replies" toggle, which reveals the entire chain
+  below them. Long threads have a "Load more".
+- Deleting a comment is allowed for its author and for admins, decided by the database's
+  policy. The code just attempts it. Deleting a comment also deletes its replies (a database
+  cascade, not front-end code).
+- Sharing uses the browser's native share sheet, with a small popup as a fallback. It shares the
+  current page URL, not a deep link to a series.
+
+## The admin panel
+
+Open `narrava/admin/login.html` (or the Admin Panel row in Profile). Every admin page calls
+`requireAdminSession()` first: no session, or `is_admin` false, redirects to the login page.
+
+**That check is a convenience, not the security.** The admin pages are ordinary static files
+anyone can download. What actually stops a non-admin is the database (row-level security
+policies restrict writes on series, episodes, genres, and settings to admins) and the admin-only
+Edge Functions and database functions. If you add an admin feature, the protection has to live
+there.
+
+| Page | What it does |
+|---|---|
+| **Dashboard** | Stat cards; create a series (title, description, free-episode count defaulting to 10, cover image); quick feature toggle; single-episode upload. |
+| **Series List** | Search; publish/draft toggle; feature toggle; edit (title, description, cover, free-episode count, genres); delete. A warning badge marks series with no episodes, since those never appear in the app. |
+| **Episodes** | Search; edit number/title; delete; **batch upload** with a queue, auto-numbered episodes and per-file progress. |
+| **Genres** | Add, rename, delete. |
+| **User Management** | Lists real accounts (not anonymous ones); suspend / unsuspend. |
+| **Analytics** | Visits today and last 7 days, unique visitors, a daily chart. |
+| **Revenue & Analytics** | Exists, but every number is honestly zero right now. See [Not built yet](#not-built-yet). |
+| **System Settings** | Free Mode, Maintenance Mode, Featured Series Count (below). |
+
+Details worth knowing:
+
+- **New series start as drafts.** Publish them from Series List. The consumer app doesn't filter
+  on `status` itself; hiding drafts relies on the database policy on `series`, so be careful if
+  that policy ever changes. A series also needs at least one episode to show up anywhere.
+- **Cover images** go to the `cover-images` Supabase Storage bucket. Replacing a cover deletes
+  the old file (only if it was one of ours, not a pasted external URL).
+- **Uploading an episode**, in order (`uploadEpisodeToBunny`, `admin-shared.js`): ask the
+  `bunny-upload-init` Edge Function for permission → stream the file straight to Bunny over tus
+  with real progress → only *after* that succeeds, insert the `episodes` row. If the last step
+  fails, the message tells you the Bunny video id so the record can be recovered. `duration_seconds`
+  is always saved as null; nothing fills it in, so the admin duration column shows "—".
+- **Deleting an episode** removes the Bunny video first (`bunny-delete-video`) and the row second.
+  If Bunny fails, the row is left alone.
+- **Deleting a whole series does not remove its videos from Bunny.** The database cascades away
+  the episode rows and genre links, but nothing calls `bunny-delete-video`, so the videos stay on
+  Bunny (and keep costing storage) with nothing in the app pointing at them. If a series has
+  episodes, delete them from the Episodes page first.
+- **Suspending a user** goes through the `admin-suspend-user` Edge Function, which sets
+  `banned_until` on the account far in the future (unsuspend clears it). It refuses to suspend
+  the admin's own account.
+- **User counts exclude anonymous accounts** by requiring an email. The Dashboard's
+  "Registered Users" comes from a different function (`admin_total_users`), and whether *it*
+  excludes anonymous accounts can't be seen from this repo. The User Management page
+  deliberately avoids `admin_user_stats` because that one was found to count them.
+- **Analytics** counts one `page_visits` row per real page load of the consumer app
+  (`visit-log.js`, called once from `init()`). Admin pages never log a visit. "Unique visitors" is
+  unique *accounts*, and since anonymous accounts are created per browser, clearing site data
+  makes someone a new visitor.
+- **System Settings** is one row in `app_settings`, readable by everyone and writable only by
+  admins. The consumer app reads it once at startup:
+  - *Free Mode*: nothing is treated as locked. Per-series free-episode counts aren't changed;
+    they're just ignored while it's on.
+  - *Maintenance Mode*: the consumer app replaces the whole page with a "We'll be back soon"
+    message before doing anything else, including creating an anonymous account. The admin
+    panel is unaffected, so it can always be switched back off.
+  - *Featured Series Count*: how many featured series the desktop banner shows (falls back to a
+    random series if none are featured).
+  - If the settings can't be loaded, the app quietly uses safe defaults (nothing overridden).
+
+## Installable app (PWA)
+
+`manifest.json` + `sw.js` + `pwa-install.js`. On Android/Chrome the app can be installed from a
+banner or a button in Profile; on iOS Safari (which has no install prompt for websites) it shows
+"Add to Home Screen" instructions. There are two install chances per browser: once on a normal
+visit, and once after the person has watched a few seconds of an episode and returned to Home.
+State is kept in `localStorage`. The service worker also gives cache-first loading of the app's
+own files, which leads to the first gotcha below.
+
+## Things that are easy to get wrong
+
+**1. The service worker can keep serving old files after you deploy.** `sw.js` answers requests
+for the app's own files from its cache first and only goes to the network when it has nothing
+cached. The cache name is `narrava-shell-v1` and old caches are deleted only when the name
+*changes*. So after changing any app file, people who have already visited can keep getting the
+old version. **Bump `CACHE_NAME` in `sw.js` whenever you ship a change.** The service worker's
+scope is the whole `narrava/` folder, so this affects the **admin pages too**, not only the
+consumer app. (Read from the code, not tested against a live deployment.) The `?v=` numbers on
+some script tags in `index.html` are a manual cache-busting habit and don't replace this.
+`sw.js`'s precache list is also hand-maintained; it doesn't include `visit-log.js`, and a new
+script won't be listed unless added.
+
+**2. Supabase's API layer can keep serving an old version of a database function.** The API in
+front of Postgres (PostgREST) caches the database's structure. After creating or changing a
+function (RPC) or a table, the change may not be visible to the app until that cache is told to
+reload; the usual fix is running `NOTIFY pgrst, 'reload schema';` in the SQL editor. This is
+general Supabase behaviour, not something demonstrated in this repo. It applies to every RPC the
+app calls (listed below), and matters most for the ones you'll edit. If an RPC "isn't updating",
+or returns a not-found error right after you created it, try this first.
+
+**3. Script order matters, and everything is global.** `index.html` loads scripts in a fixed
+order, and files call functions defined in other files (for example `app.js` calls
+`renderProfileScreen()`, which lives in `profile.js`, loaded later). That works because those
+calls happen after everything has loaded, but a new file has to go in the right place in the
+list, and names must not collide across files. The current order: `config` → supabase-js → hls.js
+→ `supabase-client` → `shared-utils` → `video-player` → `watch-progress` → `visit-log` →
+`social` → `comments-panel` → `feed-data` → `app` → `discover` → `library` → `watch` → `auth` →
+`profile` → `pwa-install`. Admin pages load `config`, supabase-js, `supabase-client`,
+`shared-utils`, `admin-shared`, and one `admin-<page>.js` each.
+
+**4. Most of the backend isn't in this repo.** The tables, row-level security policies, database
+functions, the trigger that creates profiles, the four Edge Functions, and the storage bucket
+were all set up directly in Supabase. The list below is reconstructed from what the front-end
+code calls. **If the Supabase project were lost, this repo could not recreate it.** Exporting the
+schema and the Edge Function source into the repo (a `supabase/` folder) would fix that and is
+worth doing.
+
+**5. The client-side "locked" state isn't proof of what the server enforces.** Locked episodes
+are decided in the browser from the series' `free_episode_count` (or overridden by Free Mode),
+and a locked episode's video is never requested. But the real gate is whatever
+`bunny-signed-playback-url` checks, and its source isn't here. Two things follow, and neither
+has been checked against the live function: (a) Free Mode makes the app *show* everything as
+unlocked, but only works end-to-end if the function also respects it; (b) the fake coin unlock
+(below) marks an episode playable in the browser, but if the function refuses locked episodes,
+the video still won't load. Check the function before relying on either.
+
+**6. Saving/Library don't work for anonymous visitors**, and signing up doesn't carry over
+anonymous history (see Accounts). Both are intended-as-built, not bugs, but they surprise people.
+
+**7. Errors mostly go to the browser console.** Failed Supabase calls are caught and logged as
+`Narrava: …` with a friendly toast where a person needs to know. When something "just doesn't
+happen", open the console first.
+
+**8. Small leftovers:** `BUNNY_LIBRARY_ID` in `config.js` is unused now (it was for the old
+iframe player). `feed-data.js` is ~370 KB because two placeholder cover images are embedded in it
+as base64 text; they're only used for series with no cover. The page title still says "mockup".
+
+## What lives in Supabase (reconstructed from the code)
+
+Names and columns below are only what the front end touches; the real tables may have more.
+
+**Tables:** `series` (id, title, description, cover_image_url, free_episode_count, status
+`draft`/`published`, featured_at, created_at) · `episodes` (id, series_id, episode_number, title,
+bunny_video_id, duration_seconds, created_at) · `genres` · `series_genres` · `profiles` (id,
+display_name, is_admin, coin_balance) · `watch_progress` (user_id + episode_id unique;
+series_id, position_seconds, updated_at) · `series_likes` · `series_saves` · `series_comments`
+(with `parent_comment_id`) · `comment_likes` · `app_settings` (single row, `id = true`) ·
+`page_visits` (user_id, visited_at) · `purchases` and `coin_transactions` (see below).
+
+**Database functions (RPC):** `get_continue_watching`, `get_series_like_count`,
+`get_series_comments`, `admin_list_users`, `admin_total_users`, `admin_total_revenue`,
+`admin_visit_stats`, `admin_daily_visits`. (`admin_user_stats` also exists and is intentionally
+unused.)
+
+**Edge Functions:** `bunny-signed-playback-url` (viewers) · `bunny-upload-init`,
+`bunny-delete-video`, `admin-suspend-user` (admin only).
+
+**Storage:** the `cover-images` bucket (public read, admin write).
+
+**Auth:** email/password and anonymous sign-ins enabled.
+
+**Bunny Stream:** one video library; needs its own API access (used by the Edge Functions, never
+by the browser).
+
+## Not built yet
+
+Do not describe any of this as working.
+
+- **Payments.** No payment provider is connected. The Profile "Top Up" row says "Coming soon —
+  Paystack integration is on the way." Nothing charges anyone.
+- **The coin economy.** Two disconnected things exist, and neither is a working economy:
+  - The **Wallet** row on Profile shows the real `profiles.coin_balance` for the signed-in user.
+    Nothing in the app can change that number.
+  - The "Get Coins" sheet, the coin chip on the feed, and the "Unlock Ep N · 2 coins" button run
+    on a **browser-only variable** that starts at 3. "Paying" in the sheet just adds coins to
+    that variable after a fake delay; unlocking spends from it; a page refresh resets it. The
+    price (2 coins) and the NG/CA package prices are hard-coded in `app.js` / `feed-data.js`.
+    Nothing is written to the database.
+- **Revenue.** The Revenue & Analytics page reads `purchases` and `coin_transactions`, but
+  nothing in this repo writes to either, so its numbers are zero. Subscriptions and ad revenue
+  are labelled "Inactive".
+- **Membership, Earn Rewards, Gifts, History, Download, Language, Help & Feedback:** menu rows
+  that only show a toast.
+- **Rankings** (no view tracking) and **VIP** (posters do nothing).
+- **Converting an anonymous account into a real one** when someone signs up (see Accounts).
+- **Episode durations**, which are never recorded.
+- **Series-specific share links.**

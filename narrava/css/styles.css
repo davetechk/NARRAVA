@@ -378,6 +378,8 @@
   .topbar{
     position:absolute;
     top:46px;left:22px;right:22px;
+    padding-left:44px; /* room for .mutebtn, which sits at the same top-left spot in both states */
+    box-sizing:border-box;
     display:flex;
     align-items:center;
     justify-content:space-between;
@@ -406,6 +408,32 @@
   }
   .coins svg{width:14px;height:14px;}
 
+
+  /* Real mute/unmute button (see the sound block in app.js) — top-left
+     of the video stage, the same spot in browsing and watching. Not part
+     of the watching chrome group, so nothing here ever hides it. The
+     brand row (.topbar) is padded to make room for it in browsing, and
+     the pager dots below it start at top:82px. */
+  .mutebtn{
+    position:absolute;
+    top:43px;left:22px;
+    width:34px;height:34px;
+    border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    background:rgba(13,19,14,0.55);
+    border:1px solid rgba(244,247,241,0.25);
+    color:#fff;
+    padding:0;
+    cursor:pointer;
+    z-index:45;
+    touch-action:none;
+  }
+  .mutebtn svg{width:18px;height:18px;}
+  .mutebtn .mute-icon-off{display:none;}
+  .mutebtn.muted .mute-icon-on{display:none;}
+  .mutebtn.muted .mute-icon-off{display:block;}
+  .mutebtn:active{transform:scale(0.92);}
+
   .pager{
     position:absolute;
     top:82px;left:22px;
@@ -423,7 +451,7 @@
 
   .actionrail{
     position:absolute;
-    right:14px;bottom:172px;
+    right:14px;bottom:36px;
     display:flex;
     flex-direction:column;
     align-items:center;
@@ -518,25 +546,20 @@
   .info{
     position:absolute;
     left:22px;right:66px;
-    bottom:98px;
+    bottom:24px;
     z-index:40;
   }
-  /* Watching only: sits directly on top of the real scrub bar
-     (.video-controls, bottom:16px, ~8px tall) with no real gap between
-     them — confirmed directly, measured off the real rendered scrub
-     bar height. Browsing keeps .info's own bottom:98px above
-     unchanged, exactly as it's always been. */
-  .feed.watching .info{
-    bottom:24px;
-  }
-  /* Watching only: the social icons sit directly above the scrub bar
-     instead of floating at browsing's 172px. Raised 12px above .info's
-     own 24px baseline (36px) so they don't read as too low — only the
-     rail moves; .info and the scrub bar keep their own positions.
-     Browsing keeps .actionrail's own bottom:172px above, unchanged. */
-  .feed.watching .actionrail{
-    bottom:36px;
-  }
+  /* .info and .actionrail now use the same bottom offsets in browsing and
+     watching (24px / 36px), so the name, description and social icons
+     don't jump when someone taps into a series. The browsing values were
+     98px / 172px — leftovers from when .bottomnav covered the feed; it's
+     hidden whenever the feed is active now (body.feed-active
+     .bottomnav), so nothing needed that clearance any more. 24px sits
+     directly on top of the scrub bar (.video-controls, bottom:16px,
+     ~8px tall) with no gap, measured off the real rendered bar. The one
+     real difference left is deliberate: in browsing the Continue button
+     sits under the description (hidden while watching), so the text
+     block sits higher there by that button's height. */
   .epbadge{
     display:inline-block;
     font-size:11.5px;

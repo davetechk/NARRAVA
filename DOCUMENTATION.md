@@ -86,7 +86,22 @@ Profile. On desktop, opening a series goes to a dedicated Watch page instead.
   (stops at episode 1 going back; rolls into the next series after the last episode). The small
   "EP 3 · 12" badge opens a grid to jump to any episode. Tap toggles the on-screen controls
   and pause; press-and-hold plays at 2×. The controls auto-hide two seconds after playback
-  starts.
+  starts. Name, description and the like/comment/share/save icons use the same bottom offsets
+  while browsing and while watching, so they don't jump when someone taps in. The only
+  difference is deliberate: browsing has the Continue button under the description, so the text
+  sits that button's height higher.
+  - **Sound** is on by default, in browsing and watching alike. The mute button (top-left of the
+    video, same spot in both states, and not hidden by the auto-hiding controls) mutes/unmutes
+    whichever video is playing, and the choice carries to later videos in the visit. It is not
+    remembered across page loads. See the Sound block in `app.js`.
+  - **Browsers can refuse sound-on autoplay** in a page the visitor hasn't tapped yet (for
+    example a cold open of a shared series link, or iOS Safari). When `play()` is refused for
+    that reason, that video plays muted instead, the button shows "muted", and the first tap or
+    key press anywhere turns sound on. Not observed on a real device: desktop Chrome in
+    testing treated every load as already interacted-with, so this path was exercised with a
+    simulated refusal, and iOS Safari has not been tested at all.
+  - Mute is a feed feature. The desktop watch page plays with sound (its `<video>` is not muted)
+    but has no mute button.
 - **Library** (`library.js`): series you've saved. Needs a real (non-anonymous) account.
 - **Profile** (`profile.js`): log in / sign out, username, install-app button, wallet balance
   (see below), and an Admin Panel link that only appears if you're an admin. Most of the other
@@ -301,7 +316,7 @@ own files, which leads to the first gotcha below.
 
 **1. The service worker can keep serving old files after you deploy.** `sw.js` answers requests
 for the app's own files from its cache first and only goes to the network when it has nothing
-cached. The cache name is currently `narrava-shell-v2` and old caches are deleted only when the name
+cached. The cache name is currently `narrava-shell-v3` and old caches are deleted only when the name
 *changes*. So after changing any app file, people who have already visited can keep getting the
 old version. **Bump `CACHE_NAME` in `sw.js` whenever you ship a change.** The service worker's
 scope is the whole `narrava/` folder, so this affects the **admin pages too**, not only the

@@ -243,6 +243,84 @@ const topbarSearchBar = document.getElementById('topbarSearchBar');
 const topbarSearchBackdrop = document.getElementById('topbarSearchBackdrop');
 const topbarSearchInput = document.getElementById('topbarSearchInput');
 
+// ================= Sound =================
+//
+// Sound is ON by default, in browsing and in watching alike — nothing
+// here ever starts a video muted on its own choice. The viewer's only
+// control is the mute button (#muteBtn, top-left of the stage), which
+// mutes/unmutes whichever real video is currently the active one, in
+// either state, and whose choice then carries to every later video this
+// visit (soundMuted). It is not saved across page loads.
+//
+// One thing is out of our hands: browsers refuse to start *unmuted*
+// playback in a page the visitor hasn't interacted with yet (autoplay
+// policy — in practice only a cold load straight into a video, such as
+// opening a shared series link, or an iOS Safari play() that isn't tied
+// to a tap). When play() is refused for exactly that reason, playWithSound
+// falls back to playing that video muted (so it still plays, never a
+// black frame) and the button honestly shows "muted". The visitor's first
+// tap or key press anywhere then turns sound on by itself
+// (unblockSoundOnGesture), without them having to find the button.
+// soundAutoplayBlocked tracks that browser-forced state; soundMuted is
+// only ever the viewer's own choice.
+let soundMuted = false;
+let soundAutoplayBlocked = false;
+const muteBtn = document.getElementById('muteBtn');
+
+function isSoundOff(){
+  return soundMuted || soundAutoplayBlocked;
+}
+
+function updateMuteButton(){
+  const off = isSoundOff();
+  muteBtn.classList.toggle('muted', off);
+  muteBtn.setAttribute('aria-label', off ? 'Unmute' : 'Mute');
+  muteBtn.setAttribute('aria-pressed', off ? 'true' : 'false');
+}
+
+// Starts playback with the viewer's sound preference. If — and only if —
+// the browser refuses because unmuted autoplay isn't allowed yet, retries
+// muted and flags it (see the block comment above).
+function playWithSound(video){
+  const attempt = video.play();
+  if(!attempt || typeof attempt.catch !== 'function') return;
+  attempt.catch(err => {
+    if(currentVideoEl !== video) return; // torn down or replaced while it was starting
+    if(err && err.name === 'NotAllowedError' && !video.muted){
+      soundAutoplayBlocked = true;
+      video.muted = true;
+      updateMuteButton();
+      video.play().catch(() => {});
+    }
+  });
+}
+
+muteBtn.addEventListener('click', () => {
+  const nowOff = !isSoundOff();
+  soundMuted = nowOff;
+  soundAutoplayBlocked = false;
+  if(currentVideoEl) currentVideoEl.muted = nowOff;
+  updateMuteButton();
+});
+// A tap on the button must never also count as a feed swipe/tap.
+['touchstart', 'touchend'].forEach(evt => {
+  muteBtn.addEventListener(evt, e => e.stopPropagation());
+});
+
+// The first real tap/key after a browser-forced mute turns sound on. The
+// button's own tap is skipped — its click handler above decides that one.
+function unblockSoundOnGesture(e){
+  if(!soundAutoplayBlocked) return;
+  if(muteBtn.contains(e.target)) return;
+  soundAutoplayBlocked = false;
+  if(currentVideoEl) currentVideoEl.muted = soundMuted;
+  updateMuteButton();
+}
+['pointerup', 'keydown'].forEach(evt => {
+  document.addEventListener(evt, unblockSoundOnGesture, true);
+});
+updateMuteButton();
+
 // Screen switching between the "Home" (Discover) grid and the "For You"
 // swipe feed. Both screens stay mounted and populated at all times —
 // this just toggles which one is visible, so switching back to a
@@ -535,6 +613,9 @@ function preloadVideo(target){
   if(!target || !target.bunnyVideoId || preloadCache[target.id]) return;
 
   const video = document.createElement('video');
+  // Warming up off-screen, never playing — muted so it can never make noise
+  // by accident. promotePreload applies the viewer's real sound preference
+  // (see the Sound block) the moment it becomes the active video.
   video.muted = true;
   video.playsInline = true;
   video.setAttribute('playsinline', '');
@@ -646,8 +727,12 @@ function promotePreload(target){
     advanceForward();
   });
 
+  // Sound on unless the viewer has muted it (see the Sound block above).
+  soundAutoplayBlocked = false;
+  entry.video.muted = soundMuted;
+  updateMuteButton();
   if(feed.classList.contains('paused')) entry.video.pause();
-  else entry.video.play().catch(() => {});
+  else playWithSound(entry.video);
 }
 
 // Wires the real scrub bar to whichever <video> just became active —

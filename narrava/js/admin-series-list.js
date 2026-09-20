@@ -103,7 +103,8 @@ function deleteRowHtml(series){
   const episodeCount = slEpisodeCounts[series.id] || 0;
   return '<tr data-series-id="' + series.id + '"><td colspan="6">' +
     '<div class="admin-delete-confirm">' +
-      '<p>Delete “' + escapeHtml(series.title) + '” permanently? This also deletes its ' + episodeCount + ' episode' + (episodeCount === 1 ? '' : 's') + ' and its genre links — the database cascades that automatically. This can’t be undone.</p>' +
+      '<p>Delete “' + escapeHtml(series.title) + '” permanently? This deletes its ' + episodeCount + ' episode' + (episodeCount === 1 ? '' : 's') + ' one by one — each episode’s video is removed from Bunny first, then its record — and only then the series itself and its genre links. If any video can’t be removed from Bunny, it stops and tells you, and nothing after that point is deleted. This can’t be undone.</p>' +
+      '<div class="auth-error" id="seriesDeleteError-' + series.id + '"></div>' +
       '<div class="admin-delete-confirm-actions">' +
         '<button type="button" class="admin-delete-confirm-btn" data-action="confirm-delete" data-series-id="' + series.id + '">Delete Permanently</button>' +
         '<button type="button" class="admin-delete-cancel-btn" data-action="cancel-delete">Cancel</button>' +
@@ -275,28 +276,124 @@ async function handleEditSubmit(e){
   }
 }
 
+// Real delete, in the same honest order single-episode delete uses (see
+// admin-episodes.js handleDelete: Bunny first, then the record), applied to
+// EVERY episode of the series, with the series row itself last:
+//   1. read the series' current episodes fresh from the database (the
+//      cached counts on this page could be stale) — if that fails, nothing
+//      is touched;
+//   2. for each episode, in order: delete its video from Bunny
+//      (deleteBunnyVideo -> the bunny-delete-video Edge Function), and only
+//      once that has genuinely succeeded, delete its database record. An
+//      episode with no video attached skips straight to its record;
+//   3. only when every episode is gone, delete the series row (its genre
+//      links cascade in the database).
+// Any real failure stops everything right there and says so — never a
+// silent continue. Because each episode's record goes immediately after its
+// own video, a stop never leaves a record pointing at an already-deleted
+// video (the state that would show broken episodes in the app): episodes
+// before the failure are fully gone, the failed one and everything after
+// it are fully intact, and the series still exists. Clicking delete again
+// carries on with what's left.
 async function handleDelete(btn){
   const seriesId = btn.dataset.seriesId;
-  btn.disabled = true;
-  btn.textContent = 'Deleting…';
-  try {
-    const { error } = await supabaseClient.from('series').delete().eq('id', seriesId);
-    if(error) throw error;
-
-    slSeries = slSeries.filter(s => String(s.id) !== String(seriesId));
-    delete slSeriesGenres[seriesId];
-    delete slEpisodeCounts[seriesId];
-    slDeletingId = null;
-
-    showToast('Series deleted ✓');
-    document.getElementById('seriesListStatsRow').innerHTML = statsRowHtml();
-    renderTable();
-  } catch(err){
-    console.error('Narrava: failed to delete series', err);
-    showToast('Could not delete series — please try again');
+  const cancelBtn = btn.parentElement.querySelector('[data-action="cancel-delete"]');
+  const errorEl = document.getElementById('seriesDeleteError-' + seriesId);
+  const showError = (message) => {
+    if(errorEl){ errorEl.textContent = message; errorEl.classList.add('show'); } else { showToast(message); }
+  };
+  const restore = () => {
     btn.disabled = false;
     btn.textContent = 'Delete Permanently';
+    if(cancelBtn) cancelBtn.disabled = false;
+  };
+
+  // Re-render so the episode count in the confirmation text is current,
+  // then show the explanation there and leave the button ready to retry.
+  const finishStopped = (message) => {
+    renderTable();
+    const freshError = document.getElementById('seriesDeleteError-' + seriesId);
+    if(freshError){ freshError.textContent = message; freshError.classList.add('show'); } else { showToast(message); }
+    const freshBtn = document.querySelector('[data-action="confirm-delete"][data-series-id="' + seriesId + '"]');
+    if(freshBtn) freshBtn.textContent = 'Retry Delete';
+  };
+  const progressNote = (done, count) =>
+    done + ' of ' + count + ' episode' + (count === 1 ? ' was' : 's were') + ' already fully removed (video and record).';
+
+  if(errorEl){ errorEl.textContent = ''; errorEl.classList.remove('show'); }
+  btn.disabled = true;
+  if(cancelBtn) cancelBtn.disabled = true;
+  btn.textContent = 'Checking episodes…';
+
+  // 1. the real, current episode list
+  let episodes;
+  try {
+    const { data, error } = await supabaseClient
+      .from('episodes')
+      .select('id, episode_number, title, bunny_video_id')
+      .eq('series_id', seriesId)
+      .order('episode_number', { ascending: true });
+    if(error) throw error;
+    episodes = data || [];
+  } catch(err){
+    console.error('Narrava: could not load episodes before deleting series', err);
+    showError('Could not load this series’ episodes, so nothing was deleted: ' + (err.message || 'please try again') + '.');
+    restore();
+    return;
   }
+
+  // 2. every episode: Bunny first, then its record
+  const total = episodes.length;
+  let removed = 0;
+  let videosRemoved = 0;
+  for(const ep of episodes){
+    const label = 'Episode ' + ep.episode_number + (ep.title ? ' “' + ep.title + '”' : '');
+    btn.textContent = 'Deleting episode ' + (removed + 1) + ' of ' + total + '…';
+
+    if(ep.bunny_video_id){
+      try {
+        await deleteBunnyVideo(ep.bunny_video_id);
+        videosRemoved++;
+      } catch(err){
+        console.error('Narrava: Bunny video delete failed — stopping the series delete', ep, err);
+        finishStopped('Stopped at ' + label + ': its video could not be deleted from Bunny (' + (err.message || 'unknown error') + '). ' + progressNote(removed, total) + ' Nothing after this point was touched, and the series is still here. Fix the problem and click Delete Permanently again to carry on.');
+        return;
+      }
+    }
+
+    try {
+      const { error } = await supabaseClient.from('episodes').delete().eq('id', ep.id);
+      if(error) throw error;
+    } catch(err){
+      console.error('Narrava: episode record delete failed after its Bunny video was removed', ep, err);
+      finishStopped('Stopped at ' + label + ': ' + (ep.bunny_video_id ? 'its video was deleted from Bunny, but ' : '') + 'its database record could not be deleted (' + (err.message || 'unknown error') + '). ' + progressNote(removed, total) + ' The series is still here. Click Delete Permanently again to carry on' + (ep.bunny_video_id ? ' (this episode’s video is already gone, so Bunny may report it as missing).' : '.'));
+      return;
+    }
+
+    removed++;
+    slEpisodeCounts[seriesId] = Math.max(0, (slEpisodeCounts[seriesId] || 0) - 1);
+  }
+
+  // 3. the series itself, last — only reached if every episode above succeeded
+  btn.textContent = 'Deleting series…';
+  try {
+    const { data, error } = await supabaseClient.from('series').delete().eq('id', seriesId).select('id');
+    if(error) throw error;
+    if(!data || !data.length) throw new Error('the database refused to delete it (no row was removed)');
+  } catch(err){
+    console.error('Narrava: all episodes were removed but the series row could not be deleted', err);
+    finishStopped('All ' + total + ' episode' + (total === 1 ? '' : 's') + ' and their Bunny videos were deleted, but the series itself could not be deleted (' + (err.message || 'unknown error') + '). It now has no episodes. Click Delete Permanently again to finish.');
+    return;
+  }
+
+  slSeries = slSeries.filter(s => String(s.id) !== String(seriesId));
+  delete slSeriesGenres[seriesId];
+  delete slEpisodeCounts[seriesId];
+  slDeletingId = null;
+
+  showToast('Series deleted ✓' + (videosRemoved ? ' — ' + videosRemoved + ' video' + (videosRemoved === 1 ? '' : 's') + ' removed from Bunny too' : ''));
+  document.getElementById('seriesListStatsRow').innerHTML = statsRowHtml();
+  renderTable();
 }
 
 document.getElementById('seriesListSearch').addEventListener('input', (e) => {

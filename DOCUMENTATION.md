@@ -5,7 +5,7 @@
 > as it has been kept up, and fix anything you find that has drifted. Move things out of
 > "Not built yet" only when they genuinely work.
 >
-> Last reviewed against the code: 2026-09-22.
+> Last reviewed against the code: 2026-09-23.
 
 # Narrava
 
@@ -312,10 +312,17 @@ Details worth knowing:
   is always saved as null; nothing fills it in, so the admin duration column shows "—".
 - **Deleting an episode** removes the Bunny video first (`bunny-delete-video`) and the row second.
   If Bunny fails, the row is left alone.
-- **Deleting a whole series does not remove its videos from Bunny.** The database cascades away
-  the episode rows and genre links, but nothing calls `bunny-delete-video`, so the videos stay on
-  Bunny (and keep costing storage) with nothing in the app pointing at them. If a series has
-  episodes, delete them from the Episodes page first.
+- **Deleting a whole series** goes through every episode first (`handleDelete` in
+  `admin-series-list.js`), in order: read the series' current episodes; for each, delete its video
+  from Bunny (`bunny-delete-video`) and only then its database record; and only once every episode
+  is gone, delete the series row (genre links cascade). Any failure stops right there with an error
+  in the confirmation row saying which episode failed and how many were already fully removed. The
+  failed episode and everything after it, and the series itself, are left intact, and the button
+  becomes "Retry Delete", which carries on with what's left. A stop never leaves an episode record
+  pointing at an already-deleted video. **Not verified against real Bunny:** what
+  `bunny-delete-video` answers for a video that is already gone. If it returns an error, a retry
+  after a failed record delete (the video is deleted, the record isn't) would stop on that
+  episode; single-episode delete has the same edge. Tested only against a simulated backend so far.
 - **Suspending a user** goes through the `admin-suspend-user` Edge Function, which sets
   `banned_until` on the account far in the future (unsuspend clears it). It refuses to suspend
   the admin's own account.
@@ -358,7 +365,7 @@ own files, which leads to the first gotcha below.
 
 **1. The service worker can keep serving old files after you deploy.** `sw.js` answers requests
 for the app's own files from its cache first and only goes to the network when it has nothing
-cached. The cache name is currently `narrava-shell-v6` and old caches are deleted only when the name
+cached. The cache name is currently `narrava-shell-v7` and old caches are deleted only when the name
 *changes*. So after changing any app file, people who have already visited can keep getting the
 old version. **Bump `CACHE_NAME` in `sw.js` whenever you ship a change.** The service worker's
 scope is the whole `narrava/` folder, so this affects the **admin pages too**, not only the

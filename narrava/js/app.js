@@ -1270,12 +1270,19 @@ function endPlayTogglePress(){
 
   // The real chrome group's own tap rule (see CHROME_AUTOHIDE_MS above):
   // a tap while hidden only ever reveals it, never touches play/pause —
-  // that's the one thing that changed here. A tap while already showing
-  // still does exactly what every tap here has always done: toggle
-  // play/pause (the resulting real 'playing'/'pause' event is what
-  // actually arms/clears the auto-hide timer — see attachPlaybackControls).
+  // and, from that moment, the same 2s auto-hide timer starts as on entry,
+  // so the group hides itself again if nobody taps. Nothing else would
+  // arm it here: the timer is otherwise armed by the video's 'playing'
+  // event, and a reveal-tap never stops the video, so no such event
+  // comes (before this, a revealed group stayed up until a pause and
+  // resume). A second tap inside that window takes the branch below
+  // instead — it pauses, and the video's real 'pause' event clears the
+  // timer (see attachPlaybackControls), which only re-arms once the
+  // video is actually playing again. A tap while already showing still
+  // does exactly what every tap here has always done: toggle play/pause.
   if(feed.classList.contains('chrome-hidden')){
     showChrome();
+    if(currentVideoEl && !currentVideoEl.paused && !currentVideoEl.ended) armChromeHideTimer();
     return;
   }
   const nowPaused = feed.classList.toggle('paused');

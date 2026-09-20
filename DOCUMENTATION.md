@@ -5,7 +5,7 @@
 > as it has been kept up, and fix anything you find that has drifted. Move things out of
 > "Not built yet" only when they genuinely work.
 >
-> Last reviewed against the code: 2026-09-21.
+> Last reviewed against the code: 2026-09-22.
 
 # Narrava
 
@@ -85,8 +85,10 @@ Profile. On desktop, opening a series goes to a dedicated Watch page instead.
   enters "watching" that series: swipe up/down now moves between that series' *episodes*
   (stops at episode 1 going back; rolls into the next series after the last episode). The small
   "EP 3 · 12" badge opens a grid to jump to any episode. Tap toggles the on-screen controls
-  and pause; press-and-hold plays at 2×. The controls auto-hide two seconds after playback
-  starts. Name, description and the like/comment/share/save icons use the same bottom offsets
+  and pause; press-and-hold plays at 2×. The controls (name, description, icons, scrub bar) auto-hide
+  two seconds after entering a series, and again two seconds after a tap reveals them if nobody
+  taps again. A second tap inside that window pauses instead, and the timer only restarts once
+  the video is playing again. Name, description and the like/comment/share/save icons use the same bottom offsets
   while browsing and while watching, so they don't jump when someone taps in. The only
   difference is deliberate: browsing has the Continue button under the description, so the text
   sits that button's height higher.
@@ -356,7 +358,7 @@ own files, which leads to the first gotcha below.
 
 **1. The service worker can keep serving old files after you deploy.** `sw.js` answers requests
 for the app's own files from its cache first and only goes to the network when it has nothing
-cached. The cache name is currently `narrava-shell-v5` and old caches are deleted only when the name
+cached. The cache name is currently `narrava-shell-v6` and old caches are deleted only when the name
 *changes*. So after changing any app file, people who have already visited can keep getting the
 old version. **Bump `CACHE_NAME` in `sw.js` whenever you ship a change.** The service worker's
 scope is the whole `narrava/` folder, so this affects the **admin pages too**, not only the

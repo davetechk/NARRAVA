@@ -350,7 +350,9 @@ async function loadWatchSocialState(slide){
   }
 }
 
-watchBackBtn.addEventListener('click', () => showScreen('discover'));
+// Same as the browser's own Back: returns to whatever screen this was
+// opened from (nav.js), rather than pushing a fresh Home entry on top.
+watchBackBtn.addEventListener('click', () => navBack());
 
 // Real, draggable seeking — a real <input type=range>'s own native drag
 // handling, not hand-rolled pointer math. See app.js's identical

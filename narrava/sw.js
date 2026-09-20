@@ -7,7 +7,7 @@
 // on a flaky connection. Supabase/CDN requests are left alone entirely —
 // this never touches cross-origin requests, only this app's own files.
 
-const CACHE_NAME = 'narrava-shell-v4';
+const CACHE_NAME = 'narrava-shell-v5';
 
 const PRECACHE_URLS = [
   './',
@@ -30,7 +30,8 @@ const PRECACHE_URLS = [
   './js/watch.js',
   './js/auth.js',
   './js/profile.js',
-  './js/pwa-install.js'
+  './js/pwa-install.js',
+  './js/nav.js'
 ];
 
 self.addEventListener('install', (event) => {

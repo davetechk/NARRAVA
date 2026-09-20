@@ -3,10 +3,11 @@
 // Real PWA installability: a real service worker registration (required
 // before Chrome/Android will ever fire beforeinstallprompt at all), the
 // real Android/Chrome install prompt (via that same captured event), and
-// real, honest "Add to Home Screen" instructions on iOS Safari specifically
-// — Apple genuinely gives no website a way to trigger a real install
-// prompt there, so a fake button that did nothing would be worse than
-// just being straightforward about the two real steps.
+// real, honest "Add to Home Screen" instructions on iPhone, in any real
+// browser (Safari, Chrome, Firefox, Edge…) — Apple genuinely gives no
+// website a way to trigger a real install prompt there, so a fake button
+// that did nothing would be worse than just being straightforward about
+// the two real steps.
 //
 // Two real chances, never more: once on a normal visit, and once more
 // after actually watching part of an episode and returning to the real
@@ -52,15 +53,26 @@ function isIOSDevice(){
   return isIOSUA || isIPadOS13Plus;
 }
 
-// iOS Safari specifically — not Chrome/Firefox/Edge-on-iOS, which
-// identify themselves in the UA (CriOS/FxiOS/EdgiOS/OPiOS) despite all
-// running on the same WebKit engine underneath.
-function isSafariBrowser(){
+// Any real browser on an iPhone/iPad can install — not just Safari. Since
+// iOS 16.4, Apple lets Chrome, Firefox, Edge and other browsers offer the
+// same Share → "Add to Home Screen" path Safari always had, so what
+// matters is the device (isIOSDevice above), not which browser is on it.
+// The old check required Safari specifically (it ruled out CriOS/FxiOS/
+// EdgiOS/OPiOS), which is why the instructions never showed in Chrome on
+// iPhone. Two guards remain so the instructions only appear where they can
+// actually work: every real iOS browser carries the "Safari/" token in its
+// user agent, whereas a webview embedded inside another app (Facebook,
+// Instagram, Line, WeChat, …) can't add to the home screen at all — those
+// either lack the token or name themselves.
+function isIOSBrowserThatCanInstall(){
+  if(!isIOSDevice()) return false;
   const ua = navigator.userAgent;
-  return /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS|OPT\/|Chrome|Android/.test(ua);
+  if(!/Safari\//.test(ua)) return false;
+  if(/FBAN|FBAV|Instagram|Line\/|MicroMessenger|Twitter|LinkedInApp|Snapchat/.test(ua)) return false;
+  return true;
 }
 
-const isIOSSafariNow = isIOSDevice() && isSafariBrowser();
+const isIOSInstallableNow = isIOSBrowserThatCanInstall();
 
 // This feature is scoped to real phones (Android Chrome-family browsers
 // + iOS Safari) — the desktop view here is a boxed preview/mockup of
@@ -70,7 +82,7 @@ function isMobileWidth(){
 }
 
 function canOfferInstallHere(){
-  return !!deferredInstallEvent || isIOSSafariNow;
+  return !!deferredInstallEvent || isIOSInstallableNow;
 }
 
 function notifyInstallAvailabilityChanged(){
@@ -99,7 +111,8 @@ async function triggerInstallPrompt(){
 // Watching-style strip this used to (mistakenly) reuse. Android/Chrome
 // gets a plain, honest message plus the one real Install action; iOS
 // Safari gets the real, clear two-step instructions instead, since
-// nothing there can ever trigger a real install by itself. Either way
+// nothing there can ever trigger a real install by itself. (iOS gets
+// these in every real browser on iPhone, not just Safari.) Either way
 // there's always a real, clearly labeled Cancel button, on top of the
 // real close (✕) in the corner.
 function renderModal(){
@@ -180,7 +193,7 @@ window.addEventListener('appinstalled', () => {
 // Real per-visit chance #1. On Android/Chrome this only actually shows
 // once beforeinstallprompt fires (see the handler above calling this
 // same function) — beforeinstallprompt is nearly always asynchronous,
-// so this first call typically only matters for iOS Safari, which has
+// so this first call typically only matters for iPhone browsers, which have
 // no such event to wait for.
 setTimeout(evaluateInstallPrompt, 1500);
 

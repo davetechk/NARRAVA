@@ -5,7 +5,7 @@
 > as it has been kept up, and fix anything you find that has drifted. Move things out of
 > "Not built yet" only when they genuinely work.
 >
-> Last reviewed against the code: 2026-09-20.
+> Last reviewed against the code: 2026-09-21.
 
 # Narrava
 
@@ -95,7 +95,7 @@ Profile. On desktop, opening a series goes to a dedicated Watch page instead.
     whichever video is playing, and the choice carries to later videos in the visit. It is not
     remembered across page loads. See the Sound block in `app.js`.
   - **Browsers can refuse sound-on autoplay** in a page the visitor hasn't tapped yet (for
-    example a cold open of a shared series link, or iOS Safari). When `play()` is refused for
+    example a cold open of a shared series link, or iOS). When `play()` is refused for
     that reason, that video plays muted instead, the button shows "muted", and the first tap or
     key press anywhere turns sound on. Not observed on a real device: desktop Chrome in
     testing treated every load as already interacted-with, so this path was exercised with a
@@ -113,6 +113,31 @@ Mobile vs. desktop is decided at **900px** wide, both in CSS and in JavaScript
 (`matchMedia('(min-width: 900px)')`). If you ever change the breakpoint, change it in both
 places. The desktop "For You" tab reuses the mobile feed with simpler behaviour and does not
 have per-episode swiping.
+
+**Back button and history** (`nav.js`). The app is one page, so the browser has to be told about
+real navigation or the first Back press leaves the app. On a phone this matters more than usual:
+entering For You hides the bottom nav, so Back is the only way out of the feed. `nav.js` keeps one
+browser-history entry per real step: a screen change (Home, For You, Library, Profile, the
+desktop Watch page) and entering a series (tap a poster, or Continue in For You). Back retraces
+those, so Home → For You → Continue → Back → Back lands on the feed, then Home, and a third Back
+exits (or closes the installed app). Rules worth knowing:
+- Swiping between episodes, or rolling into the next series, while watching adds **no** entries.
+  Back leaves the series; it doesn't rewind episode by episode.
+- Overlays (comment sheet, episode grid, Get Coins, sign-in / username / share popups, the desktop
+  comments drawer and search) have **no** entries of their own. Back closes the topmost open one
+  and stays on the same screen. To make an overlay Back-closable, add it to `NAV_OVERLAYS` in
+  `nav.js`.
+- The first entry is always a base entry for Home, written at load. A shared series link
+  (`#series=…`) lands in the series with Home behind it, so Back goes to Home, not out of the app.
+- Any new code that changes screen goes through `showScreen()` (which calls `navSync()`). Code that
+  enters the watching state without a screen change must call `navSync()` itself. The desktop
+  Watch page's on-screen ← calls `navBack()` so it behaves exactly like the browser's Back.
+- Back out of watching stops the video and saves progress, the same as any other navigation.
+
+**Scroll isolation.** The bottom sheets (comments, episode grid, Get Coins) sit inside `#feed`,
+which owns the swipe listeners, so touches and wheel scrolls inside a sheet used to bubble up and
+swipe the episode underneath. `app.js` now stops `touchstart/move/end` and `wheel` at each sheet
+and backdrop. Anything new that scrolls inside `#feed` needs the same treatment.
 
 **Data loading** (`feed-data.js`): on startup the app loads every series that has at least one
 episode, plus that first episode of each, and turns them into "slides". A series' *full*
@@ -314,17 +339,24 @@ Details worth knowing:
 ## Installable app (PWA)
 
 `manifest.json` + `sw.js` + `pwa-install.js`. On Android/Chrome the app can be installed from a
-banner or a button in Profile; on iOS Safari (which has no install prompt for websites) it shows
-"Add to Home Screen" instructions. There are two install chances per browser: once on a normal
+banner or a button in Profile; on iPhone (which has no install prompt for websites) it shows
+"Tap Share, then Add to Home Screen" instructions. That covers **every real browser on iPhone**
+(Safari, Chrome, Firefox, Edge…), not just Safari, since iOS 16.4 let them all add to the home
+screen. Webviews embedded in other apps (Facebook, Instagram, Line, WeChat…) can't add to the home
+screen, so they get nothing; see `isIOSBrowserThatCanInstall()` in `pwa-install.js`. There are two install chances per browser: once on a normal
 visit, and once after the person has watched a few seconds of an episode and returned to Home.
-State is kept in `localStorage`. The service worker also gives cache-first loading of the app's
+State is kept in `localStorage` (once per browser profile, which matters when testing with several
+user agents). Layout on an installed iPhone: `html` has a dark background (the page canvas used to
+fall back to white), and below 600px `.phone` is pinned with `position:fixed; inset:0` instead of
+`100vh`/`100dvh`, so it fills the real screen including under the home indicator (`viewport-fit=cover`
+is set). Bottom UI adds `env(safe-area-inset-bottom)` to clear the indicator. The service worker also gives cache-first loading of the app's
 own files, which leads to the first gotcha below.
 
 ## Things that are easy to get wrong
 
 **1. The service worker can keep serving old files after you deploy.** `sw.js` answers requests
 for the app's own files from its cache first and only goes to the network when it has nothing
-cached. The cache name is currently `narrava-shell-v4` and old caches are deleted only when the name
+cached. The cache name is currently `narrava-shell-v5` and old caches are deleted only when the name
 *changes*. So after changing any app file, people who have already visited can keep getting the
 old version. **Bump `CACHE_NAME` in `sw.js` whenever you ship a change.** The service worker's
 scope is the whole `narrava/` folder, so this affects the **admin pages too**, not only the
@@ -348,7 +380,7 @@ calls happen after everything has loaded, but a new file has to go in the right 
 list, and names must not collide across files. The current order: `config` → supabase-js → hls.js
 → `supabase-client` → `shared-utils` → `video-player` → `watch-progress` → `visit-log` →
 `social` → `comments-panel` → `feed-data` → `app` → `discover` → `library` → `watch` → `auth` →
-`profile` → `pwa-install`. Admin pages load `config`, supabase-js, `supabase-client`,
+`profile` → `pwa-install` → `nav`. Admin pages load `config`, supabase-js, `supabase-client`,
 `shared-utils`, `admin-shared`, and one `admin-<page>.js` each.
 
 **4. Most of the backend isn't in this repo.** The tables, row-level security policies, database

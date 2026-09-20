@@ -141,7 +141,7 @@ function renderProfileMenu(){
 // Always-available install trigger, near the top of the Profile screen
 // — but only ever rendered once a real beforeinstallprompt has actually
 // fired (see pwa-install.js's narravaPwaCanInstall()), so this is never
-// a dead button. iOS Safari never gets a real beforeinstallprompt at
+// a dead button. iOS (any browser) never gets a real beforeinstallprompt at
 // all (Apple's own genuine restriction), so it correctly never renders
 // there either — the real per-visit instructions banner is the only
 // install surface on that platform, not a fake button here.

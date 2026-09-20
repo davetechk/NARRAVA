@@ -347,7 +347,13 @@ updateMuteButton();
 // video + beside-video info/actions for For You) instead of the mobile
 // phone-frame presentation. Below the breakpoint neither class does
 // anything — mobile stays exactly as it was.
+// Which screen is showing ('discover' | 'feed' | 'library' | 'profile' |
+// 'watch'), kept by showScreen — nav.js reads it to keep the browser history
+// in step with real navigation.
+let activeScreenName = 'discover';
+
 function showScreen(name){
+  activeScreenName = name;
   // Screen/nav classes are switched FIRST, before anything below reacts
   // to them — render()'s own "is the feed actually visible" check (see
   // its guard around renderMedia) reads feed's screen-hidden class, so
@@ -392,6 +398,9 @@ function showScreen(name){
   // genuinely earned (already watched part of an episode, first chance
   // already shown, second chance not shown yet).
   if(name === 'discover' && typeof notifyHomeScreenShown === 'function') notifyHomeScreenShown();
+
+  // Tell the browser this is a real navigation step (nav.js).
+  navSync();
 }
 
 // Continue Watching: {series_id -> latest get_continue_watching row for
@@ -1217,6 +1226,7 @@ playToggle.addEventListener('click', ()=>{
   if(window.matchMedia('(min-width: 900px)').matches){
     feed.classList.add('watching');
     showChromeOnEntry();
+    navSync();
     return;
   }
   const s = slides[idx];
@@ -1324,13 +1334,29 @@ commentBtn.addEventListener('click', () => {
   commentsSheet.classList.add('open');
   feedCommentsController.load(s.id);
 });
-commentsSheetClose.addEventListener('click', () => {
+function closeCommentsSheet(){
   commentsSheetBackdrop.classList.remove('open');
   commentsSheet.classList.remove('open');
-});
-commentsSheetBackdrop.addEventListener('click', () => {
-  commentsSheetBackdrop.classList.remove('open');
-  commentsSheet.classList.remove('open');
+}
+commentsSheetClose.addEventListener('click', closeCommentsSheet);
+commentsSheetBackdrop.addEventListener('click', closeCommentsSheet);
+
+// Scroll isolation for every bottom sheet in the feed. These sheets (and
+// their dimmed backdrops) are DOM children of #feed, and #feed owns the
+// touchstart/touchend and wheel listeners that turn a vertical drag or
+// wheel tick into advanceForward/advanceBackward — so, by ordinary event
+// bubbling, a finger drag or wheel scroll *inside* the comment list (or
+// the episode grid, or the coin sheet) also arrived at #feed and swiped
+// the episode underneath. Measured before this: 7 touch drags + 5 wheel
+// ticks inside the open comment sheet fired 12 episode swipes. Stopping
+// these events at the sheet keeps them from ever reaching #feed; the
+// sheet's own native scrolling is untouched (nothing here calls
+// preventDefault, and the listeners are passive). Only touch/wheel are
+// stopped — clicks and everything else still bubble as before.
+[commentsSheet, commentsSheetBackdrop, episodeGridSheet, episodeGridBackdrop, coinSheet, sheetBackdrop].forEach(el => {
+  ['touchstart', 'touchmove', 'touchend', 'wheel'].forEach(evt => {
+    el.addEventListener(evt, e => e.stopPropagation(), { passive: true });
+  });
 });
 
 // Real episode jump grid — same real per-episode data and honest
@@ -1402,6 +1428,7 @@ document.getElementById('continueBtn').addEventListener('click', ()=>{
   if(window.matchMedia('(min-width: 900px)').matches){
     feed.classList.add('watching');
     showChromeOnEntry();
+    navSync();
     return;
   }
   const s = slides[idx];
@@ -1565,7 +1592,7 @@ async function init(){
 function openDeepLinkedSeries(){
   const seriesId = seriesIdFromLocationHash();
   if(!seriesId) return;
-  history.replaceState(null, '', window.location.pathname + window.location.search);
+  history.replaceState(history.state, '', window.location.pathname + window.location.search); // keep nav.js's state on this entry
 
   const i = slides.findIndex(s => s.id === seriesId);
   if(i === -1){

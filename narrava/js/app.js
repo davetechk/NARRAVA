@@ -173,6 +173,21 @@ function armChromeHideTimer(){
   clearChromeHideTimer();
   chromeHideTimer = setTimeout(() => { chromeHideTimer = null; hideChrome(); }, CHROME_AUTOHIDE_MS);
 }
+// Entering the watching state: reveal the group and start the 2s
+// auto-hide. The 'playing' listener in attachPlaybackControls is the other
+// place that arms the timer, and it only fires when playback *starts or
+// resumes* — an already-playing video never fires it again. That is exactly
+// what happens when the viewer taps Continue (or the video) in the For You
+// feed while it's already playing: entry only ever called showChrome(), so
+// the group stayed up until someone paused and resumed (found by measuring
+// the real timeline: no armChromeHideTimer call at all after entry). So
+// entry arms the timer itself when the active video is already playing; a
+// video that isn't playing yet (a cold entry from Home, a new episode)
+// still arms from its own 'playing' event as before.
+function showChromeOnEntry(){
+  showChrome();
+  if(currentVideoEl && !currentVideoEl.paused && !currentVideoEl.ended) armChromeHideTimer();
+}
 
 // episodeId -> { video, ctl, ready } for a video warming up off-screen
 // ahead of time (see preloadVideo/promotePreload) — a real <video> element
@@ -491,7 +506,22 @@ async function enterMobileWatching(i, resume){
 
   goTo(i);
   feed.classList.add('watching');
-  showChrome(); // entering an episode always starts with the real chrome group visible, even during the brief loading-art wait before promotion
+  // What to preload depends on 'watching' (this series' NEXT episode while
+  // watching, the next series' first episode while browsing — see
+  // nextPreloadTarget). goTo() above strips 'watching' and re-renders, so
+  // if this episode is already on screen, renderMedia returned early
+  // without re-picking, and if it isn't, it picked the *browsing* target
+  // before 'watching' was put back. Either way nothing re-ran once we
+  // were actually watching, so the next episode was never warmed up and
+  // the first swipe out of a series was always a cold load (found by
+  // logging real preload starts: none for episode 2 until the swipe
+  // itself). Re-pick now, but only if media is already rendered for this
+  // episode — when it isn't (a tap from Home, feed still hidden),
+  // showScreen('feed') below renders it with 'watching' already set,
+  // which picks correctly on its own. maintainPreload also drops the
+  // stale browsing-target preload, so nothing extra stays loaded.
+  if(renderedMediaEpisodeId === slide.episodeId) maintainPreload();
+  showChromeOnEntry(); // entering an episode always starts with the real chrome group visible, even during the brief loading-art wait before promotion — and, if its video is already playing, starts the 2s auto-hide right now
   showScreen('feed');
 }
 
@@ -1186,7 +1216,7 @@ playToggle.addEventListener('click', ()=>{
   // mechanism leaking into a screen it was never meant to touch.
   if(window.matchMedia('(min-width: 900px)').matches){
     feed.classList.add('watching');
-    showChrome();
+    showChromeOnEntry();
     return;
   }
   const s = slides[idx];
@@ -1371,7 +1401,7 @@ document.getElementById('continueBtn').addEventListener('click', ()=>{
   if(slides.length === 0) return;
   if(window.matchMedia('(min-width: 900px)').matches){
     feed.classList.add('watching');
-    showChrome();
+    showChromeOnEntry();
     return;
   }
   const s = slides[idx];

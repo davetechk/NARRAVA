@@ -5,7 +5,7 @@
 > as it has been kept up, and fix anything you find that has drifted. Move things out of
 > "Not built yet" only when they genuinely work.
 >
-> Last reviewed against the code: 2026-09-19.
+> Last reviewed against the code: 2026-09-20.
 
 # Narrava
 
@@ -187,6 +187,14 @@ Videos are stored and encoded on Bunny Stream. The `episodes` table stores each 
 
 On the mobile feed, the *next* episode is quietly loaded off-screen while you watch the current
 one, so a swipe usually lands on something already buffered. At most one preload runs at a time.
+What gets preloaded depends on the state: while *watching* a series it's that series' next
+episode; while just *browsing* it's the next series' first episode. `maintainPreload()` picks
+it, and it is re-run when a series is entered (`enterMobileWatching`), because the target
+changes at that moment. Measured on a real connection: the next episode is ready about 4s after
+its preload starts (a signed-link call, the playlists, then the first segments, one after the
+other), and a swipe onto a ready preload starts in roughly 60–170 ms. A swipe within about 4s of
+arriving on an episode is still a cold load (0.6–2s) by design, since only one episode ahead is
+loaded and it starts when the previous one appears.
 Leaving the feed tears down the video and its timers properly (`destroy()`); anything new that
 plays video must do the same, or `hls.js` keeps downloading in the background.
 
@@ -316,7 +324,7 @@ own files, which leads to the first gotcha below.
 
 **1. The service worker can keep serving old files after you deploy.** `sw.js` answers requests
 for the app's own files from its cache first and only goes to the network when it has nothing
-cached. The cache name is currently `narrava-shell-v3` and old caches are deleted only when the name
+cached. The cache name is currently `narrava-shell-v4` and old caches are deleted only when the name
 *changes*. So after changing any app file, people who have already visited can keep getting the
 old version. **Bump `CACHE_NAME` in `sw.js` whenever you ship a change.** The service worker's
 scope is the whole `narrava/` folder, so this affects the **admin pages too**, not only the
@@ -350,14 +358,15 @@ code calls. **If the Supabase project were lost, this repo could not recreate it
 schema and the Edge Function source into the repo (a `supabase/` folder) would fix that and is
 worth doing.
 
-**5. The client-side "locked" state isn't proof of what the server enforces.** Locked episodes
+**5. The client-side "locked" state, and what the server actually enforces.** Locked episodes
 are decided in the browser from the series' `free_episode_count` (or overridden by Free Mode),
-and a locked episode's video is never requested. But the real gate is whatever
-`bunny-signed-playback-url` checks, and its source isn't here. Two things follow, and neither
-has been checked against the live function: (a) Free Mode makes the app *show* everything as
-unlocked, but only works end-to-end if the function also respects it; (b) the fake coin unlock
-(below) marks an episode playable in the browser, but if the function refuses locked episodes,
-the video still won't load. Check the function before relying on either.
+and a locked episode's video is never requested. The real gate is `bunny-signed-playback-url`,
+whose source isn't in this repo. **Verified (2026-09-20, anonymous account):** for the 29-episode
+series with 10 free episodes, the function returned a link for episodes 1–10 and *refused*
+episodes 11–29. So the server does enforce `free_episode_count`, and the fake coin unlock (below)
+cannot actually make a locked episode play, since the browser would still be refused a link. Still
+unchecked: whether the function respects Free Mode. The app shows everything unlocked when Free
+Mode is on, but if the function ignores it, locked episodes won't play.
 
 **6. Saving/Library don't work for anonymous visitors**, and signing up doesn't carry over
 anonymous history (see Accounts). Both are intended-as-built, not bugs, but they surprise people.
@@ -369,6 +378,14 @@ happen", open the console first.
 **8. Small leftovers:** `BUNNY_LIBRARY_ID` in `config.js` is unused now (it was for the old
 iframe player). `feed-data.js` is ~370 KB because two placeholder cover images are embedded in it
 as base64 text; they're only used for series with no cover. The page title still says "mockup".
+
+**9. Most of the current catalogue isn't playable.** As of 2026-09-20, only "Ordinary Life and
+Poor Husband" (29 episodes) has real Bunny video ids. The other three series ("My Maiden Slave",
+"The Golden Age", "Midnight Wolf") have short numeric placeholder ids that Bunny answers with
+404. They appear normally in the app, but their videos show the load-failed state after the
+retries. The For You feed also tries to preload a placeholder series' first episode when you're
+on the series before it, and burns roughly 8s of retries doing so. That's data, not a code bug.
+It makes the feed look broken when testing with these series.
 
 ## What lives in Supabase (reconstructed from the code)
 

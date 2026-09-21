@@ -5,7 +5,7 @@
 > as it has been kept up, and fix anything you find that has drifted. Move things out of
 > "Not built yet" only when they genuinely work.
 >
-> Last reviewed against the code: 2026-09-24.
+> Last reviewed against the code: 2026-09-25.
 
 # Narrava
 
@@ -188,11 +188,20 @@ one a feature uses:
 When a signed-out or wrong-kind visitor taps an action that needs more, the app opens the
 log-in popup instead of failing silently.
 
-**Signing up does not upgrade the anonymous account.** `auth.js` calls plain `signUp` /
-`signInWithPassword`, not a "convert this anonymous user" call. So a person who watched and
-liked things anonymously, then signs up or logs in, ends up on a *different* user id, and their
-earlier watch history and likes don't come with them. Fixing that is a real piece of work
-(Supabase supports linking an identity to an anonymous user), and hasn't been done.
+**Signing up upgrades the anonymous account in place.** When someone signs up while on an anonymous
+session, `auth.js` calls `auth.updateUser({ email, password })` (Supabase's supported way to turn
+an anonymous user into a permanent one) rather than `signUp`, which always creates a second user.
+Same user id before and after, so every like, comment and bit of watch progress made as a guest
+stays attached: nothing is copied or moved. It then refreshes the session, because the access
+token still says `is_anonymous: true` until re-issued and row-level-security policies read the
+token. Log In is a different path and is unchanged: it signs into a separate, existing account, so
+whatever a guest did stays with the guest account and doesn't move. Signing up with an email that
+already has an account fails with a "log in instead" message and leaves the guest account as it
+was. With no anonymous session (signed out), sign-up is the plain `signUp` as before. **Project
+setting that matters:** this project has email confirmation **off** (`mailer_autoconfirm: true`), so
+the upgrade completes instantly. The code also handles confirmation being turned on (the email is
+attached to the same account and it stays a guest until the link is clicked), but that branch has
+not been exercised against the real project.
 
 **Sign-out** ends the session but doesn't create a new anonymous one until the next page load.
 Until then, like/comment prompts the log-in popup.
@@ -381,7 +390,7 @@ own files, which leads to the first gotcha below.
 
 **1. The service worker can keep serving old files after you deploy.** `sw.js` answers requests
 for the app's own files from its cache first and only goes to the network when it has nothing
-cached. The cache name is currently `narrava-shell-v8` and old caches are deleted only when the name
+cached. The cache name is currently `narrava-shell-v9` and old caches are deleted only when the name
 *changes*. So after changing any app file, people who have already visited can keep getting the
 old version. **Bump `CACHE_NAME` in `sw.js` whenever you ship a change.** The service worker's
 scope is the whole `narrava/` folder, so this affects the **admin pages too**, not only the
@@ -425,8 +434,9 @@ cannot actually make a locked episode play, since the browser would still be ref
 unchecked: whether the function respects Free Mode. The app shows everything unlocked when Free
 Mode is on, but if the function ignores it, locked episodes won't play.
 
-**6. Saving/Library don't work for anonymous visitors**, and signing up doesn't carry over
-anonymous history (see Accounts). Both are intended-as-built, not bugs, but they surprise people.
+**6. Saving/Library don't work for anonymous visitors** until they sign up (which upgrades the
+same account, so nothing is lost; see Accounts). Logging in to a *different* existing account does
+not carry a guest's history over. Both are by design, but they surprise people.
 
 **7. Errors mostly go to the browser console.** Failed Supabase calls are caught and logged as
 `Narrava: …` with a friendly toast where a person needs to know. When something "just doesn't
@@ -491,5 +501,4 @@ Do not describe any of this as working.
 - **Membership, Earn Rewards, Gifts, History, Download, Language, Help & Feedback:** menu rows
   that only show a toast.
 - **Rankings** (no view tracking) and **VIP** (posters do nothing).
-- **Converting an anonymous account into a real one** when someone signs up (see Accounts).
 - **Episode durations**, which are never recorded.

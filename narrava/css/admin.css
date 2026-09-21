@@ -582,6 +582,13 @@ table.admin-table tbody tr:hover{background:rgba(255,255,255,0.02);}
   }
   .admin-shell.nav-open .admin-drawer-backdrop{opacity:1;pointer-events:auto;}
   body.admin-nav-locked{overflow:hidden;}
+  /* The rule above only locks scrolling when <html> isn't a scroll container itself. It is
+     one here (styles.css sets overflow-x:hidden on html, which makes overflow-y auto), so on its
+     own the lock did nothing to the page and only appeared to work while a bug had the mouse
+     wheel dead everywhere. This line makes the lock reach the page: while the drawer is open the
+     page behind it can't scroll. Same class, same JS (setOpen in admin-shared.js) — nothing else
+     changed. */
+  html:has(body.admin-nav-locked){overflow:hidden;}
 
   .admin-nav-item{padding:12px 12px;white-space:normal;min-height:44px;box-sizing:border-box;text-decoration:none;}
   .admin-nav-sub a, .admin-nav-sub .admin-nav-sub-item{padding:12px 12px;min-height:44px;box-sizing:border-box;display:flex;align-items:center;}

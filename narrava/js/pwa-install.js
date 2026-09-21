@@ -124,17 +124,49 @@ async function triggerInstallPrompt(){
 // these in every real browser on iPhone, not just Safari.) Either way
 // there's always a real, clearly labeled Cancel button, on top of the
 // real close (✕) in the corner.
+// Which install experience applies right now. ONE decision, used by the
+// automatic popup and by the Profile "How to install" button alike, so they
+// can never disagree:
+//   'installed'  — already running as the installed app
+//   'prompt'     — the browser gave us a real install prompt (Android/Chrome…)
+//   'ios'        — an iPhone browser that can Share → Add to Home Screen
+//   'ios-inapp'  — an iPhone, but inside another app's embedded browser
+//   'other'      — no one-tap install here (desktop Firefox, a browser that
+//                  hasn't offered the prompt yet, …)
+// The automatic popup only ever runs for 'prompt' and 'ios' (it's gated by
+// canOfferInstallHere below), so its behaviour is exactly as before; the
+// other three exist for the button, which is always available.
+function installVariant(){
+  if(isStandaloneDisplay()) return 'installed';
+  if(deferredInstallEvent) return 'prompt';
+  if(isIOSInstallableNow) return 'ios';
+  if(isIOSDevice()) return 'ios-inapp';
+  return 'other';
+}
+
 function renderModal(){
-  const isAndroidVariant = !!deferredInstallEvent;
+  const variant = installVariant();
+  let messageHtml;
+  let actionsHtml;
 
-  const messageHtml = isAndroidVariant
-    ? '<div class="pwa-modal-message">Tap Install to add Narrava to your home screen.</div>'
-    : '<div class="pwa-modal-message pwa-modal-message-ios">' + PWA_SHARE_ICON + '<span>Tap Share, then "Add to Home Screen"</span></div>';
-
-  const actionsHtml = isAndroidVariant
-    ? '<button type="button" class="pwa-modal-btn-primary" id="pwaModalInstallBtn">Install</button>' +
-      '<button type="button" class="pwa-modal-btn-secondary" id="pwaModalCancelBtn">Cancel</button>'
-    : '<button type="button" class="pwa-modal-btn-secondary" id="pwaModalCancelBtn">Cancel</button>';
+  if(variant === 'prompt'){
+    messageHtml = '<div class="pwa-modal-message">Tap Install to add Narrava to your home screen.</div>';
+    actionsHtml =
+      '<button type="button" class="pwa-modal-btn-primary" id="pwaModalInstallBtn">Install</button>' +
+      '<button type="button" class="pwa-modal-btn-secondary" id="pwaModalCancelBtn">Cancel</button>';
+  } else if(variant === 'ios'){
+    messageHtml = '<div class="pwa-modal-message pwa-modal-message-ios">' + PWA_SHARE_ICON + '<span>Tap Share, then "Add to Home Screen"</span></div>';
+    actionsHtml = '<button type="button" class="pwa-modal-btn-secondary" id="pwaModalCancelBtn">Cancel</button>';
+  } else if(variant === 'installed'){
+    messageHtml = '<div class="pwa-modal-message">Narrava is already installed on this device.</div>';
+    actionsHtml = '<button type="button" class="pwa-modal-btn-secondary" id="pwaModalCancelBtn">Close</button>';
+  } else if(variant === 'ios-inapp'){
+    messageHtml = '<div class="pwa-modal-message">Open Narrava in Safari or Chrome first, then tap Share and "Add to Home Screen".</div>';
+    actionsHtml = '<button type="button" class="pwa-modal-btn-secondary" id="pwaModalCancelBtn">Close</button>';
+  } else {
+    messageHtml = '<div class="pwa-modal-message">This browser doesn\u2019t offer a one-tap install here. In Chrome or Edge, open the browser menu and choose "Install app" (or "Add to Home screen"). On iPhone, tap Share, then "Add to Home Screen".</div>';
+    actionsHtml = '<button type="button" class="pwa-modal-btn-secondary" id="pwaModalCancelBtn">Close</button>';
+  }
 
   pwaModalBody.innerHTML =
     '<img class="pwa-modal-icon" src="img/icon-192.png" alt="">' +
@@ -219,5 +251,14 @@ setTimeout(evaluateInstallPrompt, 1500);
 // Public surface for profile.js's own always-available install button —
 // only ever real: true/present exactly when a real prompt can actually
 // be triggered right now.
+// The Profile screen's always-visible "How to install" button. Opens the very
+// same modal the automatic popup uses, whatever the automatic popup has or
+// hasn't done: it deliberately doesn't touch the per-visit flags, so the
+// automatic chances (a normal visit, and after watching) are unaffected.
+window.narravaPwaShowInstallHelp = function(){
+  if(modalVisible) return;
+  showModal();
+};
+
 window.narravaPwaCanInstall = function(){ return !!deferredInstallEvent && !isStandaloneDisplay(); };
 window.narravaPwaTriggerInstall = triggerInstallPrompt;

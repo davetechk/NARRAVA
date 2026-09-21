@@ -5,7 +5,7 @@
 > as it has been kept up, and fix anything you find that has drifted. Move things out of
 > "Not built yet" only when they genuinely work.
 >
-> Last reviewed against the code: 2026-09-27.
+> Last reviewed against the code: 2026-09-28.
 
 # Narrava
 
@@ -414,6 +414,16 @@ prompts is the app actually running installed: `isStandaloneDisplay()` (`display
 elsewhere on the device, so someone who installed it but opens it in a browser tab will still see the
 popup there. Never on a desktop-width window.
 
+**Profile "How to install" button.** Always visible near the top of the Profile screen, at the far
+end of the header row opposite the avatar and username, whether or not the automatic popup has been
+shown, closed or skipped. It opens the same modal the automatic popup uses, not a second flow. One
+function, `installVariant()` in `pwa-install.js`, decides what that modal says, for both: the real
+browser install prompt (with an Install button) where the browser offers one; the Share → Add to
+Home Screen steps on an iPhone browser; "open it in Safari or Chrome first" inside another app's
+embedded browser; "already installed" when running as the installed app; and an honest "this browser
+doesn't offer a one-tap install" note (with what to do instead) everywhere else. The button does not
+touch the automatic popup's per-visit flags, so using it never uses up an automatic chance.
+
 **Installed iPhone: the strip at the bottom.** Status: **not confirmed fixed on a real iPhone.** What
 is established: with a simulated safe area, every Narrava screen and state paints all the way to
 the bottom edge, so the app itself leaves no gap, and `viewport-fit=cover` has been in the page
@@ -437,7 +447,7 @@ exactly what iOS is doing and what to change next.
 
 **1. The service worker can keep serving old files after you deploy.** `sw.js` answers requests
 for the app's own files from its cache first and only goes to the network when it has nothing
-cached. The cache name is currently `narrava-shell-v11` and old caches are deleted only when the name
+cached. The cache name is currently `narrava-shell-v13` and old caches are deleted only when the name
 *changes*. So after changing any app file, people who have already visited can keep getting the
 old version. **Bump `CACHE_NAME` in `sw.js` whenever you ship a change.** The service worker's
 scope is the whole `narrava/` folder, so this affects the **admin pages too**, not only the
@@ -493,7 +503,20 @@ happen", open the console first.
 iframe player). `feed-data.js` is ~370 KB because two placeholder cover images are embedded in it
 as base64 text; they're only used for series with no cover. The page title still says "mockup".
 
-**9. Most of the current catalogue isn't playable.** As of 2026-09-20, only "Ordinary Life and
+**9. Mouse wheel / trackpad dead on the admin pages (fixed 2026-09-28).** `styles.css` had
+`html,body{overflow-x:hidden; overscroll-behavior-y:none}`. Neither property alone does harm, but the
+combination on `<body>` is fatal: `overflow-x:hidden` on both `html` and `body` makes `<body>` a scroll
+container, and `overscroll-behavior-y:none` on a scroll container stops the wheel from passing on to the
+page. So on every page whose *document* scrolls (all the admin pages) the wheel did nothing while
+dragging the scrollbar still worked. It had been in since 2026-09-14; it was not caused by the admin
+mobile work. The rule is now `html{overscroll-behavior-y:none}` only (still stops pull-to-refresh at
+the page level). The consumer app was never affected (it scrolls inner containers, not the page). **Do
+not put `overscroll-behavior` on `<body>` or on any element that is a scroll container unless you mean
+to stop scrolling passing up.** The admin drawer's scroll lock (`body.admin-nav-locked`) had only
+seemed to work because the wheel was dead everywhere; `html:has(body.admin-nav-locked){overflow:hidden}`
+in `admin.css` now makes it real, for mouse wheel and touch.
+
+**10. Most of the current catalogue isn't playable.** As of 2026-09-20, only "Ordinary Life and
 Poor Husband" (29 episodes) has real Bunny video ids. The other three series ("My Maiden Slave",
 "The Golden Age", "Midnight Wolf") have short numeric placeholder ids that Bunny answers with
 404. They appear normally in the app, but their videos show the load-failed state after the

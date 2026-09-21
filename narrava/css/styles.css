@@ -167,7 +167,17 @@
      browser's system font instead of Montserrat, everywhere in the app
      including admin. */
   button,input,select,textarea{font-family:inherit;}
-  html,body{margin:0;padding:0;overflow-x:hidden;overscroll-behavior-y:none;}
+  html,body{margin:0;padding:0;overflow-x:hidden;}
+  /* overscroll-behavior-y:none belongs on <html> ONLY. It stops pull-to-refresh
+     and the rubber-band bounce at the page level, which is what the mobile app
+     wants. It used to be on <body> too (html,body{...}), and that silently
+     killed the mouse wheel and trackpad on every page whose document scrolls
+     (all the admin pages): with overflow-x:hidden on both html and body, <body>
+     becomes a scroll container, and overscroll-behavior-y:none on a scroll
+     container stops the wheel from passing on to the page. Neither property
+     alone does it; the combination on <body> does. Dragging the scrollbar still
+     worked, which is why it looked like only the wheel was broken. */
+  html{overscroll-behavior-y:none;}
   /* body is transparent, so the page canvas takes its colour from <html>;
      without this it fell back to the browser default (white). Anything not
      covered by the app — a sliver under the home indicator on an installed
@@ -1082,6 +1092,8 @@
      renderProfileMenu in profile.js), so it's never a dead button. */
   .profile-install-btn{
     flex-shrink:0;
+    margin-left:auto;   /* far end of the header row, opposite the avatar + username */
+    min-height:40px;
     display:flex;align-items:center;gap:6px;
     background:rgba(232,184,92,0.14);
     border:1px solid rgba(232,184,92,0.4);

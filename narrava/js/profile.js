@@ -138,31 +138,23 @@ function renderProfileMenu(){
   if(loggedIn) loadWalletBalance();
 }
 
-// Always-available install trigger, near the top of the Profile screen
-// — but only ever rendered once a real beforeinstallprompt has actually
-// fired (see pwa-install.js's narravaPwaCanInstall()), so this is never
-// a dead button. iOS (any browser) never gets a real beforeinstallprompt at
-// all (Apple's own genuine restriction), so it correctly never renders
-// there either — the real per-visit instructions banner is the only
-// install surface on that platform, not a fake button here.
+// Always-visible install help, near the top of the Profile screen, opposite
+// the avatar and username. Never conditional — it's there whether or not the
+// automatic popup has been shown, closed or skipped, so anyone can find it on
+// purpose. Tapping it opens the same modal the automatic popup uses
+// (pwa-install.js): the real install prompt where the browser offers one,
+// the Share → Add to Home Screen steps on iPhone, an honest note elsewhere,
+// or "already installed" when running as the installed app. There is no
+// separate flow here; pwa-install.js's installVariant() decides.
 function pwaInstallButtonHtml(){
-  if(typeof window.narravaPwaCanInstall !== 'function' || !window.narravaPwaCanInstall()) return '';
   return '<button type="button" class="profile-install-btn" id="profileInstallBtn">' +
-    PROFILE_ICONS.download + '<span>Install App</span></button>';
+    PROFILE_ICONS.download + '<span>How to install</span></button>';
 }
-
-// Re-render whenever pwa-install.js's own real availability actually
-// changes (beforeinstallprompt firing after this screen already
-// rendered, or a real install completing) — only while Profile is
-// genuinely the visible screen, so this never fights other screens.
-window.addEventListener('narrava:pwa-install-changed', () => {
-  if(profileScreen && !profileScreen.classList.contains('screen-hidden')) renderProfileMenu();
-});
 
 function wireProfileRows(loggedIn){
   const installBtn = document.getElementById('profileInstallBtn');
   if(installBtn) installBtn.addEventListener('click', () => {
-    if(typeof window.narravaPwaTriggerInstall === 'function') window.narravaPwaTriggerInstall();
+    if(typeof window.narravaPwaShowInstallHelp === 'function') window.narravaPwaShowInstallHelp();
   });
 
   const loginRow = document.getElementById('profileLoginRow');

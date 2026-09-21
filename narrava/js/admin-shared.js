@@ -98,7 +98,95 @@ function renderAdminSidebar(activePage, session){
     }
     window.location.href = 'login.html';
   });
+
+  setupAdminMobileNav(activePage);
 }
+
+// ---------- Phone layout ----------
+//
+// Below 860px the sidebar becomes a slide-in drawer (see admin.css), opened
+// from a sticky top bar. Everything in the sidebar is still there — every
+// page link and the sign-out button — it just lives in the drawer instead
+// of squeezing the page. On wider screens none of this shows (the bar and
+// backdrop are display:none) and the sidebar is the same fixed column as
+// ever. The drawer closes on: the backdrop, the close (✕) button, Escape,
+// choosing a page, or the window growing back to desktop width.
+function setupAdminMobileNav(activePage){
+  const shell = document.querySelector('.admin-shell');
+  const sidebar = document.getElementById('adminSidebar');
+  if(!shell || !sidebar || document.getElementById('adminMenuBtn')) return;
+
+  const current = ADMIN_NAV_ITEMS.find(item => item.page === activePage);
+  const title = current ? current.label : 'Admin';
+
+  const bar = document.createElement('div');
+  bar.className = 'admin-mobilebar';
+  bar.innerHTML =
+    '<button type="button" class="admin-menu-btn" id="adminMenuBtn" aria-label="Open menu" aria-expanded="false" aria-controls="adminSidebar">' +
+      '<svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>' +
+    '</button>' +
+    '<div class="admin-mobilebar-brand">Narrava Admin</div>' +
+    '<div class="admin-mobilebar-page">' + escapeHtml(title) + '</div>';
+  shell.insertBefore(bar, shell.firstChild);
+
+  const backdrop = document.createElement('div');
+  backdrop.className = 'admin-drawer-backdrop';
+  backdrop.id = 'adminDrawerBackdrop';
+  shell.appendChild(backdrop);
+
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'admin-drawer-close';
+  closeBtn.id = 'adminDrawerClose';
+  closeBtn.setAttribute('aria-label', 'Close menu');
+  closeBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+  sidebar.insertBefore(closeBtn, sidebar.firstChild);
+
+  const menuBtn = document.getElementById('adminMenuBtn');
+
+  function setOpen(open){
+    shell.classList.toggle('nav-open', open);
+    document.body.classList.toggle('admin-nav-locked', open);
+    menuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if(open) closeBtn.focus(); else if(document.activeElement && sidebar.contains(document.activeElement)) menuBtn.focus();
+  }
+
+  menuBtn.addEventListener('click', () => setOpen(!shell.classList.contains('nav-open')));
+  closeBtn.addEventListener('click', () => setOpen(false));
+  backdrop.addEventListener('click', () => setOpen(false));
+  sidebar.querySelectorAll('a').forEach(a => a.addEventListener('click', () => setOpen(false)));
+  document.addEventListener('keydown', (e) => { if(e.key === 'Escape' && shell.classList.contains('nav-open')) setOpen(false); });
+  window.matchMedia('(min-width: 861px)').addEventListener('change', (e) => { if(e.matches) setOpen(false); });
+}
+
+// ---------- Tables on a phone ----------
+//
+// Every admin table is built by its own page script as plain <td> cells.
+// On a phone admin.css lays each row out as a stacked card, and each cell
+// shows its column name in front of its value — from a data-label
+// attribute. Rather than change every page's renderer, this labels cells
+// from the table's own header text, and re-runs whenever a page re-renders
+// a table (they all do, after every edit, delete or search). Cells that
+// span the full row (the inline edit / delete-confirm forms) get no label.
+// It only sets attributes, so it changes nothing on desktop, and it never
+// touches what any page's buttons do.
+function labelAdminTableCells(){
+  document.querySelectorAll('table.admin-table').forEach(table => {
+    const heads = Array.from(table.querySelectorAll('thead th')).map(th => th.textContent.trim());
+    table.querySelectorAll('tbody tr').forEach(tr => {
+      Array.from(tr.children).forEach((td, i) => {
+        if(td.colSpan > 1 || td.hasAttribute('data-label') || heads[i] === undefined) return;
+        td.setAttribute('data-label', heads[i]);
+      });
+    });
+  });
+}
+(function watchAdminTables(){
+  let queued = false;
+  const run = () => { queued = false; labelAdminTableCells(); };
+  new MutationObserver(() => { if(!queued){ queued = true; requestAnimationFrame(run); } })
+    .observe(document.documentElement, { childList: true, subtree: true });
+})();
 
 // Every protected admin page calls this first, before rendering
 // anything real. Same admin check used throughout the app

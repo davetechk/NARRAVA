@@ -455,10 +455,6 @@ table.admin-table tbody tr:hover{background:rgba(255,255,255,0.02);}
 .admin-batch-summary.success{color:var(--leaf-light);}
 .admin-batch-summary.partial{color:#F2A0A0;}
 
-@media (max-width: 760px){
-  .admin-batch-row{grid-template-columns:1fr;}
-  .admin-batch-row-progress{order:5;}
-}
 
 /* ---------- Bar chart / legend (revenue analytics) ---------- */
 
@@ -500,31 +496,228 @@ table.admin-table tbody tr:hover{background:rgba(255,255,255,0.02);}
 
 .admin-episode-panel-select{margin-bottom:18px;max-width:360px;}
 
-/* ---------- Narrow-window fallback ----------
-   The dashboard is desktop-first by design (a sidebar layout is
-   inherently that), but this keeps it usable rather than broken on a
-   narrower window. */
+/* ---------- Named rows that were inline grid styles ---------- */
+.admin-row-create{grid-template-columns:1fr 1fr auto;align-items:end;}
+.admin-row-two{grid-template-columns:1fr 1fr;}
+.admin-row-add{grid-template-columns:1fr auto;align-items:end;}
+
+/* ---------- Phone-only pieces (hidden on desktop) ---------- */
+.admin-mobilebar,
+.admin-drawer-backdrop,
+.admin-drawer-close{display:none;}
+
+/* ---------- Medium windows ---------- */
 @media (max-width: 1240px){
   .admin-stats-row{grid-template-columns:repeat(3, 1fr);}
 }
 @media (max-width: 980px){
   .admin-content-grid{grid-template-columns:1fr;}
 }
+
+/* ---------- Phone layout (<= 860px) ----------
+   Real mobile treatment, not a shrunk desktop:
+     1. the sidebar is a slide-in drawer opened from a sticky top bar
+        (markup + behaviour: setupAdminMobileNav in admin-shared.js);
+     2. every table becomes a stack of labelled cards, so nothing needs
+        sideways scrolling to be read or used;
+     3. form fields are 16px (below that, iOS zooms the page on focus)
+        and stack one per row;
+     4. buttons, switches and icon buttons are given real touch sizes
+        (see the touch block after this one).
+   Nothing is removed or hidden — every control on desktop is here too. */
 @media (max-width: 860px){
   .admin-shell{flex-direction:column;}
-  .admin-sidebar{
-    width:100%;height:auto;position:relative;
-    flex-direction:row;align-items:center;padding:14px 12px;overflow-x:auto;
+
+  .admin-mobilebar{
+    display:flex;align-items:center;gap:10px;
+    position:sticky;top:0;z-index:150;
+    height:56px;padding:0 12px 0 6px;box-sizing:border-box;
+    background:var(--panel);border-bottom:1px solid rgba(255,255,255,0.08);
   }
-  .admin-brand{padding:0 14px 0 4px;}
-  .admin-nav-group{flex-direction:row;}
-  .admin-nav-heading{display:none;}
-  .admin-nav-sub{display:flex;flex-direction:row;margin:0;}
-  .admin-nav-item{padding:8px 12px;white-space:nowrap;}
-  .admin-sidebar-spacer{display:none;}
-  .admin-sidebar-user{display:none;}
-  .admin-main{padding:20px 16px 40px;}
-  .admin-stats-row{grid-template-columns:repeat(2, 1fr);}
-  .admin-field-row{grid-template-columns:1fr;}
+  .admin-menu-btn{
+    width:44px;height:44px;flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;
+    background:none;border:none;border-radius:10px;color:var(--text);cursor:pointer;padding:0;
+  }
+  .admin-menu-btn:active{background:rgba(255,255,255,0.08);}
+  .admin-mobilebar-brand{
+    font-family:'Montserrat',sans-serif;font-weight:800;font-size:15px;letter-spacing:0.5px;color:var(--leaf-light);
+    white-space:nowrap;
+  }
+  .admin-mobilebar-page{
+    margin-left:auto;min-width:0;
+    font-size:13px;font-weight:700;color:var(--muted);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+
+  /* the sidebar, as a drawer */
+  .admin-sidebar{
+    position:fixed;top:0;left:0;bottom:0;
+    width:min(84vw, 300px);height:auto;
+    z-index:210;
+    flex-direction:column;align-items:stretch;
+    padding:12px 14px calc(16px + env(safe-area-inset-bottom));
+    overflow-y:auto;overflow-x:hidden;
+    border-right:1px solid rgba(255,255,255,0.1);
+    box-shadow:8px 0 30px rgba(0,0,0,0.5);
+    transform:translateX(-105%);
+    visibility:hidden;
+    transition:transform 0.25s ease, visibility 0s linear 0.25s;
+  }
+  .admin-shell.nav-open .admin-sidebar{
+    transform:none;visibility:visible;
+    transition:transform 0.25s ease, visibility 0s;
+  }
+  .admin-drawer-close{
+    display:flex;align-items:center;justify-content:center;
+    align-self:flex-end;flex-shrink:0;
+    width:44px;height:44px;margin-bottom:-6px;
+    background:none;border:none;border-radius:10px;color:var(--muted);cursor:pointer;padding:0;
+  }
+  .admin-drawer-close:active{background:rgba(255,255,255,0.08);}
+  .admin-drawer-backdrop{
+    display:block;position:fixed;inset:0;z-index:200;
+    background:rgba(4,7,5,0.62);
+    opacity:0;pointer-events:none;transition:opacity 0.25s ease;
+  }
+  .admin-shell.nav-open .admin-drawer-backdrop{opacity:1;pointer-events:auto;}
+  body.admin-nav-locked{overflow:hidden;}
+
+  .admin-nav-item{padding:12px 12px;white-space:normal;min-height:44px;box-sizing:border-box;text-decoration:none;}
+  .admin-nav-sub a, .admin-nav-sub .admin-nav-sub-item{padding:12px 12px;min-height:44px;box-sizing:border-box;display:flex;align-items:center;}
+  .admin-sidebar-spacer{min-height:16px;}
+  .admin-sidebar-user{padding:12px;min-height:56px;}
+  .admin-sidebar-user .admin-user-name{white-space:normal;overflow-wrap:anywhere;}
+
+  #toast{top:66px;max-width:calc(100vw - 24px);}
+
+  /* page content */
+  .admin-main{padding:16px 14px 40px;}
+  .admin-topbar{gap:12px;margin-bottom:16px;}
+  .admin-topbar h1{font-size:21px;}
+  .admin-search-box{width:100%;min-height:48px;padding:0 14px;}
+  .admin-search-box input{flex:1;min-height:46px;}
+  .admin-panel{padding:16px;border-radius:12px;}
+  .admin-stats-row, .admin-stats-row.cols-3, .admin-stats-row.cols-4{grid-template-columns:repeat(2, 1fr);gap:10px;}
+  .admin-stat-card{padding:12px;gap:10px;}
+  .admin-stats-row > .admin-stat-card:last-child:nth-child(odd){grid-column:1 / -1;}
+  .admin-stat-icon{width:34px;height:34px;}
+  .admin-stat-body{min-width:0;}
+  .admin-stat-body .admin-stat-value{font-size:19px;overflow-wrap:anywhere;}
+
+  /* forms: one field per row */
+  .admin-field-row, .admin-row-create, .admin-row-two, .admin-row-add{grid-template-columns:1fr;gap:12px;}
+  .admin-row-create > div:empty{display:none;}
+  .admin-row-create .admin-btn, .admin-row-add .admin-btn{width:100%;}
   .admin-inline-form-row{grid-template-columns:1fr;}
+  .admin-inline-form-actions, .admin-delete-confirm-actions{flex-direction:column;}
+  .admin-inline-form-actions .auth-submit, .admin-inline-cancel,
+  .admin-delete-confirm-btn, .admin-delete-cancel-btn{width:100%;}
+  .admin-field input, .admin-field textarea, .admin-field select,
+  .admin-search-box input, .auth-input, .admin-batch-row input[type="number"], .admin-batch-row input[type="text"]{
+    font-size:16px;
+  }
+  .admin-field input, .admin-field select, .auth-input, .admin-batch-row input[type="number"], .admin-batch-row input[type="text"]{
+    min-height:46px;
+  }
+  .admin-field textarea{min-height:88px;}
+  .admin-select-wrap svg{top:auto;bottom:16px;}
+
+  /* settings rows: text on top, control below (a lone switch stays beside its text) */
+  .admin-settings-row{flex-wrap:wrap;gap:12px;}
+  .admin-settings-row-text{flex:1 1 220px;}
+  .admin-settings-inline-form{width:100%;}
+  .admin-settings-number{flex:1;width:auto;text-align:left;}
+  .admin-settings-number{min-width:0;}
+  .admin-settings-inline-form .admin-btn{flex-shrink:0;}
+
+  /* long unbroken text (an email address in a confirmation, a long title) must wrap, never push the page sideways */
+  .admin-main p, .admin-main strong, .admin-main .auth-error, .admin-main .admin-row-sub, .admin-main .admin-helper-text, .admin-main .admin-panel-sub{overflow-wrap:anywhere;}
+
+  /* charts */
+  .admin-bar-chart{gap:6px;padding:10px 0 0;}
+  .admin-bar-chart .admin-bar-value{font-size:9px;max-width:100%;overflow-wrap:anywhere;text-align:center;}
+  .admin-bar-chart .admin-bar-label{font-size:10px;}
+  .admin-line-chart-svg{height:180px;}
+
+  /* genre cards */
+  .admin-genre-card{flex-wrap:wrap;padding:14px;}
+  .admin-genre-card-main{flex:1 1 180px;}
+
+  /* login gate */
+  .admin-gate{padding:16px;align-items:flex-start;padding-top:12vh;}
+  .admin-gate-card{padding:26px 20px;}
+
+  /* ---- tables -> stacked cards ---- */
+  .admin-table-wrap{overflow-x:visible;margin-top:0;}
+  table.admin-table, table.admin-table tbody, table.admin-table tr, table.admin-table td{display:block;width:100%;box-sizing:border-box;}
+  table.admin-table thead{
+    position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;   /* still there for screen readers */
+  }
+  table.admin-table tbody tr{
+    background:var(--panel);border:1px solid rgba(255,255,255,0.08);border-radius:12px;
+    padding:12px 14px;margin-bottom:12px;
+  }
+  table.admin-table tbody tr:hover{background:var(--panel);}
+  table.admin-table tbody td{
+    border:none;padding:8px 0;
+    display:flex;align-items:center;justify-content:space-between;gap:8px 14px;flex-wrap:wrap;
+    min-height:44px;
+  }
+  table.admin-table .admin-warn-badge{margin-left:0;white-space:normal;max-width:100%;}
+  table.admin-table tbody td[data-label]::before{
+    content:attr(data-label);
+    flex:0 0 96px;
+    font-size:10.5px;font-weight:800;letter-spacing:0.4px;text-transform:uppercase;color:var(--muted);
+  }
+  /* first cell = the row's title (thumbnail + name): full width, no label */
+  table.admin-table tbody td:first-child{display:block;min-height:0;padding-top:0;}
+  table.admin-table tbody td:first-child::before{display:none;}
+  table.admin-table .admin-row-cell{align-items:center;}
+  table.admin-table .admin-row-title{overflow-wrap:anywhere;}
+  table.admin-table td .admin-genre-tags{max-width:none;justify-content:flex-end;}
+  /* the actions cell: full width, buttons wrap, no label */
+  table.admin-table tbody td:last-child[data-label="Actions"]{display:block;padding-bottom:0;}
+  table.admin-table tbody td:last-child[data-label="Actions"]::before{display:none;}
+  table.admin-table .admin-action-group{flex-wrap:wrap;gap:8px;}
+  /* rows that hold an inline edit / delete-confirm form: no card chrome around a card */
+  table.admin-table tbody tr:has(> td[colspan]){padding:0;background:none;border:none;}
+  table.admin-table tbody td[colspan]{display:block;padding:0;min-height:0;}
+
+  /* batch upload queue rows */
+  .admin-batch-row{grid-template-columns:1fr;}
+  .admin-batch-row-progress{order:5;}
+}
+
+/* ---------- Touch sizes ----------
+   Applies on any touch-first device, and at phone widths. 44px is the
+   usual minimum comfortable target; the desktop sizes above are for a
+   mouse pointer. */
+@media (max-width: 860px), (pointer: coarse){
+  .admin-btn, .admin-btn.small{min-height:44px;padding:10px 18px;font-size:13.5px;display:inline-flex;align-items:center;justify-content:center;}
+  .admin-btn-ghost{min-height:48px;font-size:14px;}
+  .admin-btn-link{min-height:44px;display:inline-flex;align-items:center;padding:0 6px;font-size:13.5px;}
+  .admin-badge.clickable{min-height:44px;padding:0 18px;display:inline-flex;align-items:center;font-size:12.5px;}
+  .admin-icon-btn{min-width:44px;height:44px;width:auto;padding:0 12px;gap:6px;font-size:13px;font-weight:800;}
+  .admin-icon-btn svg{width:18px;height:18px;}
+  /* on a phone there's no hover to reveal a tooltip, so show each icon button's name */
+  .admin-icon-btn[title]::after{content:attr(title);}
+  .admin-switch{width:60px;height:44px;background:none;border:none;padding:0;position:relative;}
+  .admin-switch::before{
+    content:"";position:absolute;left:3px;top:7px;width:54px;height:30px;box-sizing:border-box;
+    border-radius:20px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.14);
+  }
+  .admin-switch.on{background:none;border:none;}
+  .admin-switch.on::before{background:var(--leaf-deep);border-color:var(--leaf);}
+  .admin-switch::after{top:10px;left:6px;width:24px;height:24px;z-index:1;}
+  .admin-switch.on::after{transform:translateX(24px);}
+  .admin-page .genre-chip{min-height:44px;padding:0 16px;font-size:13px;}
+  .admin-inline-cancel, .admin-delete-confirm-btn, .admin-delete-cancel-btn, .auth-submit{min-height:46px;font-size:14px;}
+  .admin-cover-picker .admin-btn-link{border:1px solid rgba(255,255,255,0.14);border-radius:8px;padding:0 14px;}
+}
+
+/* very narrow phones */
+@media (max-width: 380px){
+  .admin-stats-row, .admin-stats-row.cols-3, .admin-stats-row.cols-4{grid-template-columns:1fr;}
+  .admin-mobilebar-brand{display:none;}
 }

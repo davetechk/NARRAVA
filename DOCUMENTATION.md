@@ -5,7 +5,7 @@
 > as it has been kept up, and fix anything you find that has drifted. Move things out of
 > "Not built yet" only when they genuinely work.
 >
-> Last reviewed against the code: 2026-09-25.
+> Last reviewed against the code: 2026-09-26.
 
 # Narrava
 
@@ -323,6 +323,30 @@ there.
 | **Revenue & Analytics** | Exists, but every number is honestly zero right now. See [Not built yet](#not-built-yet). |
 | **System Settings** | Free Mode, Maintenance Mode, Featured Series Count (below). |
 
+**On a phone (≤860px wide)**, every page above is fully usable, with nothing removed. Details worth
+knowing before you change admin UI:
+- **The sidebar is a slide-in drawer.** A sticky top bar (menu button, "Narrava Admin", current page
+  name) opens it; it closes from the backdrop, the ✕, Escape, choosing a page, or the window growing
+  past 860px. Sign-out lives in the drawer (it used to be hidden on phones). Built by
+  `setupAdminMobileNav()` in `admin-shared.js`.
+- **Tables become stacked cards.** Below 860px each row is a card with a label in front of every
+  value. The labels come from the table's own header text: `labelAdminTableCells()` in
+  `admin-shared.js` sets a `data-label` on each cell, and re-runs whenever a page re-renders a table,
+  so **a new table needs only a normal `<thead>`** and no per-page mobile code. Cells that span the
+  whole row (the inline edit and delete-confirm forms) get no label. Icon-only buttons show their
+  `title` as text on phones, since there's no hover.
+- **Touch sizes.** Below 860px, or on any touch-first device, buttons, icon buttons, the drawer links
+  and genre chips are at least 44px tall. Each switch has a 44px-tall hit area (its track is drawn by
+  `::before`). Form fields are 16px and 46px tall; below 16px iOS zooms the page when you focus one.
+  The desktop sizes are unchanged.
+- **Don't put grid columns in an inline `style`** on a row that has to stack; an inline style can't be
+  overridden by the phone rules. Use a class in `admin.css` (see `.admin-row-create`, `.admin-row-two`,
+  `.admin-row-add`).
+- Tested at 320, 360, 390 and 820px wide: no sideways page scroll, no target under 44px, no field under
+  16px, on every page and in every inline edit / confirm state. Also tested: the same full sequence of
+  actions on desktop and at 390px produced an identical list of backend writes. That was against a
+  simulated backend, since real admin access wasn't available; it hasn't been run on a physical phone.
+
 Details worth knowing:
 
 - **New series start as drafts.** Publish them from Series List. The consumer app doesn't filter
@@ -390,7 +414,7 @@ own files, which leads to the first gotcha below.
 
 **1. The service worker can keep serving old files after you deploy.** `sw.js` answers requests
 for the app's own files from its cache first and only goes to the network when it has nothing
-cached. The cache name is currently `narrava-shell-v9` and old caches are deleted only when the name
+cached. The cache name is currently `narrava-shell-v10` and old caches are deleted only when the name
 *changes*. So after changing any app file, people who have already visited can keep getting the
 old version. **Bump `CACHE_NAME` in `sw.js` whenever you ship a change.** The service worker's
 scope is the whole `narrava/` folder, so this affects the **admin pages too**, not only the

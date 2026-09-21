@@ -5,7 +5,7 @@
 > as it has been kept up, and fix anything you find that has drifted. Move things out of
 > "Not built yet" only when they genuinely work.
 >
-> Last reviewed against the code: 2026-09-28.
+> Last reviewed against the code: 2026-09-29.
 
 # Narrava
 
@@ -424,30 +424,37 @@ embedded browser; "already installed" when running as the installed app; and an 
 doesn't offer a one-tap install" note (with what to do instead) everywhere else. The button does not
 touch the automatic popup's per-visit flags, so using it never uses up an automatic chance.
 
-**Installed iPhone: the strip at the bottom.** Status: **not confirmed fixed on a real iPhone.** What
-is established: with a simulated safe area, every Narrava screen and state paints all the way to
-the bottom edge, so the app itself leaves no gap, and `viewport-fit=cover` has been in the page
-since the first commit. The strip is therefore iOS handing the page a layout viewport shorter than
-the physical screen, with the page background showing below it. That is why the earlier attempts
-(sizing with `100dvh`, then `position:fixed; inset:0` plus a dark `html` background) could not
-work or only changed the strip's colour: all of them measure against that same short viewport.
-What `js/layout-guard.js` does now: an invisible probe measures the viewport iOS really provided;
-on an installed iPhone (portrait, phone width), if it is 2-120px shorter than `screen`, it sets
-`--app-shortfall` and `styles.css` extends `.phone` that far past the viewport bottom and treats
-the extension as bottom safe area (`--safe-bottom`, also used for the bottom nav, name block,
-icons, scrub bar and sheets, so controls still clear the home indicator). Everywhere else it is
-`0px` and nothing changes. **Not proven:** whether iOS actually paints content in the strip it
-left out of the viewport. That could only be tested with a simulated shortfall in Chrome. **If a
-strip remains on a real iPhone**, open the diagnostics panel (tap the avatar on the Profile screen
-5 times quickly, or load the page with `?layout=1` in a browser tab); it prints `screen`, `inner`,
-`visualViewport`, the safe-area values, the `.phone` position and the viewport meta, which say
-exactly what iOS is doing and what to change next.
+**Installed iPhone: the strip at the bottom.** Status: **still not confirmed fixed.** History, so
+nobody repeats it: sizing with `100dvh`, then `position:fixed; inset:0` plus a dark `html`
+background, both failed (the second only changed the strip's colour), because both are measured
+against a viewport that iOS makes shorter than the screen. `js/layout-guard.js` then measured that.
+
+**Real-device numbers (iPhone, screen 390x844):** `window.inner` height 797, so 47px short;
+`.phone` correctly stretched to the full 844; a gap was still visible. Findings from those numbers:
+- **The inner screens are not the cause.** Recreated exactly (viewport 797, screen 844): `#feed`,
+  `#discoverScreen`, `#libraryScreen`, `#profileScreen` and `.bottomnav` all measure to 844 inside
+  `.phone`. They are `position:absolute; inset:0` with no viewport units, so they follow `.phone`.
+- **47 is that iPhone's TOP safe-area height (status bar), not the bottom one (34).** So the 47px iOS
+  withheld may be at the top, and extending the bottom would then be the wrong edge (it would push the
+  bottom of the app off the screen). The guard now decides using `env(safe-area-inset-top)`, which is
+  non-zero only when the page may draw *under* the status bar: top inset > 0 means the missing part
+  is at the bottom, so extend the bottom by the shortfall (`--app-shortfall` / `--safe-bottom`, which
+  `styles.css` uses for `.phone`, the nav, controls and sheets); top inset = 0 means the page starts
+  below an opaque status bar and the missing part is the status bar itself, so extend nothing. In
+  that second case the fix is about the status bar style, not the layout.
+- **Still unknown, needs one more look on the device:** which edge is really missing, and whether iOS
+  paints content past its viewport at all. Open the diagnostics panel (tap the avatar on the Profile
+  screen 5 times quickly, or load the page with `?layout=1` in a browser tab). It prints screen,
+  inner, `visualViewport`, safe-area top/bottom, and "missing edge inferred". Its **Edge markers**
+  button draws a RED bar at the top of `.phone`, a BLUE bar at its bottom, and a GREEN bar at the
+  bottom of the layout viewport. A screenshot then shows directly what is painted where: BLUE visible
+  means the extension is painted; only GREEN visible means iOS does not paint past its viewport.
 
 ## Things that are easy to get wrong
 
 **1. The service worker can keep serving old files after you deploy.** `sw.js` answers requests
 for the app's own files from its cache first and only goes to the network when it has nothing
-cached. The cache name is currently `narrava-shell-v13` and old caches are deleted only when the name
+cached. The cache name is currently `narrava-shell-v14` and old caches are deleted only when the name
 *changes*. So after changing any app file, people who have already visited can keep getting the
 old version. **Bump `CACHE_NAME` in `sw.js` whenever you ship a change.** The service worker's
 scope is the whole `narrava/` folder, so this affects the **admin pages too**, not only the

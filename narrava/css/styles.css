@@ -9,6 +9,12 @@
     --leaf-deep:#588C40;
     --gold:#E8B85C;
     --gold-deep:#C99A3E;
+    /* layout-guard.js sets --app-shortfall when an installed iPhone hands the
+       page a viewport shorter than the screen. --safe-bottom is the space
+       bottom controls must clear: the real home-indicator inset, or that
+       shortfall if it's larger. Both are 0px wherever there's no gap. */
+    --app-shortfall:0px;
+    --safe-bottom:max(env(safe-area-inset-bottom, 0px), var(--app-shortfall, 0px));
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
 
@@ -478,7 +484,7 @@
 
   .actionrail{
     position:absolute;
-    right:14px;bottom:calc(36px + env(safe-area-inset-bottom));
+    right:14px;bottom:calc(36px + var(--safe-bottom));
     display:flex;
     flex-direction:column;
     align-items:center;
@@ -528,7 +534,7 @@
     display:none;
     position:absolute;
     left:16px;right:16px;
-    bottom:calc(16px + env(safe-area-inset-bottom));
+    bottom:calc(16px + var(--safe-bottom));
     z-index:40;
     align-items:center;
     gap:10px;
@@ -573,7 +579,7 @@
   .info{
     position:absolute;
     left:22px;right:66px;
-    bottom:calc(24px + env(safe-area-inset-bottom));
+    bottom:calc(24px + var(--safe-bottom));
     z-index:40;
   }
   /* .info and .actionrail now use the same bottom offsets in browsing and
@@ -655,8 +661,8 @@
   .bottomnav{
     position:absolute;
     left:0;right:0;bottom:0;
-    height:calc(78px + env(safe-area-inset-bottom));
-    padding-bottom:env(safe-area-inset-bottom);
+    height:calc(78px + var(--safe-bottom));
+    padding-bottom:var(--safe-bottom);
     background:rgba(23,32,26,0.92);
     backdrop-filter:blur(6px);
     border-top:1px solid rgba(255,255,255,0.06);
@@ -707,7 +713,7 @@
     transform:translateY(102%);
     transition:transform 0.35s cubic-bezier(.2,.8,.2,1);
     z-index:90;
-    padding:10px 18px calc(18px + env(safe-area-inset-bottom));
+    padding:10px 18px calc(18px + var(--safe-bottom));
     display:flex;
     flex-direction:column;
   }
@@ -915,7 +921,7 @@
     display:none;
     position:absolute;
     left:12px;right:12px;
-    bottom:calc(90px + env(safe-area-inset-bottom));
+    bottom:calc(90px + var(--safe-bottom));
     z-index:46;
     align-items:center;
     gap:10px;
@@ -1766,9 +1772,10 @@
          short of the real screen (the strip at the bottom); fixed + inset
          always spans it, including under the home indicator — which the
          page opts in to with viewport-fit=cover in index.html. Bottom UI
-         then clears the indicator with env(safe-area-inset-bottom) below. */
+         then clears the indicator with --safe-bottom below. */
       position:fixed;
-      inset:0;
+      top:0;left:0;right:0;
+      bottom:calc(-1 * var(--app-shortfall, 0px));   /* 0 normally; on an iPhone whose viewport is short, reaches down to the real screen bottom (layout-guard.js) */
       width:auto;
       max-width:none;
       height:auto;
@@ -1776,7 +1783,7 @@
       border:none;
       border-radius:0;
       box-shadow:none;
-      padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+      padding:env(safe-area-inset-top) env(safe-area-inset-right) var(--safe-bottom) env(safe-area-inset-left);
     }
     .notch,
     .statusbar,

@@ -5,7 +5,7 @@
 > as it has been kept up, and fix anything you find that has drifted. Move things out of
 > "Not built yet" only when they genuinely work.
 >
-> Last reviewed against the code: 2026-09-26.
+> Last reviewed against the code: 2026-09-27.
 
 # Narrava
 
@@ -401,20 +401,43 @@ banner or a button in Profile; on iPhone (which has no install prompt for websit
 "Tap Share, then Add to Home Screen" instructions. That covers **every real browser on iPhone**
 (Safari, Chrome, Firefox, Edge…), not just Safari, since iOS 16.4 let them all add to the home
 screen. Webviews embedded in other apps (Facebook, Instagram, Line, WeChat…) can't add to the home
-screen, so they get nothing; see `isIOSBrowserThatCanInstall()` in `pwa-install.js`. There are two install chances per browser: once on a normal
-visit, and once after the person has watched a few seconds of an episode and returned to Home.
-State is kept in `localStorage` (once per browser profile, which matters when testing with several
-user agents). Layout on an installed iPhone: `html` has a dark background (the page canvas used to
-fall back to white), and below 600px `.phone` is pinned with `position:fixed; inset:0` instead of
-`100vh`/`100dvh`, so it fills the real screen including under the home indicator (`viewport-fit=cover`
-is set). Bottom UI adds `env(safe-area-inset-bottom)` to clear the indicator. The service worker also gives cache-first loading of the app's
-own files, which leads to the first gotcha below.
+screen, so they get nothing; see `isIOSBrowserThatCanInstall()` in `pwa-install.js`.
+
+**When the install popup shows.** Two moments **every visit**, until the app is genuinely installed:
+once on a normal visit, and once more after watching part of an episode (3+ seconds) and returning
+to Home. Closing or cancelling it only dismisses it for the rest of that visit. Nothing about "already
+shown" is stored on the device (it used to be, in `localStorage`, so anyone who closed it once never
+saw it again; those old `narrava_pwa_*` keys are ignored now). The **only** thing that ends the
+prompts is the app actually running installed: `isStandaloneDisplay()` (`display-mode: standalone`,
+`navigator.standalone`, or an `android-app://` referrer), or the browser reporting `appinstalled`
+(for the rest of that visit). One limit: a browser cannot tell a page that the app is installed
+elsewhere on the device, so someone who installed it but opens it in a browser tab will still see the
+popup there. Never on a desktop-width window.
+
+**Installed iPhone: the strip at the bottom.** Status: **not confirmed fixed on a real iPhone.** What
+is established: with a simulated safe area, every Narrava screen and state paints all the way to
+the bottom edge, so the app itself leaves no gap, and `viewport-fit=cover` has been in the page
+since the first commit. The strip is therefore iOS handing the page a layout viewport shorter than
+the physical screen, with the page background showing below it. That is why the earlier attempts
+(sizing with `100dvh`, then `position:fixed; inset:0` plus a dark `html` background) could not
+work or only changed the strip's colour: all of them measure against that same short viewport.
+What `js/layout-guard.js` does now: an invisible probe measures the viewport iOS really provided;
+on an installed iPhone (portrait, phone width), if it is 2-120px shorter than `screen`, it sets
+`--app-shortfall` and `styles.css` extends `.phone` that far past the viewport bottom and treats
+the extension as bottom safe area (`--safe-bottom`, also used for the bottom nav, name block,
+icons, scrub bar and sheets, so controls still clear the home indicator). Everywhere else it is
+`0px` and nothing changes. **Not proven:** whether iOS actually paints content in the strip it
+left out of the viewport. That could only be tested with a simulated shortfall in Chrome. **If a
+strip remains on a real iPhone**, open the diagnostics panel (tap the avatar on the Profile screen
+5 times quickly, or load the page with `?layout=1` in a browser tab); it prints `screen`, `inner`,
+`visualViewport`, the safe-area values, the `.phone` position and the viewport meta, which say
+exactly what iOS is doing and what to change next.
 
 ## Things that are easy to get wrong
 
 **1. The service worker can keep serving old files after you deploy.** `sw.js` answers requests
 for the app's own files from its cache first and only goes to the network when it has nothing
-cached. The cache name is currently `narrava-shell-v10` and old caches are deleted only when the name
+cached. The cache name is currently `narrava-shell-v11` and old caches are deleted only when the name
 *changes*. So after changing any app file, people who have already visited can keep getting the
 old version. **Bump `CACHE_NAME` in `sw.js` whenever you ship a change.** The service worker's
 scope is the whole `narrava/` folder, so this affects the **admin pages too**, not only the
@@ -435,7 +458,7 @@ or returns a not-found error right after you created it, try this first.
 order, and files call functions defined in other files (for example `app.js` calls
 `renderProfileScreen()`, which lives in `profile.js`, loaded later). That works because those
 calls happen after everything has loaded, but a new file has to go in the right place in the
-list, and names must not collide across files. The current order: `protect` → `config` → supabase-js → hls.js
+list, and names must not collide across files. The current order: `protect` → `layout-guard` → `config` → supabase-js → hls.js
 → `supabase-client` → `shared-utils` → `video-player` → `watch-progress` → `visit-log` →
 `social` → `comments-panel` → `feed-data` → `app` → `discover` → `library` → `watch` → `auth` →
 `profile` → `pwa-install` → `nav`. Admin pages load `config`, supabase-js, `supabase-client`,

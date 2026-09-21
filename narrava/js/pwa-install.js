@@ -9,11 +9,15 @@
 // that did nothing would be worse than just being straightforward about
 // the two real steps.
 //
-// Two real chances, never more: once on a normal visit, and once more
-// after actually watching part of an episode and returning to the real
-// Home screen — see evaluateInstallPrompt() below. Both live in
-// localStorage so they survive reloads but never repeat once already
-// used up on this browser.
+// Two real chances, EVERY visit, until the app is genuinely installed: once
+// on a normal visit, and once more after actually watching part of an
+// episode and returning to the real Home screen — see
+// evaluateInstallPrompt() below. The only thing that ever ends them for
+// good is the app actually running installed (isStandaloneDisplay()).
+// Closing or cancelling the popup is not "installed": it only dismisses it
+// for the rest of that visit. (It used to remember that each chance had
+// been shown once, in localStorage, so anyone who closed it a single time
+// never saw it again.)
 
 if('serviceWorker' in navigator){
   navigator.serviceWorker.register('sw.js').catch((err) => {
@@ -21,9 +25,14 @@ if('serviceWorker' in navigator){
   });
 }
 
-const LS_INITIAL_SHOWN = 'narrava_pwa_initial_shown';
-const LS_SECOND_SHOWN = 'narrava_pwa_second_shown';
-const LS_WATCHED_EPISODE = 'narrava_pwa_watched_episode'; // set by watch-progress.js
+// Per-visit state only — deliberately NOT persisted. A new page load / app
+// open starts them all fresh, so someone who dismissed the popup last time
+// and still hasn't installed sees it again. (Old localStorage keys from the
+// once-only version, narrava_pwa_*, are simply ignored now.)
+let shownInitialThisVisit = false;
+let shownAfterWatchThisVisit = false;
+let watchedThisVisit = false;
+let installedThisVisit = false; // the browser said the install just happened (Android/Chrome 'appinstalled')
 
 const pwaModalBackdrop = document.getElementById('pwaModalBackdrop');
 const pwaModalBody = document.getElementById('pwaModalBody');
@@ -149,27 +158,36 @@ function showModal(){
   pwaModalBackdrop.classList.add('open');
 }
 
-// The one real gate for both real chances: never once actually
-// installed, never on the desktop preview, and never more than the two
-// real moments below — a normal visit (first), and returning to Home
-// after genuinely watching part of an episode (second, and last).
+// The one real gate for both real chances. Popups are suppressed for good
+// ONLY when the app is genuinely running installed (standalone display —
+// the home-screen app itself, not a browser tab), or, on Android, the
+// browser has just reported the install. Everything else — never seen it,
+// seen it and closed it, seen it many times — still gets it, at exactly
+// two moments per visit: a normal visit (first), and returning to Home
+// after genuinely watching part of an episode (second). Never on the
+// desktop preview.
 function evaluateInstallPrompt(){
   if(modalVisible) return;
+  if(installedThisVisit) return;
   if(isStandaloneDisplay()) return;
   if(!isMobileWidth()) return;
   if(!canOfferInstallHere()) return;
 
-  if(!localStorage.getItem(LS_INITIAL_SHOWN)){
-    localStorage.setItem(LS_INITIAL_SHOWN, '1');
+  if(!shownInitialThisVisit){
+    shownInitialThisVisit = true;
     showModal();
     return;
   }
-  if(localStorage.getItem(LS_SECOND_SHOWN)) return;
-  if(!localStorage.getItem(LS_WATCHED_EPISODE)) return;
+  if(shownAfterWatchThisVisit) return;
+  if(!watchedThisVisit) return;
 
-  localStorage.setItem(LS_SECOND_SHOWN, '1');
+  shownAfterWatchThisVisit = true;
   showModal();
 }
+
+// Called by watch-progress.js once a real 3+ seconds of an episode has
+// played this visit.
+window.narravaPwaMarkWatched = function(){ watchedThisVisit = true; };
 
 // Called by app.js's showScreen() every time the real Home screen
 // becomes the visible one — the only trigger for the second chance.
@@ -185,12 +203,13 @@ window.addEventListener('beforeinstallprompt', (e) => {
 });
 
 window.addEventListener('appinstalled', () => {
+  installedThisVisit = true;
   deferredInstallEvent = null;
   hideModal();
   notifyInstallAvailabilityChanged();
 });
 
-// Real per-visit chance #1. On Android/Chrome this only actually shows
+// Real per-visit chance #1 (every visit until installed). On Android/Chrome this only actually shows
 // once beforeinstallprompt fires (see the handler above calling this
 // same function) — beforeinstallprompt is nearly always asynchronous,
 // so this first call typically only matters for iPhone browsers, which have

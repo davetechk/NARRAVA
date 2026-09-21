@@ -63,17 +63,16 @@ async function bootstrapAnonymousSession(){
 }
 
 // The real "actually watched at least part of an episode" signal used
-// by pwa-install.js to decide whether a second install chance is ever
-// earned — a real 3+ seconds of real position, not just opening one.
-// Set here (not deeper in playback) since every real playback path,
-// feed or watch.js, already funnels position saves through this one
-// function.
-const PWA_WATCHED_EPISODE_KEY = 'narrava_pwa_watched_episode';
+// by pwa-install.js for the install popup's second chance: a real 3+
+// seconds of real position, not just opening one. Set here (not deeper in
+// playback) since every real playback path, feed or watch.js, already
+// funnels position saves through this one function. It's a flag for THIS
+// visit only (held in pwa-install.js) — the popup's second chance is
+// "after watching something, back on Home", every visit, not something a
+// previous visit used up.
 function markEpisodeWatchedForInstallPrompt(positionSeconds){
   if(positionSeconds < 3) return;
-  try {
-    if(!localStorage.getItem(PWA_WATCHED_EPISODE_KEY)) localStorage.setItem(PWA_WATCHED_EPISODE_KEY, '1');
-  } catch(err){ /* private mode / storage disabled — the second install chance just never fires, nothing else depends on this */ }
+  if(typeof window.narravaPwaMarkWatched === 'function') window.narravaPwaMarkWatched();
 }
 
 // Upserts the viewer's position in one episode. Silently does nothing

@@ -1,5 +1,20 @@
 // layout-guard.js
 //
+// NOTE — CONCLUSION FROM THE REAL DEVICE + RESEARCH (2026-09-30): the bottom
+// extension this file used to apply does NOT work and is switched off. On a real
+// iPhone (screen 844, viewport 797) the edge markers showed that iOS paints
+// nothing past its 797px drawing area, whatever height the page's CSS claims. It
+// is a documented iOS 26 behaviour: with apple-mobile-web-app-status-bar-style
+// "black-translucent", iOS draws the page from the top of the screen but sizes
+// its area for the status bar being subtracted, stranding 47px at the bottom
+// (three independent projects measured the identical 797/844; WebKit bug 301108
+// is the open iOS 26 viewport-fit regression). The fix that works is not in CSS:
+// index.html now uses an OPAQUE status bar ("black"), so iOS keeps the top strip
+// for itself and gives the page the whole rest of the screen to the true bottom.
+// This file now only measures and reports (diagnostics panel); shortfall stays 0.
+//
+// (Original notes, kept for the history:)
+//
 // Closes the strip at the bottom of the installed iPhone app, and can show
 // the real numbers behind it. Consumer app only.
 //
@@ -93,7 +108,7 @@
     var top = safeTop();
     // Which edge is missing? See the header. Only the bottom case is acted on.
     var missingEdge = gap ? (top > 0 ? 'bottom' : 'top') : 'none';
-    var shortfall = missingEdge === 'bottom' ? gap : 0;
+    var shortfall = 0; // never extend: iOS does not paint past its viewport (see the note at the top)
     return { viewportHeight: vpH, screenHeight: screenHeightPortrait(), diff: diff, applicable: applicable, gap: gap, safeTop: top, missingEdge: missingEdge, shortfall: shortfall };
   }
 
@@ -150,6 +165,7 @@
       'safe-area env top/right/bottom/left: ' + [envPx('top'), envPx('right'), envPx('bottom'), envPx('left')].join(' / '),
       'screen - viewport = ' + m.diff + 'px   (safe-area top = ' + m.safeTop + 'px)',
       'missing edge inferred: ' + m.missingEdge.toUpperCase() + '   -> applied bottom shortfall: ' + m.shortfall + 'px',
+      'status bar style meta: ' + ((document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]') || {getAttribute: function(){ return 'MISSING'; }}).getAttribute('content')) + '   --top-safe: ' + getComputedStyle(root).getPropertyValue('--top-safe').trim(),
       'visualViewport pageTop/offsetTop: ' + (vv ? Math.round(vv.pageTop) + ' / ' + Math.round(vv.offsetTop) : 'n/a'),
       '--app-shortfall = ' + root.style.getPropertyValue('--app-shortfall'),
       '',

@@ -5,7 +5,7 @@
 > as it has been kept up, and fix anything you find that has drifted. Move things out of
 > "Not built yet" only when they genuinely work.
 >
-> Last reviewed against the code: 2026-09-29.
+> Last reviewed against the code: 2026-09-30.
 
 # Narrava
 
@@ -424,37 +424,47 @@ embedded browser; "already installed" when running as the installed app; and an 
 doesn't offer a one-tap install" note (with what to do instead) everywhere else. The button does not
 touch the automatic popup's per-visit flags, so using it never uses up an automatic chance.
 
-**Installed iPhone: the strip at the bottom.** Status: **still not confirmed fixed.** History, so
-nobody repeats it: sizing with `100dvh`, then `position:fixed; inset:0` plus a dark `html`
-background, both failed (the second only changed the strip's colour), because both are measured
-against a viewport that iOS makes shorter than the screen. `js/layout-guard.js` then measured that.
+**Installed iPhone: the strip at the bottom (iOS 26).** Cause found; fix applied 2026-09-30; **not yet
+confirmed on a device.**
 
-**Real-device numbers (iPhone, screen 390x844):** `window.inner` height 797, so 47px short;
-`.phone` correctly stretched to the full 844; a gap was still visible. Findings from those numbers:
-- **The inner screens are not the cause.** Recreated exactly (viewport 797, screen 844): `#feed`,
-  `#discoverScreen`, `#libraryScreen`, `#profileScreen` and `.bottomnav` all measure to 844 inside
-  `.phone`. They are `position:absolute; inset:0` with no viewport units, so they follow `.phone`.
-- **47 is that iPhone's TOP safe-area height (status bar), not the bottom one (34).** So the 47px iOS
-  withheld may be at the top, and extending the bottom would then be the wrong edge (it would push the
-  bottom of the app off the screen). The guard now decides using `env(safe-area-inset-top)`, which is
-  non-zero only when the page may draw *under* the status bar: top inset > 0 means the missing part
-  is at the bottom, so extend the bottom by the shortfall (`--app-shortfall` / `--safe-bottom`, which
-  `styles.css` uses for `.phone`, the nav, controls and sheets); top inset = 0 means the page starts
-  below an opaque status bar and the missing part is the status bar itself, so extend nothing. In
-  that second case the fix is about the status bar style, not the layout.
-- **Still unknown, needs one more look on the device:** which edge is really missing, and whether iOS
-  paints content past its viewport at all. Open the diagnostics panel (tap the avatar on the Profile
-  screen 5 times quickly, or load the page with `?layout=1` in a browser tab). It prints screen,
-  inner, `visualViewport`, safe-area top/bottom, and "missing edge inferred". Its **Edge markers**
-  button draws a RED bar at the top of `.phone`, a BLUE bar at its bottom, and a GREEN bar at the
-  bottom of the layout viewport. A screenshot then shows directly what is painted where: BLUE visible
-  means the extension is painted; only GREEN visible means iOS does not paint past its viewport.
+*What was measured on a real iPhone (screen 390x844):* `innerHeight` 797, i.e. 47px short. The screens
+inside `.phone` all reached the full height (checked), and edge markers showed that iOS paints nothing
+past its 797px drawing area, whatever height the page's CSS claims. So no CSS extension can work; the
+earlier attempts (`100dvh`, `position:fixed; inset:0`, a dark `html` background, then extending `.phone`
+by the shortfall in `layout-guard.js`) were all doomed for that reason.
+
+*What it is:* a documented iOS 26 behaviour, not a bug in this app. With
+`apple-mobile-web-app-status-bar-style: black-translucent`, iOS draws the page from the top of the
+screen but sizes its drawing area as if the status bar were subtracted, stranding the last 47px at the
+bottom. Three unrelated projects measured the identical 797/844 on iOS 26 and reached the same
+conclusion; WebKit has an open iOS 26 bug that the `viewport-fit=cover` handling regressed
+(bugs.webkit.org/show_bug.cgi?id=301108). Reported fixes that work: switch to an opaque status bar (iOS
+then keeps the top strip for itself and gives the page the rest of the screen, to the true bottom). A
+fix that does not: any CSS/JS height change.
+
+*The fix:* `index.html` now uses `apple-mobile-web-app-status-bar-style: black` (opaque black). Because
+the page then starts *below* the status bar, top-anchored UI must not also leave room for one:
+`styles.css` uses `--top-safe` (46px by default, exactly as before) and, only on an installed phone app
+(`html.standalone-app`, set by an inline script in `<head>`, phone widths), `env(safe-area-inset-top) +
+12px`. The `layout-guard.js` bottom extension is switched off (`shortfall` is always 0); the file now only
+measures and powers the diagnostics panel. **Tradeoff:** the video no longer draws under the status bar;
+there is a black system status bar strip at the top. **After deploying, remove the app from the Home
+Screen and add it again** (the status bar style is commonly reported to be fixed at install time; not
+verified here). If a strip is still there, open the diagnostics panel (tap the Profile avatar 5 times
+quickly, or `?layout=1` in a browser tab) and use **Edge markers**. Caveat on that test: RED/BLUE/GREEN
+bars can only prove "not painted past the viewport" when the panel says the missing edge is BOTTOM; if it
+says TOP, BLUE sits exactly under GREEN and is hidden.
+
+*Manifest display:* it is `"display": "standalone"`. WebKit's own post says iOS 16.4+ accepts `standalone`
+or `fullscreen` in the manifest and opens either as an app; nothing found says `fullscreen` changes this
+viewport shortfall or hides the status bar on iOS, so it was left alone. iOS 26.1 reportedly also made
+Home Screen web apps use an opaque status bar in some situations; either way `black` is the safe choice.
 
 ## Things that are easy to get wrong
 
 **1. The service worker can keep serving old files after you deploy.** `sw.js` answers requests
 for the app's own files from its cache first and only goes to the network when it has nothing
-cached. The cache name is currently `narrava-shell-v14` and old caches are deleted only when the name
+cached. The cache name is currently `narrava-shell-v16` and old caches are deleted only when the name
 *changes*. So after changing any app file, people who have already visited can keep getting the
 old version. **Bump `CACHE_NAME` in `sw.js` whenever you ship a change.** The service worker's
 scope is the whole `narrava/` folder, so this affects the **admin pages too**, not only the

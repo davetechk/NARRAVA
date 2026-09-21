@@ -14,6 +14,10 @@
        bottom controls must clear: the real home-indicator inset, or that
        shortfall if it's larger. Both are 0px wherever there's no gap. */
     --app-shortfall:0px;
+    /* Where top-anchored UI starts. 46px is the old phone-mockup status-bar zone; on an installed
+       phone app (see the standalone override in the max-width:600px block) it becomes the real
+       safe-area inset + 12px, because an opaque status bar means the page already starts below it. */
+    --top-safe:46px;
     --safe-bottom:max(env(safe-area-inset-bottom, 0px), var(--app-shortfall, 0px));
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
@@ -398,7 +402,7 @@
 
   .spine{
     position:absolute;
-    top:96px;bottom:150px;left:9px;
+    top:calc(var(--top-safe) + 50px);bottom:150px;left:9px;
     width:6px;
     display:flex;
     flex-direction:column;
@@ -420,7 +424,7 @@
 
   .topbar{
     position:absolute;
-    top:46px;left:22px;right:22px;
+    top:var(--top-safe);left:22px;right:22px;
     padding-left:44px; /* room for .mutebtn, which sits at the same top-left spot in both states */
     box-sizing:border-box;
     display:flex;
@@ -459,7 +463,7 @@
      the pager dots below it start at top:82px. */
   .mutebtn{
     position:absolute;
-    top:43px;left:22px;
+    top:calc(var(--top-safe) - 3px);left:22px;
     width:34px;height:34px;
     border-radius:50%;
     display:flex;align-items:center;justify-content:center;
@@ -479,7 +483,7 @@
 
   .pager{
     position:absolute;
-    top:82px;left:22px;
+    top:calc(var(--top-safe) + 36px);left:22px;
     display:flex;gap:5px;
     z-index:40;
   }
@@ -852,7 +856,7 @@
 
   .toast{
     position:absolute;
-    top:96px;left:50%;
+    top:calc(var(--top-safe) + 50px);left:50%;
     transform:translateX(-50%) translateY(-12px);
     background:rgba(23,32,26,0.96);
     border:1px solid rgba(125,179,89,0.5);
@@ -891,7 +895,7 @@
     overflow:hidden;
   }
   .discover-header{
-    padding:50px 18px 0;
+    padding:calc(var(--top-safe) + 4px) 18px 0;
   }
   .discover-search{
     display:flex;align-items:center;gap:8px;
@@ -1251,7 +1255,7 @@
     overflow:hidden;
   }
   .library-header{
-    padding:50px 18px 10px;
+    padding:calc(var(--top-safe) + 4px) 18px 10px;
   }
   .library-title{
     margin:0;
@@ -1298,7 +1302,7 @@
     inset:0;
     overflow-y:auto;
     box-sizing:border-box;
-    padding:50px 18px 96px;
+    padding:calc(var(--top-safe) + 4px) 18px 96px;
   }
   .profile-panel{
     width:100%;
@@ -1772,6 +1776,14 @@
   /* Real phones / narrow browser windows: fill the viewport, no
      illustrated phone-frame chrome (that chrome is only useful for
      previewing the mobile-first layout on a wide desktop window). */
+  /* An installed phone app (iOS Home Screen app, Android installed PWA — html.standalone-app, set in
+     index.html's <head> from navigator.standalone / display-mode): the page starts BELOW the
+     status bar, so top-anchored UI needs only the safe-area inset (0 with an opaque bar) + a small
+     margin, not the 46px that made room for a status bar drawn over the page. Only here; browser
+     tabs and the desktop preview keep 46px. */
+  @media (max-width: 600px){
+    html.standalone-app{ --top-safe:calc(env(safe-area-inset-top, 0px) + 12px); }
+  }
   @media (max-width: 600px){
     body{
       padding:0;

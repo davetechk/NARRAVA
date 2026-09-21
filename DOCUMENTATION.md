@@ -5,7 +5,7 @@
 > as it has been kept up, and fix anything you find that has drifted. Move things out of
 > "Not built yet" only when they genuinely work.
 >
-> Last reviewed against the code: 2026-09-23.
+> Last reviewed against the code: 2026-09-24.
 
 # Narrava
 
@@ -135,6 +135,22 @@ exits (or closes the installed app). Rules worth knowing:
   enters the watching state without a screen change must call `navSync()` itself. The desktop
   Watch page's on-screen ← calls `navBack()` so it behaves exactly like the browser's Back.
 - Back out of watching stops the video and saves progress, the same as any other navigation.
+
+**Copy and DevTools deterrents** (`js/protect.js`, consumer app only, never the admin pages).
+Casual-friction only, **not security**: anyone determined can get around all of it (JavaScript off,
+another browser, screen capture). Real protection is the server side: short-lived signed video
+links and the lock rule in `bunny-signed-playback-url`. It does four things: blocks the right-click
+/ long-press menu; blocks text selection, copy, cut and drag (`user-select:none` under
+`html.protected`, plus event handlers); blocks F12, Ctrl/Cmd+Shift+I/J/C and view-source
+(Ctrl+U, Cmd+Option+U); and runs a `debugger` statement every 100ms, which does nothing with
+DevTools closed and pauses execution constantly with it open. Text fields are always exempt (the
+comment box, sign-in, search and username need selection and paste; on iOS a field inside a
+`user-select:none` page can't be typed into unless it's re-enabled, which the CSS does). Opening
+DevTools from the browser menu can't be blocked. **Developer escape hatch:** run
+`localStorage.narrava_devtools_ok = '1'` in the console and reload to turn every part off; remove
+it with `localStorage.removeItem('narrava_devtools_ok')`. Without it, the `debugger` loop makes
+debugging the live site impractical. If it ever "does nothing," first check that `protect.js` is
+actually in the script list in `index.html` and deployed (it was once missing entirely).
 
 **Scroll isolation.** The bottom sheets (comments, episode grid, Get Coins) sit inside `#feed`,
 which owns the swipe listeners, so touches and wheel scrolls inside a sheet used to bubble up and
@@ -365,7 +381,7 @@ own files, which leads to the first gotcha below.
 
 **1. The service worker can keep serving old files after you deploy.** `sw.js` answers requests
 for the app's own files from its cache first and only goes to the network when it has nothing
-cached. The cache name is currently `narrava-shell-v7` and old caches are deleted only when the name
+cached. The cache name is currently `narrava-shell-v8` and old caches are deleted only when the name
 *changes*. So after changing any app file, people who have already visited can keep getting the
 old version. **Bump `CACHE_NAME` in `sw.js` whenever you ship a change.** The service worker's
 scope is the whole `narrava/` folder, so this affects the **admin pages too**, not only the
@@ -386,7 +402,7 @@ or returns a not-found error right after you created it, try this first.
 order, and files call functions defined in other files (for example `app.js` calls
 `renderProfileScreen()`, which lives in `profile.js`, loaded later). That works because those
 calls happen after everything has loaded, but a new file has to go in the right place in the
-list, and names must not collide across files. The current order: `config` → supabase-js → hls.js
+list, and names must not collide across files. The current order: `protect` → `config` → supabase-js → hls.js
 → `supabase-client` → `shared-utils` → `video-player` → `watch-progress` → `visit-log` →
 `social` → `comments-panel` → `feed-data` → `app` → `discover` → `library` → `watch` → `auth` →
 `profile` → `pwa-install` → `nav`. Admin pages load `config`, supabase-js, `supabase-client`,

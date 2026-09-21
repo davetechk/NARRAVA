@@ -12,6 +12,28 @@
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
 
+  /* Text-selection deterrent (see js/protect.js). Only applies once that
+     script has put .protected on <html>, so the admin pages, which share
+     this stylesheet but never load protect.js, are unaffected. Text fields
+     must stay selectable — and on iOS, a field inside a user-select:none
+     page can't be typed into at all unless it is explicitly re-enabled. */
+  html.protected,
+  html.protected body{
+    -webkit-user-select:none;
+    user-select:none;
+    -webkit-touch-callout:none;
+  }
+  html.protected input,
+  html.protected textarea,
+  html.protected [contenteditable="true"]{
+    -webkit-user-select:text;
+    user-select:text;
+  }
+  html.protected img,
+  html.protected video{
+    -webkit-user-drag:none;
+  }
+
   /* Real maintenance mode (app_settings.maintenance_mode_enabled — see
      app.js's renderMaintenanceMode) — replaces the entire real page,
      nothing else loads underneath it. The admin panel (admin/*.html)

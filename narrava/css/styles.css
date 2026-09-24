@@ -2655,6 +2655,10 @@
       background:#000;
       position:relative;
     }
+    /* The mute button (same .mutebtn as the mobile feed) sits in the video's top-left corner. */
+    .watch-player-box .mutebtn{
+      top:14px;left:14px;
+    }
     .watch-player-inner{
       width:100%;height:100%;
       position:relative;

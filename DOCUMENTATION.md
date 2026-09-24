@@ -5,7 +5,7 @@
 > as it has been kept up, and fix anything you find that has drifted. Move things out of
 > "Not built yet" only when they genuinely work.
 >
-> Last reviewed against the code: 2026-09-30.
+> Last reviewed against the code: 2026-09-21.
 
 # Narrava
 
@@ -102,8 +102,15 @@ Profile. On desktop, opening a series goes to a dedicated Watch page instead.
     key press anywhere turns sound on. Not observed on a real device: desktop Chrome in
     testing treated every load as already interacted-with, so this path was exercised with a
     simulated refusal, and iOS Safari has not been tested at all.
-  - Mute is a feed feature. The desktop watch page plays with sound (its `<video>` is not muted)
-    but has no mute button.
+  - **The desktop watch page has its own mute button** (`#watchMuteBtn`, top-left of the video,
+    a sibling of the video host so a click on it never triggers tap-to-pause or press-and-hold).
+    It is the same `.mutebtn` markup, icons and styles as the feed's, and it uses the same
+    viewer preference (`soundMuted` in `app.js`): it flips the real `<video>`'s `.muted`, every
+    episode started on that page begins from the preference, and it calls `updateMuteButton()`
+    so the feed's button stays in step. `app.js` was not changed for this. Not added to the
+    watch page: the "browser refused sound-on autoplay, so play muted" fallback above, which is
+    playback logic; the desktop watch page still plays with sound as before. Tested live in
+    desktop Chrome only.
 - **Library** (`library.js`): series you've saved. Needs a real (non-anonymous) account.
 - **Profile** (`profile.js`): log in / sign out, username, install-app button, wallet balance
   (see below), and an Admin Panel link that only appears if you're an admin. Most of the other
@@ -464,7 +471,7 @@ Home Screen web apps use an opaque status bar in some situations; either way `bl
 
 **1. The service worker can keep serving old files after you deploy.** `sw.js` answers requests
 for the app's own files from its cache first and only goes to the network when it has nothing
-cached. The cache name is currently `narrava-shell-v16` and old caches are deleted only when the name
+cached. The cache name is currently `narrava-shell-v17` and old caches are deleted only when the name
 *changes*. So after changing any app file, people who have already visited can keep getting the
 old version. **Bump `CACHE_NAME` in `sw.js` whenever you ship a change.** The service worker's
 scope is the whole `narrava/` folder, so this affects the **admin pages too**, not only the

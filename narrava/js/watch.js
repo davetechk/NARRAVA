@@ -56,6 +56,7 @@ let watchPressStartTime = 0;
 let watchPressHolding = false;
 
 const watchBackBtn = document.getElementById('watchBackBtn');
+const watchMuteBtn = document.getElementById('watchMuteBtn');
 const watchPlayerBox = document.getElementById('watchPlayerBox');
 const watchPlayerHost = document.getElementById('watchPlayerHost');
 const watchScrubRange = document.getElementById('watchScrubRange');
@@ -131,6 +132,7 @@ async function watchPlayEpisode(ep, resumeSeconds){
   const video = document.createElement('video');
   video.controls = false;
   video.playsInline = true;
+  video.muted = soundMuted; // the viewer's shared sound preference (app.js); default false = sound on, so nothing changes unless they muted
   video.style.display = 'none';
   // Real loading state instead of a blank/still-loading video for the
   // real wait until the real signed URL/hls.js setup actually resolves —
@@ -140,6 +142,7 @@ async function watchPlayEpisode(ep, resumeSeconds){
   // already happening.
   watchPlayerHost.innerHTML = '<div class="watch-player-loading">' + narravaLoaderHtml('pulse') + '</div>';
   watchPlayerHost.appendChild(video);
+  updateWatchMuteButton();
 
   // The breadcrumb, heading and grid highlight are per-episode (the
   // real site's own heading is literally "Episode N - <title>"), and
@@ -448,3 +451,39 @@ watchShareBtn.addEventListener('click', () => {
   setTimeout(() => watchShareBtn.classList.remove('pulse'), 350);
   if(watchSlide) shareSeries(watchSlide.title, watchSlide.id);
 });
+
+// ---------------- Mute / unmute ----------------
+//
+// Same approach as the mobile feed's mute button (app.js, "Sound"): a real
+// button that flips the real <video>'s own .muted, and one viewer preference
+// — soundMuted, declared in app.js — that every newly created video starts
+// from. So muting here carries to the next episode played on this page and,
+// since it's the same variable, to the mobile feed and back. Nothing in the
+// feed's own sound logic is changed; this only reads and writes that shared
+// preference (and calls updateMuteButton so the feed's button is in step).
+// The button shows the video's real state when there is a video, and the
+// preference when there isn't yet.
+// The <video> is in the host from the moment it's created (it starts loading
+// underneath the spinner), before watchVideoEl is set, so look it up there too:
+// a click while it's still loading must reach it, not only the preference.
+function watchCurrentVideo(){
+  return watchVideoEl || watchPlayerHost.querySelector('video');
+}
+
+function updateWatchMuteButton(){
+  const v = watchCurrentVideo();
+  const off = v ? v.muted : soundMuted;
+  watchMuteBtn.classList.toggle('muted', off);
+  watchMuteBtn.setAttribute('aria-label', off ? 'Unmute' : 'Mute');
+  watchMuteBtn.setAttribute('aria-pressed', off ? 'true' : 'false');
+}
+
+watchMuteBtn.addEventListener('click', () => {
+  const v = watchCurrentVideo();
+  const nowOff = !(v ? v.muted : soundMuted);
+  soundMuted = nowOff;
+  if(v) v.muted = nowOff;
+  updateWatchMuteButton();
+  updateMuteButton(); // app.js: keeps the mobile feed's own button matching the shared preference
+});
+updateWatchMuteButton();

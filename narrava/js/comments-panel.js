@@ -73,7 +73,7 @@ function commentDisplayName(c){
 // Deterministic color from the name so the same person always gets the
 // same avatar color across renders/reloads — not random, not invented
 // per-render.
-const CMT_AVATAR_COLORS = ['#7DB359', '#A9C977', '#588C40', '#3b82c4', '#c47d3b', '#a83b6f', '#3ba894'];
+const CMT_AVATAR_COLORS = ['#1A8445', '#157A3A', '#0F6B32', '#3b82c4', '#c47d3b', '#a83b6f', '#3ba894'];
 function commentAvatarHtml(name){
   const initial = name.trim().charAt(0).toUpperCase() || 'N';
   let hash = 0;

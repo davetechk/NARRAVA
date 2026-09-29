@@ -54,6 +54,13 @@ Browser (static files in narrava/)          Supabase                       Bunny
   modules. Every file is a plain script that defines global functions, and `index.html` loads
   them in a specific order (see [Gotchas](#things-that-are-easy-to-get-wrong)).
 - **`narrava/css/`**: `styles.css` (the app, and also used by admin) and `admin.css` (admin only).
+  Brand color lives in three CSS custom properties defined once, in `styles.css`'s `:root`, and
+  reused by `admin.css` rather than redefined: `--leaf: #1ED760` (Spotify green, the main brand
+  color), `--leaf-deep: #1DB954` (hover/pressed states), `--leaf-light: #62E390` (lighter accents,
+  active nav/tab text). Rule: wherever text or icons sit on a **solid** `--leaf`/`--leaf-deep`
+  fill (buttons, active chips/tags/tabs), the text color is `#0D130E` (near-black), not white —
+  white-on-green fails contrast at this brightness. Text that is green *on a dark background*
+  (tinted/rgba fills, nav links, badges) stays green.
 - **`narrava/sw.js`, `manifest.json`, `img/`**: the installable-app pieces.
 - **`js/config.js`**: the Supabase URL and the *anon* (public) key. These are meant to be in the
   browser; what the key can actually do is decided by database policies. A service-role key must

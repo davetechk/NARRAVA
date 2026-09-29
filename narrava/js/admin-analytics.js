@@ -79,15 +79,15 @@ function lineChartSvg(series){
   }).join('');
 
   const dots = points.map(pt =>
-    '<circle cx="' + pt.x.toFixed(1) + '" cy="' + pt.y.toFixed(1) + '" r="3" fill="#7DB359">' +
+    '<circle cx="' + pt.x.toFixed(1) + '" cy="' + pt.y.toFixed(1) + '" r="3" fill="#1ED760">' +
       '<title>' + pt.p.date + ': ' + pt.p.count + ' visit' + (pt.p.count === 1 ? '' : 's') + '</title>' +
     '</circle>'
   ).join('');
 
   return '<svg viewBox="0 0 ' + W + ' ' + H + '" class="admin-line-chart-svg" preserveAspectRatio="none">' +
     gridLines +
-    '<path d="' + areaPath + '" fill="rgba(125,179,89,0.14)" stroke="none"/>' +
-    '<polyline points="' + linePoints + '" fill="none" stroke="#7DB359" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>' +
+    '<path d="' + areaPath + '" fill="rgba(30,215,96,0.14)" stroke="none"/>' +
+    '<polyline points="' + linePoints + '" fill="none" stroke="#1ED760" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>' +
     dots +
     labels +
   '</svg>';

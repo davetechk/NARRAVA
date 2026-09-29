@@ -4,9 +4,9 @@
     --panel-2:#1C271E;
     --text:#F4F7F1;
     --muted:#9BAE95;
-    --leaf-light:#A9C977;
-    --leaf:#7DB359;
-    --leaf-deep:#588C40;
+    --leaf-light:#62E390;
+    --leaf:#1ED760;
+    --leaf-deep:#1DB954;
     --gold:#E8B85C;
     --gold-deep:#C99A3E;
     /* layout-guard.js sets --app-shortfall when an installed iPhone hands the
@@ -415,7 +415,7 @@
     background:rgba(244,247,241,0.16);
     transition:all 0.3s ease;
   }
-  .tick.watched{background:rgba(169,201,119,0.55);}
+  .tick.watched{background:rgba(98,227,144,0.55);}
   .tick.current{
     width:6px;height:16px;
     background:var(--gold);
@@ -650,7 +650,7 @@
     cursor:pointer;
     letter-spacing:0.2px;
   }
-  .continue:active{background:var(--leaf-deep); color:#fff;}
+  .continue:active{background:var(--leaf-deep); color:#0D130E;}
   .unlock{
     background:rgba(232,184,92,0.14);
     border:1px solid rgba(232,184,92,0.55);
@@ -773,7 +773,7 @@
     cursor:pointer;
   }
   .region-btn.active{
-    background:rgba(125,179,89,0.16);
+    background:rgba(30,215,96,0.16);
     border-color:var(--leaf);
     color:var(--leaf-light);
   }
@@ -831,7 +831,7 @@
   }
   .method.active{
     border-color:var(--leaf);
-    background:rgba(125,179,89,0.16);
+    background:rgba(30,215,96,0.16);
     color:var(--leaf-light);
   }
   .pay-btn{
@@ -859,7 +859,7 @@
     top:calc(var(--top-safe) + 50px);left:50%;
     transform:translateX(-50%) translateY(-12px);
     background:rgba(23,32,26,0.96);
-    border:1px solid rgba(125,179,89,0.5);
+    border:1px solid rgba(30,215,96,0.5);
     color:var(--leaf-light);
     font-size:12.5px;font-weight:700;
     padding:9px 16px;
@@ -1077,7 +1077,7 @@
     border-radius:12px;
     cursor:pointer;
   }
-  .pwa-modal-btn-primary:active{background:var(--leaf-deep); color:#fff;}
+  .pwa-modal-btn-primary:active{background:var(--leaf-deep); color:#0D130E;}
   .pwa-modal-btn-secondary{
     width:100%;
     background:none;
@@ -1129,7 +1129,7 @@
     cursor:pointer;
   }
   .dtab.active{
-    background:rgba(125,179,89,0.16);
+    background:rgba(30,215,96,0.16);
     border-color:var(--leaf);
     color:var(--leaf-light);
   }
@@ -1162,7 +1162,7 @@
     cursor:pointer;
   }
   .genre-chip.active{
-    background:rgba(125,179,89,0.16);
+    background:rgba(30,215,96,0.16);
     border-color:var(--leaf);
     color:var(--leaf-light);
   }
@@ -1346,7 +1346,7 @@
   .profile-banner{
     display:flex;align-items:center;justify-content:space-between;
     width:100%;
-    background:linear-gradient(120deg, rgba(232,184,92,0.18), rgba(125,179,89,0.14));
+    background:linear-gradient(120deg, rgba(232,184,92,0.18), rgba(30,215,96,0.14));
     border:1px solid rgba(232,184,92,0.35);
     border-radius:14px;
     padding:14px 16px;
@@ -1706,8 +1706,8 @@
   .auth-error.show{display:block;}
   .auth-error.note{
     color:var(--leaf-light);
-    background:rgba(125,179,89,0.12);
-    border-color:rgba(125,179,89,0.4);
+    background:rgba(30,215,96,0.12);
+    border-color:rgba(30,215,96,0.4);
   }
   .auth-label{
     display:block;
@@ -1753,7 +1753,7 @@
   }
   .auth-submit:active:not(:disabled){
     background:var(--leaf-deep);
-    color:#fff;
+    color:#0D130E;
   }
   .auth-switch{
     text-align:center;

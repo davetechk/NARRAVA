@@ -67,17 +67,18 @@
      for any general-purpose "just needs a moment" wait, and orbiting
      dots specifically for the one real wait this app has where the
      on-screen state genuinely lags reality — Bunny Stream still
-     processing an episode after upload. The only change from the
-     reviewed build is the mark at the center: Narrava's own real icon,
-     a traced vector pulled directly from the actual logo file
-     (narrava/img/load_img_icon.svg), inlined as real <svg> markup
-     (NARRAVA_LOADER_ICON_SVG in shared-utils.js) rather than an <img
-     src> — no broken-image path to get wrong — in place of the
-     placeholder "N" box, used as-is with no added circle or background
-     shape behind it. Sizing is controlled entirely by
-     .narrava-loader-icon below; the SVG's own viewBox scales inside it
-     the same way an <img> would. See narravaLoaderHtml() in
-     shared-utils.js for the markup this CSS is styling. */
+     processing an episode after upload. The mark at the center is
+     Narrava's own real triangle logo — a clean single-path vector
+     (narrava/img/narrava-mark.svg), inlined as real <svg> markup
+     (NARRAVA_MARK_SVG in shared-utils.js, fill="currentColor" so it's
+     colored from here) rather than an <img src> — no broken-image path
+     to get wrong — in place of the placeholder "N" box, used as-is with
+     no added circle or background shape behind it. The pulse variant's
+     two echoing rings are the same mark too now (not a plain rounded
+     square), sized to fill .pulse-ring; the center copy is sized by
+     .narrava-mark-icon below, its own viewBox scaling inside it the
+     same way an <img> would. See narravaLoaderHtml() in shared-utils.js
+     for the markup this CSS is styling. */
   .narrava-loading-block{
     display:flex;flex-direction:column;align-items:center;
     gap:14px;
@@ -97,28 +98,45 @@
     position:relative;width:64px;height:64px;
     display:flex;align-items:center;justify-content:center;
   }
-  .narrava-loader-icon{
+  .narrava-mark-icon{
     width:32px;height:32px;
-    object-fit:contain;
     position:relative;z-index:2;
     display:block;
+    color:var(--leaf);
   }
   /* Variant: gentle pulse — general purpose */
   .narrava-loader-pulse .pulse-ring{
-    position:absolute;width:42px;height:42px;border-radius:14px;
-    background:var(--leaf);
+    position:absolute;width:42px;height:42px;
+    display:flex;align-items:center;justify-content:center;
     opacity:0;
     animation:narrava-pulse 1.8s ease-out infinite;
   }
+  .narrava-loader-pulse .pulse-ring .narrava-mark-icon{
+    width:100%;height:100%;
+  }
   .narrava-loader-pulse .pulse-ring.delay{ animation-delay:.9s; }
-  .narrava-loader-pulse .narrava-loader-icon{ animation:narrava-breathe 1.8s ease-in-out infinite; }
+  .narrava-loader-pulse > .narrava-mark-icon{ animation:narrava-breathe 1.8s ease-in-out infinite; }
   @keyframes narrava-pulse{
     0%{ transform:scale(.7); opacity:.55; }
     100%{ transform:scale(1.7); opacity:0; }
   }
   @keyframes narrava-breathe{
-    0%,100%{ transform:scale(1); }
-    50%{ transform:scale(1.08); }
+    0%,100%{ transform:scale(.92); }
+    50%{ transform:scale(1.04); }
+  }
+  /* prefers-reduced-motion: the two echoing rings (a scale+opacity
+     animation by nature) go away entirely rather than being slowed
+     down or frozen mid-scale; the center mark keeps *a* sense of
+     "still loading" but only through opacity, never transform. Scoped
+     to the pulse variant only — orbit's dots aren't touched here, see
+     showBunnyProcessingToast/narravaLoaderHtml above. */
+  @media (prefers-reduced-motion: reduce){
+    .narrava-loader-pulse .pulse-ring{ display:none; }
+    .narrava-loader-pulse > .narrava-mark-icon{ animation:narrava-mark-fade 1.8s ease-in-out infinite; }
+  }
+  @keyframes narrava-mark-fade{
+    0%,100%{ opacity:.55; }
+    50%{ opacity:1; }
   }
   /* Variant: orbit dots — Bunny Stream processing wait */
   .narrava-loader-orbit .orbit{
@@ -156,7 +174,7 @@
     opacity:1;transform:translateX(-50%) translateY(0);
   }
   .narrava-processing-toast .narrava-loader{ width:36px;height:36px;flex-shrink:0; }
-  .narrava-processing-toast .narrava-loader-icon{ width:18px;height:18px; }
+  .narrava-processing-toast .narrava-mark-icon{ width:18px;height:18px; }
   .narrava-processing-toast .narrava-loader-orbit .dot{ width:4px;height:4px; }
   .narrava-processing-toast .narrava-loader-orbit .dot:nth-child(1){ transform:rotate(0deg) translate(16px) translate(-2px,-2px); }
   .narrava-processing-toast .narrava-loader-orbit .dot:nth-child(2){ transform:rotate(120deg) translate(16px) translate(-2px,-2px); }

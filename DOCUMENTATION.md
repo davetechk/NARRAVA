@@ -61,6 +61,15 @@ Browser (static files in narrava/)          Supabase                       Bunny
   fill (buttons, active chips/tags/tabs), the text color is `#0D130E` (near-black), not white —
   white-on-green fails contrast at this brightness. Text that is green *on a dark background*
   (tinted/rgba fills, nav links, badges) stays green.
+- **Loading indicator**: one shared implementation, `narravaLoaderHtml(variant, label)` in
+  `js/shared-utils.js`, used by every loading state in both the consumer app and admin (feed,
+  Home, Library, comments, the desktop Watch player and its episode grid, admin's Series List and
+  Episodes tables, and the Bunny-upload-processing toast). The center mark — and, in the `'pulse'`
+  variant, the copy inside each echoing ring — is `NARRAVA_MARK_SVG`, Narrava's real triangle logo
+  as a single clean path (`img/narrava-mark.svg`, not the old ~90-path trace), `fill="currentColor"`
+  so `.narrava-mark-icon` in `styles.css` colors it `var(--leaf)`. Under
+  `prefers-reduced-motion: reduce`, the pulse variant's rings are hidden entirely and the center
+  mark switches from its normal breathing scale animation to a plain opacity fade — no scaling.
 - **`narrava/sw.js`, `manifest.json`, `img/`**: the installable-app pieces.
 - **`js/config.js`**: the Supabase URL and the *anon* (public) key. These are meant to be in the
   browser; what the key can actually do is decided by database policies. A service-role key must

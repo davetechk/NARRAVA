@@ -403,7 +403,8 @@ document.getElementById('seriesListSearch').addEventListener('input', (e) => {
 
 (async () => {
   await requireAdminSession('series-list');
-  document.getElementById('seriesListTableWrap').innerHTML = narravaLoaderHtml('pulse', 'Loading series…');
+  showSkeletonLogo();
+  document.getElementById('seriesListTableWrap').innerHTML = skeletonAdminSeriesTableHtml(6);
 
   try {
     const [core, episodesResult] = await Promise.all([
@@ -428,5 +429,12 @@ document.getElementById('seriesListSearch').addEventListener('input', (e) => {
   } catch(err){
     console.error('Narrava: failed to load series list', err);
     showToast('Could not load series — please try again');
+    // The toast alone used to leave the loader (now the skeleton) sitting
+    // there forever on a genuine failure — this is that area's one
+    // honest error state, matching the empty-state markup renderTable()
+    // itself already uses elsewhere in this file.
+    document.getElementById('seriesListTableWrap').innerHTML = '<div class="admin-empty">Could not load series — please try again.</div>';
+  } finally {
+    hideSkeletonLogo();
   }
 })();

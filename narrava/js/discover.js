@@ -617,10 +617,14 @@ async function initDiscover(){
   // (mobile always shows tabs+discoverBody; desktop's default view shows
   // discoverHero+discoverShelves instead) — existing CSS already decides
   // which, this just makes sure whichever one that is doesn't sit blank
-  // in the meantime.
-  if(discoverHero) discoverHero.innerHTML = narravaLoaderHtml('pulse', 'Loading Narrava…');
-  if(discoverShelves) discoverShelves.innerHTML = narravaLoaderHtml('pulse', 'Loading Narrava…');
-  if(discoverBody) discoverBody.innerHTML = narravaLoaderHtml('pulse', 'Loading Narrava…');
+  // in the meantime. Content-shaped skeletons (shared-utils.js) in each,
+  // one shared center logo over all three rather than three separate
+  // ones — hidden again the moment the real render calls below run,
+  // whatever they actually found (including nothing).
+  showSkeletonLogo();
+  if(discoverHero) discoverHero.innerHTML = skeletonHomeHeroHtml();
+  if(discoverShelves) discoverShelves.innerHTML = skeletonHomeShelvesHtml();
+  if(discoverBody) discoverBody.innerHTML = '<div class="poster-grid">' + skeletonPosterGridHtml(6) + '</div>';
 
   const [genreRows, links] = await Promise.all([fetchGenres(), fetchSeriesGenres()]);
   genres = genreRows;
@@ -634,6 +638,7 @@ async function initDiscover(){
   renderShelves();
   renderDiscoverBody();
   renderTopbarSearchGrid(); // unfiltered by default — every real series, no invented ranking
+  hideSkeletonLogo();
 
   await continueWatchingReady; // app.js: don't render the bar until it has real data
   renderContinueWatchingBar();

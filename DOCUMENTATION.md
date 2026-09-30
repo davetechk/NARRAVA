@@ -62,16 +62,48 @@ Browser (static files in narrava/)          Supabase                       Bunny
   white-on-green fails contrast at this brightness. Text that is green *on a dark background*
   (tinted/rgba fills, nav links, badges) stays green.
 - **Loading indicator**: one shared implementation, `narravaLoaderHtml(variant, label)` in
-  `js/shared-utils.js`, used by every loading state in both the consumer app and admin (feed,
-  Home, Library, comments, the desktop Watch player and its episode grid, admin's Series List and
-  Episodes tables, and the Bunny-upload-processing toast). The center mark — and, in the `'pulse'`
-  variant, the copy inside each echoing ring — is `NARRAVA_LOGO_SVG`, the full, unmodified contents
-  of `img/load_img_icon.svg` inlined as real `<svg>` markup (only the `<?xml?>` line, the generator
-  comment, and the non-visual C2PA `<metadata>` block are dropped — every path and fill color is
-  untouched). Its facet colors are baked into the markup itself, not `currentColor`, so
-  `.narrava-mark-icon` in `styles.css` doesn't set a color on it. Under
-  `prefers-reduced-motion: reduce`, the pulse variant's rings are hidden entirely and the center
-  mark switches from its normal breathing scale animation to a plain opacity fade — no scaling.
+  `js/shared-utils.js`. The center mark — and, in the `'pulse'` variant, the copy inside each
+  echoing ring — is `NARRAVA_LOGO_SVG`, the full, unmodified contents of `img/load_img_icon.svg`
+  inlined as real `<svg>` markup (only the `<?xml?>` line, the generator comment, and the
+  non-visual C2PA `<metadata>` block are dropped — every path and fill color is untouched). Its
+  facet colors are baked into the markup itself, not `currentColor`, so `.narrava-mark-icon` in
+  `styles.css` doesn't set a color on it. Under `prefers-reduced-motion: reduce`, the pulse
+  variant's rings are hidden entirely and the center mark switches from its normal breathing scale
+  animation to a plain opacity fade — no scaling. This full loader is still used as-is in exactly
+  three places: the For You feed while a video buffers, the desktop Watch page's video player, and
+  the Bunny-upload-processing toast.
+- **Skeleton loading**: everywhere else that used to show the pulsing logo loader now shows a
+  content-shaped skeleton instead — Home (the desktop hero banner, the desktop shelves, and the
+  mobile poster grid, in `js/discover.js`), Library's poster grid (`js/library.js`), the comments
+  sheet's avatar+two-line rows (`js/comments-panel.js`), the desktop Watch page's episode grid
+  (`js/watch.js` — the player itself keeps the full loader, only the grid became a skeleton), and
+  admin's Series List and Episodes tables (real `<thead>`, skeleton body rows). The helpers
+  (`skeletonPosterGridHtml`, `skeletonHomeHeroHtml`, `skeletonHomeShelvesHtml`,
+  `skeletonCommentRowsHtml`, `skeletonWatchEpisodeGridHtml`, `skeletonAdminSeriesTableHtml`,
+  `skeletonAdminEpisodesTableHtml`) live in `js/shared-utils.js` next to `narravaLoaderHtml()`;
+  each reuses the real content class it's standing in for (`.poster-card`, `.watch-ep-card`, the
+  admin table shell) so its sizing/border-radius always matches whatever replaces it, and none of
+  them ever contain real text, numbers, names or images. `.skeleton-block` (styles.css) is the one
+  shared shimmer treatment — a `--skeleton-base`/`--skeleton-shimmer` tint sweeping via
+  `background-position` only, ~1.4s per pass. **One faint logo per page**: `showSkeletonLogo()`/
+  `hideSkeletonLogo()` drop a single `narravaLoaderHtml('pulse')` at ~0.5 opacity, fixed to the
+  center of the viewport, shared across every skeleton area on that page (Home's three areas share
+  one call) rather than one per section — hidden the moment that page's real content, empty state,
+  or error state replaces the skeleton. **Never stuck**: every call site hides the skeleton/logo in
+  every exit path, including a genuine fetch failure — which required two small, narrowly-scoped
+  fixes (`admin-series-list.js` and `admin-episodes.js` previously only toasted on error without
+  ever clearing the table container; `watch.js`'s episode grid previously stayed on the loader
+  forever if a series genuinely had zero episodes) so "replace the skeleton with today's existing
+  error/empty state" is actually true everywhere it's asked to be. Under
+  `prefers-reduced-motion: reduce`, `.skeleton-block` drops the shimmer for a slow opacity fade
+  instead (no `transform`/`background-position` change), and the center logo follows its own
+  reduced-motion rule above unchanged.
+- **Maintenance screen size**: the whole animation (scene + heading + paragraph + button) in
+  `.maintenance-screen` is sized at 0.78× the values `maintenance.html` itself uses — the scene via
+  a percentage width (78%, not 100%, so it shrinks on mobile too) rather than only capping the
+  desktop `max-width`, and every h1/p/button font-size, margin and padding scaled by the same
+  factor. Nothing about the drawing, its script, its colors, or its timing changed — only these
+  CSS numbers.
 - **`narrava/img/load_img_icon.svg` is Narrava's one and only logo.** Its shape (179 paths) must
   never be redrawn, retraced, or simplified — only its fill colors may ever change. The app icon
   PNGs (`icon-180.png`, `icon-192.png`, `icon-512.png`, `icon-triangle.png`) are regenerated

@@ -21,11 +21,13 @@
 const libraryBody = document.getElementById('libraryBody');
 
 async function renderLibraryScreen(){
-  libraryBody.innerHTML = narravaLoaderHtml('pulse', 'Loading your library…');
+  showSkeletonLogo();
+  libraryBody.innerHTML = '<div class="library-grid">' + skeletonPosterGridHtml(8) + '</div>';
 
   const [savedIds] = await Promise.all([fetchMySavedSeriesIds(), slidesReady]);
 
   if(savedIds === null){
+    hideSkeletonLogo();
     libraryBody.innerHTML =
       '<div class="discover-empty">Sign in to see the series you’ve saved.<br>' +
       '<button type="button" class="pill-cta-btn" id="libraryLoginBtn">Log in</button>' +
@@ -40,6 +42,7 @@ async function renderLibraryScreen(){
   const list = slides.filter(s => savedIds.has(s.id));
 
   if(list.length === 0){
+    hideSkeletonLogo();
     libraryBody.innerHTML = '<div class="discover-empty">You haven’t saved any series yet — tap the bookmark icon on a series to add it here.</div>';
     return;
   }
@@ -48,4 +51,5 @@ async function renderLibraryScreen(){
   libraryBody.querySelectorAll('.poster-card').forEach(card => {
     card.addEventListener('click', () => openSeriesInFeed(parseInt(card.dataset.slideIndex, 10)));
   });
+  hideSkeletonLogo();
 }

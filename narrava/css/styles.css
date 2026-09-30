@@ -19,6 +19,14 @@
        safe-area inset + 12px, because an opaque status bar means the page already starts below it. */
     --top-safe:46px;
     --safe-bottom:max(env(safe-area-inset-bottom, 0px), var(--app-shortfall, 0px));
+    /* Skeleton loading blocks (see js/shared-utils.js's skeleton*Html
+       helpers) — a shade only slightly lighter than the dark backgrounds
+       they sit on (--ink/--panel/--panel-2), plus a lighter shimmer tone
+       for the sweep highlight. Both are relative white overlays rather
+       than fixed hex colors so the same two tokens read correctly on
+       every one of those slightly different dark backgrounds. */
+    --skeleton-base:rgba(255,255,255,0.06);
+    --skeleton-shimmer:rgba(255,255,255,0.14);
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
 
@@ -84,47 +92,54 @@
     padding-bottom:calc(env(safe-area-inset-bottom,0px) + 40px);
     overflow:hidden;
   }
+  /* Whole animation sized down ~22% (within the requested 20-25% range)
+     on every screen size — the drawing, colors, motion, timing and text
+     are all completely untouched; every number below is just the
+     matching original value (see maintenance.html) times 0.78. The
+     scene shrinks via a percentage width (not 100%) so it scales down
+     on mobile too, not just against the desktop max-width cap. */
   .maintenance-screen main{
     width:100%;
-    max-width:680px;
+    max-width:530px;
     text-align:center;
   }
   .maintenance-screen .scene{
-    width:100%;
+    width:78%;
     height:auto;
     display:block;
     overflow:visible;
+    margin:0 auto;
   }
   .maintenance-screen h1{
-    font-size:clamp(1.75rem, 1.2rem + 2.4vw, 2.6rem);
+    font-size:clamp(1.37rem, 0.94rem + 1.87vw, 2.03rem);
     font-weight:800;
     letter-spacing:-0.02em;
     line-height:1.1;
-    margin:8px 0 12px;
+    margin:6px 0 9px;
     font-variation-settings:"opsz" 96;
   }
   .maintenance-screen p{
-    font-size:1.05rem;
+    font-size:0.82rem;
     line-height:1.55;
     color:var(--mt-muted);
     max-width:42ch;
-    margin:0 auto 28px;
+    margin:0 auto 22px;
   }
   .maintenance-screen button{
     font:inherit;
     font-weight:600;
-    font-size:1rem;
+    font-size:0.78rem;
     color:#fff;
     background:var(--mt-green-deep);
-    border:2.5px solid var(--mt-ink);
+    border:2px solid var(--mt-ink);
     border-radius:999px;
-    padding:12px 26px;
+    padding:9px 20px;
     cursor:pointer;
-    box-shadow:3px 3px 0 var(--mt-ink);
+    box-shadow:2.3px 2.3px 0 var(--mt-ink);
     transition:transform .12s ease, box-shadow .12s ease;
   }
-  .maintenance-screen button:hover{ transform:translate(-1px, -1px); box-shadow:4px 4px 0 var(--mt-ink); }
-  .maintenance-screen button:active{ transform:translate(2px, 2px); box-shadow:1px 1px 0 var(--mt-ink); }
+  .maintenance-screen button:hover{ transform:translate(-1px, -1px); box-shadow:3.1px 3.1px 0 var(--mt-ink); }
+  .maintenance-screen button:active{ transform:translate(2px, 2px); box-shadow:0.8px 0.8px 0 var(--mt-ink); }
   .maintenance-screen button:focus-visible{ outline:3px solid var(--mt-green); outline-offset:4px; }
 
   /* SVG ink styles */
@@ -257,6 +272,60 @@
   .narrava-processing-toast .narrava-loader-orbit .dot:nth-child(3){ transform:rotate(240deg) translate(16px) translate(-2px,-2px); }
   .narrava-processing-toast-text{
     font-size:12.5px;color:var(--text);line-height:1.4;
+  }
+
+  /* ============ Skeleton loading states ============
+     Content-shaped placeholders (see js/shared-utils.js's skeleton*Html
+     helpers) for the areas listed in DOCUMENTATION.md — grey shapes in
+     the real layout, never generic bars, never real text/numbers/images.
+     .skeleton-block is the one shared visual treatment (base shade +
+     shimmer sweep); it's applied either directly, or stacked onto a
+     real content class (e.g. "poster-card skeleton-block") so the real
+     class's own sizing/aspect-ratio/border-radius still apply and the
+     skeleton lines up exactly with where real content will land —
+     .skeleton-block itself only ever sets background/animation, never
+     size or radius, except for the freestanding shapes below
+     (.skeleton-circle/.skeleton-pill/.skeleton-text) that have no real
+     class of their own to borrow from. Only background-position
+     animates, per the no-layout-thrash rule the rest of this app's
+     animations already follow. */
+  .skeleton-block{
+    background-color:var(--skeleton-base);
+    background-image:linear-gradient(100deg, transparent 30%, var(--skeleton-shimmer) 50%, transparent 70%);
+    background-size:200% 100%;
+    background-position:200% 0;
+    animation:skeleton-shimmer 1.4s ease-in-out infinite;
+  }
+  @keyframes skeleton-shimmer{
+    0%{ background-position:200% 0; }
+    100%{ background-position:-50% 0; }
+  }
+  .skeleton-circle{ border-radius:50%; }
+  .skeleton-pill{ border-radius:20px; }
+  .skeleton-text{ border-radius:4px; }
+  @media (prefers-reduced-motion: reduce){
+    .skeleton-block{
+      animation:skeleton-fade 1.8s ease-in-out infinite;
+      background-image:none;
+    }
+  }
+  @keyframes skeleton-fade{
+    0%,100%{ opacity:.55; }
+    50%{ opacity:.85; }
+  }
+  /* One faint logo per page (not one per skeleton section) — shown/hidden
+     by js/shared-utils.js's showSkeletonLogo()/hideSkeletonLogo(), which
+     just drop the real narravaLoaderHtml('pulse') markup in here at
+     reduced opacity. Fixed to the viewport so "center of the screen"
+     holds regardless of which container it's called from (a full page
+     or a bottom sheet); the loader's own existing reduced-motion rule
+     (above) applies unchanged since this is the exact same markup. */
+  .skeleton-logo-overlay{
+    position:fixed;inset:0;
+    display:flex;align-items:center;justify-content:center;
+    opacity:.5;
+    pointer-events:none;
+    z-index:300;
   }
 
   /* Form controls don't inherit font-family by default in any browser

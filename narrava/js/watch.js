@@ -320,14 +320,28 @@ async function openWatchScreen(slideIndex, resume){
   watchCommentCount.textContent = String(slide.commentCount);
   watchEpisodes = [];
   watchEpRangesEl.innerHTML = '';
-  watchEpisodeGrid.innerHTML = narravaLoaderHtml('pulse', 'Loading episodes…');
+  // The player itself (watchPlayerHost above) keeps the real logo loader
+  // as-is — only the episode grid becomes a skeleton, matching real
+  // .watch-ep-card tiles (6-column grid, no episode numbers).
+  showSkeletonLogo();
+  watchEpisodeGrid.innerHTML = skeletonWatchEpisodeGridHtml(12);
 
   showScreen('watch');
   loadWatchSocialState(slide);
 
   const episodes = await fetchEpisodesForSeries(slide.id);
-  if(watchSlide !== slide) return; // navigated to a different series (or away) before this resolved
+  if(watchSlide !== slide){ hideSkeletonLogo(); return; } // navigated to a different series (or away) before this resolved
   watchEpisodes = episodes;
+
+  // watchPlayEpisode (below) only ever repaints the grid (via
+  // renderWatchEpisodes/setActiveEpisode) once it has a real episode to
+  // make active — with none at all (a failed or genuinely empty fetch)
+  // it returns immediately, which would otherwise leave the skeleton
+  // sitting there forever. This is that area's one honest empty state.
+  if(watchEpisodes.length === 0){
+    watchEpisodeGrid.innerHTML = '<div class="discover-empty">No episodes yet.</div>';
+  }
+  hideSkeletonLogo();
 
   const resumeEp = resume ? watchEpisodes.find(e => e.id === resume.episodeId) : null;
   if(resumeEp) watchPlayEpisode(resumeEp, resume.positionSeconds);

@@ -358,7 +358,8 @@ function createCommentsPanelController(els){
 
   async function load(newSeriesId){
     seriesId = newSeriesId;
-    els.bodyEl.innerHTML = narravaLoaderHtml('pulse', 'Loading comments…');
+    showSkeletonLogo();
+    els.bodyEl.innerHTML = skeletonCommentRowsHtml(5);
     if(els.countEl) els.countEl.textContent = '';
 
     const [fetchedComments, admin, userId] = await Promise.all([
@@ -366,7 +367,7 @@ function createCommentsPanelController(els){
       isCurrentUserAdmin(),
       getSignedInUserId()
     ]);
-    if(seriesId !== newSeriesId) return; // moved to a different series (or closed/reopened) before this resolved
+    if(seriesId !== newSeriesId){ hideSkeletonLogo(); return; } // moved to a different series (or closed/reopened) before this resolved
 
     comments = fetchedComments;
     isAdmin = admin;
@@ -376,6 +377,7 @@ function createCommentsPanelController(els){
     activeReplyBoxId = null;
     confirmDeleteId = null;
     render();
+    hideSkeletonLogo();
     // Lets the main screen's own Comment icon badge (app.js/watch.js)
     // stay in sync with the exact same real total this panel's heading
     // just showed — one real source, read in two places.

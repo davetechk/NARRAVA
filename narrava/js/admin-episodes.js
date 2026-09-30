@@ -430,7 +430,8 @@ document.getElementById('episodesSearch').addEventListener('input', (e) => {
 
 (async () => {
   await requireAdminSession('episodes');
-  document.getElementById('episodesTableWrap').innerHTML = narravaLoaderHtml('pulse', 'Loading episodes…');
+  showSkeletonLogo();
+  document.getElementById('episodesTableWrap').innerHTML = skeletonAdminEpisodesTableHtml(6);
 
   const params = new URLSearchParams(window.location.search);
   const preselectSeries = params.get('series');
@@ -451,5 +452,11 @@ document.getElementById('episodesSearch').addEventListener('input', (e) => {
   } catch(err){
     console.error('Narrava: failed to load episodes', err);
     showToast('Could not load episodes — please try again');
+    // See admin-series-list.js's identical fix — the toast alone used to
+    // leave the loader (now the skeleton) sitting there forever on a
+    // genuine failure.
+    document.getElementById('episodesTableWrap').innerHTML = '<div class="admin-empty">Could not load episodes — please try again.</div>';
+  } finally {
+    hideSkeletonLogo();
   }
 })();

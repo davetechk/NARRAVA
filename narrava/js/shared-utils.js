@@ -376,6 +376,166 @@ function narravaLoadFailedHtml(retryBtnId){
   '</div>';
 }
 
+// ============ Skeleton loading ============
+// Content-shaped placeholders for the handful of areas listed in
+// DOCUMENTATION.md (Home, Library, the comments sheet, the desktop
+// Watch page's episode grid, and the two admin tables) — everywhere
+// else keeps narravaLoaderHtml() exactly as it was. Every shape below
+// either reuses a real content class (poster-card, watch-ep-card, the
+// admin table shell) so it inherits that class's own real sizing/
+// border-radius, or is a small freestanding shape (skeleton-circle/
+// -pill/-text) sized inline for the one spot it's used. No real text,
+// numbers, names or images anywhere in any of these — grey shapes only.
+
+// One shimmering box. w/h/radius are plain CSS size values (px/%/ch);
+// extraClass lets a caller stack a real content class alongside
+// "skeleton-block" (see file header) instead of sizing it here.
+function skeletonBoxHtml(w, h, radius, extraClass){
+  return '<div class="skeleton-block' + (extraClass ? ' ' + extraClass : '') +
+    '" style="width:' + w + ';height:' + h + (radius ? ';border-radius:' + radius : '') + ';"></div>';
+}
+
+// One poster-card-shaped skeleton — reuses the real .poster-card class
+// (styles.css) for its aspect-ratio/border-radius, so it lines up
+// exactly with the real card that replaces it, in both the .poster-grid
+// (mobile Home, Library) and .shelf-row (desktop Home shelves) contexts,
+// each of which already sizes .poster-card differently by itself.
+function skeletonPosterCardHtml(){
+  return '<div class="poster-card skeleton-block"></div>';
+}
+function skeletonPosterGridHtml(count){
+  let html = '';
+  for(let i = 0; i < count; i++) html += skeletonPosterCardHtml();
+  return html;
+}
+
+// Home, desktop: the hero banner (discoverHero) — same element ids'
+// worth of shape as renderHero() in discover.js builds for real: a
+// full-bleed background block, a title bar, two small tag pills, two
+// synopsis lines, a play-button-shaped pill, and a row of thumbnail-
+// shaped blocks matching .hero-thumb's own 112px width.
+function skeletonHomeHeroHtml(){
+  let thumbs = '';
+  for(let i = 0; i < 4; i++) thumbs += skeletonBoxHtml('112px', '160px', '8px');
+  return '<div class="discover-hero-bg skeleton-block"></div>' +
+    '<div class="discover-hero-content">' +
+      '<div class="discover-hero-left">' +
+        skeletonBoxHtml('70%', '36px', '6px') +
+        '<div class="hero-tags">' + skeletonBoxHtml('54px', '26px', '6px') + skeletonBoxHtml('68px', '26px', '6px') + '</div>' +
+        skeletonBoxHtml('92%', '14px', '4px') +
+        skeletonBoxHtml('60%', '14px', '4px') +
+        skeletonBoxHtml('150px', '44px', '26px') +
+      '</div>' +
+      '<div class="hero-carousel-wrap"><div class="hero-carousel-viewport"><div class="hero-carousel-track">' + thumbs + '</div></div></div>' +
+    '</div>';
+}
+
+// Home, desktop: the shelf stack (discoverShelves) — a couple of
+// shelf-shaped skeletons, each a title bar over a row of poster-card
+// skeletons sized by the real .shelf-row .poster-card rule (259x345).
+function skeletonHomeShelfHtml(){
+  let cards = '';
+  for(let i = 0; i < 5; i++) cards += skeletonPosterCardHtml();
+  return '<div class="shelf">' +
+    '<div class="shelf-head">' + skeletonBoxHtml('140px', '21px', '5px') + '</div>' +
+    '<div class="shelf-row-wrap"><div class="shelf-row">' + cards + '</div></div>' +
+  '</div>';
+}
+function skeletonHomeShelvesHtml(){
+  return skeletonHomeShelfHtml() + skeletonHomeShelfHtml();
+}
+
+// Comments sheet: a handful of avatar+two-lines rows, shaped exactly
+// like a real .cmt-row (round 32px avatar, a short name-width line and
+// a longer body-width line stacked in .cmt-main).
+function skeletonCommentRowHtml(){
+  return '<div class="cmt-row">' +
+    skeletonBoxHtml('32px', '32px', null, 'skeleton-circle') +
+    '<div class="cmt-main">' +
+      skeletonBoxHtml('90px', '12px', '4px') +
+      '<div style="margin-top:8px;">' + skeletonBoxHtml('75%', '13px', '4px') + '</div>' +
+    '</div>' +
+  '</div>';
+}
+function skeletonCommentRowsHtml(count){
+  let html = '';
+  for(let i = 0; i < count; i++) html += skeletonCommentRowHtml();
+  return html;
+}
+
+// Desktop Watch page: the episode grid (watchEpisodeGrid) — real
+// .watch-ep-card tiles (6-column grid, 46px tall, 6px radius), no
+// episode numbers.
+function skeletonWatchEpisodeGridHtml(count){
+  let html = '';
+  for(let i = 0; i < count; i++) html += '<div class="watch-ep-card skeleton-block"></div>';
+  return html;
+}
+
+// Admin Series List / Episodes tables: the real table shell (thead
+// labels are static UI chrome, not data, so they stay real and visible
+// immediately) with skeleton-shaped body rows matching each table's own
+// real columns. Kept as two small functions rather than one generic
+// "columns" abstraction since the two row shapes genuinely differ
+// (Series List's Featured switch and Episodes count vs. Episodes'
+// Duration/Uploaded text columns) and neither reuses the other's shape.
+function skeletonAdminSeriesRowHtml(){
+  return '<tr>' +
+    '<td><div class="admin-row-cell">' + skeletonBoxHtml('42px', '42px', '8px') + '<div>' + skeletonBoxHtml('130px', '13px', '4px') + '</div></div></td>' +
+    '<td>' + skeletonBoxHtml('60px', '20px', '20px') + '</td>' +
+    '<td>' + skeletonBoxHtml('50px', '20px', '20px') + '</td>' +
+    '<td>' + skeletonBoxHtml('34px', '19px', '20px') + '</td>' +
+    '<td>' + skeletonBoxHtml('20px', '13px', '4px') + '</td>' +
+    '<td>' + skeletonBoxHtml('70px', '18px', '4px') + '</td>' +
+  '</tr>';
+}
+function skeletonAdminSeriesTableHtml(count){
+  let rows = '';
+  for(let i = 0; i < count; i++) rows += skeletonAdminSeriesRowHtml();
+  return '<div class="admin-table-wrap"><table class="admin-table">' +
+    '<thead><tr><th>Series</th><th>Genres</th><th>Status</th><th>Featured</th><th>Episodes</th><th>Actions</th></tr></thead>' +
+    '<tbody>' + rows + '</tbody>' +
+  '</table></div>';
+}
+function skeletonAdminEpisodeRowHtml(){
+  return '<tr>' +
+    '<td><div class="admin-row-cell">' + skeletonBoxHtml('52px', '32px', '6px') + '<div>' + skeletonBoxHtml('120px', '13px', '4px') + '<div style="margin-top:6px;">' + skeletonBoxHtml('90px', '11px', '4px') + '</div></div></div></td>' +
+    '<td>' + skeletonBoxHtml('34px', '13px', '4px') + '</td>' +
+    '<td>' + skeletonBoxHtml('88px', '20px', '20px') + '</td>' +
+    '<td>' + skeletonBoxHtml('64px', '11px', '4px') + '</td>' +
+    '<td>' + skeletonBoxHtml('50px', '18px', '4px') + '</td>' +
+  '</tr>';
+}
+function skeletonAdminEpisodesTableHtml(count){
+  let rows = '';
+  for(let i = 0; i < count; i++) rows += skeletonAdminEpisodeRowHtml();
+  return '<div class="admin-table-wrap"><table class="admin-table">' +
+    '<thead><tr><th>Episode</th><th>Duration</th><th>Status</th><th>Uploaded</th><th>Actions</th></tr></thead>' +
+    '<tbody>' + rows + '</tbody>' +
+  '</table></div>';
+}
+
+// One faint logo per PAGE, not one per skeleton section — Home shows
+// three skeleton areas (hero/shelves/mobile grid) at once and still
+// gets exactly one overlay, since every caller shares this same
+// singleton element (the id guard makes a second show() while one is
+// already up a no-op). Callers show() right where they used to set
+// narravaLoaderHtml(), and hide() in every branch that replaces the
+// skeleton with real content, an empty state, or an error state — see
+// each call site for its own never-stuck handling.
+function showSkeletonLogo(){
+  if(document.getElementById('narravaSkeletonLogo')) return;
+  const el = document.createElement('div');
+  el.id = 'narravaSkeletonLogo';
+  el.className = 'skeleton-logo-overlay';
+  el.innerHTML = narravaLoaderHtml('pulse');
+  document.body.appendChild(el);
+}
+function hideSkeletonLogo(){
+  const el = document.getElementById('narravaSkeletonLogo');
+  if(el) el.remove();
+}
+
 // The honest "Bunny is still processing this" notice — a real situation
 // this app has (uploaded bytes finish transferring well before Bunny
 // itself finishes transcoding them into something playable), shown as

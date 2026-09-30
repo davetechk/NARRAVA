@@ -417,8 +417,19 @@ Details worth knowing:
   admins. The consumer app reads it once at startup:
   - *Free Mode*: nothing is treated as locked. Per-series free-episode counts aren't changed;
     they're just ignored while it's on.
-  - *Maintenance Mode*: the consumer app replaces the whole page with a "We'll be back soon"
-    message before doing anything else, including creating an anonymous account. The admin
+  - *Maintenance Mode*: the consumer app replaces the whole page with an animated maintenance
+    scene (`renderMaintenanceMode`/`maintenanceSceneHtml` in `js/app.js`, styled in
+    `css/styles.css`'s `.mscene-*` rules) before doing anything else, including creating an
+    anonymous account — the same `init()` gate as before, just a different message. The scene is
+    inline SVG + CSS only (hand-drawn line work in `var(--text)`, the real logo via
+    `NARRAVA_LOGO_SVG` at its own colors, one flat `var(--leaf)` accent panel), with a visible
+    text line ("We're making Narrava better") and no time estimate anywhere. While it's showing,
+    the page re-runs the exact same `app_settings` read (`loadAppSettings()`) every 60 seconds
+    (one `setInterval`, cleared before any replacement so there's never more than one); the
+    moment that read comes back with maintenance off, the page does one `location.reload()`. A
+    failed recheck just leaves the last-known settings in place and tries again next interval —
+    no toast, no retry storm. Under `prefers-reduced-motion: reduce`, the scene freezes on its
+    "panel docked, gears stopped" frame and only the text keeps a slow opacity pulse. The admin
     panel is unaffected, so it can always be switched back off.
   - *Featured Series Count*: how many featured series the desktop banner shows (falls back to a
     random series if none are featured).

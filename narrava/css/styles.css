@@ -45,21 +45,101 @@
   }
 
   /* Real maintenance mode (app_settings.maintenance_mode_enabled — see
-     app.js's renderMaintenanceMode) — replaces the entire real page,
-     nothing else loads underneath it. The admin panel (admin/*.html)
-     never loads this file's own JS-driven takeover — it's a completely
-     separate set of pages — so it stays reachable regardless. */
+     app.js's renderMaintenanceMode/maintenanceSceneHtml) — replaces the
+     entire real page, nothing else loads underneath it. The admin panel
+     (admin/*.html) never loads this file's own JS-driven takeover — it's
+     a completely separate set of pages — so it stays reachable
+     regardless. Montserrat is already loaded (index.html's Google Fonts
+     link, unaffected by body being replaced), but this screen gets a
+     full system-font fallback stack of its own on top of that, since a
+     maintenance window is exactly the moment a flaky connection might
+     not have delivered the web font either. */
   .maintenance-screen{
     position:fixed;inset:0;
     display:flex;align-items:center;justify-content:center;
     flex-direction:column;
-    gap:10px;
+    gap:14px;
     background:var(--ink);color:var(--text);
-    font-family:'Montserrat',sans-serif;
+    font-family:'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     text-align:center;padding:24px;
+    overflow:hidden;
   }
-  .maintenance-title{font-weight:800;font-size:22px;}
+  .maintenance-scene{
+    width:100%;
+    max-width:340px;
+    height:auto;
+    display:block;
+  }
+  .maintenance-title{font-weight:800;font-size:20px;}
   .maintenance-sub{color:var(--muted);font-size:14px;max-width:320px;line-height:1.5;}
+
+  /* The scene itself (see maintenanceSceneHtml() in app.js for the
+     markup): two gears turning opposite ways behind the logo, a crane
+     lowering the scene's one flat var(--leaf) accent (a small panel) in
+     beside the logo and lifting it away again on a loop, the logo
+     gently rising and settling each cycle, and a wrench rocking on its
+     bolt with a couple of blinking sparks. transform/opacity only, so
+     it stays smooth on cheap Android phones. */
+  .mscene-gear-a{ animation:mscene-spin-cw 9s linear infinite; transform-origin:108px 85px; }
+  .mscene-gear-b{ animation:mscene-spin-ccw 7s linear infinite; transform-origin:225px 178px; }
+  @keyframes mscene-spin-cw{ to{ transform:rotate(360deg); } }
+  @keyframes mscene-spin-ccw{ to{ transform:rotate(-360deg); } }
+
+  .mscene-wrench{ animation:mscene-wrench-rock 2.6s ease-in-out infinite; transform-origin:90px 205px; }
+  @keyframes mscene-wrench-rock{
+    0%,100%{ transform:rotate(-9deg); }
+    50%{ transform:rotate(9deg); }
+  }
+
+  .mscene-spark{ opacity:0; animation:mscene-spark-blink 1.3s ease-in-out infinite; }
+  .mscene-spark-2{ animation-delay:.35s; }
+  .mscene-spark-3{ animation-delay:.7s; }
+  @keyframes mscene-spark-blink{
+    0%,60%,100%{ opacity:0; }
+    30%{ opacity:1; }
+  }
+
+  .mscene-logo{ animation:mscene-logo-bob 6s ease-in-out infinite; }
+  @keyframes mscene-logo-bob{
+    0%,100%{ transform:translateY(0); }
+    30%{ transform:translateY(2px); }
+    55%{ transform:translateY(-2px); }
+  }
+
+  /* Lowers in hidden-above, fades in, docks (the "set it into place"
+     dwell), lifts back up, fades out, dwells hidden — one 6s loop
+     matching the logo's own bob above so the two read as connected. */
+  .mscene-crane-rig{ animation:mscene-crane-cycle 6s ease-in-out infinite; }
+  @keyframes mscene-crane-cycle{
+    0%{ transform:translateY(-52px); opacity:0; }
+    10%{ transform:translateY(-52px); opacity:1; }
+    30%{ transform:translateY(0); opacity:1; }
+    55%{ transform:translateY(0); opacity:1; }
+    75%{ transform:translateY(-52px); opacity:1; }
+    88%,100%{ transform:translateY(-52px); opacity:0; }
+  }
+
+  /* prefers-reduced-motion: the finished scene, completely still — the
+     panel already docked, gears stopped, wrench at rest, sparks off —
+     with only a slow opacity pulse left on the text. */
+  @media (prefers-reduced-motion: reduce){
+    .mscene-gear-a, .mscene-gear-b, .mscene-wrench, .mscene-logo{
+      animation:none;
+    }
+    .mscene-spark{ animation:none; opacity:0; }
+    .mscene-crane-rig{
+      animation:none;
+      transform:translateY(0);
+      opacity:1;
+    }
+    .maintenance-title, .maintenance-sub{
+      animation:mscene-text-pulse 3s ease-in-out infinite;
+    }
+  }
+  @keyframes mscene-text-pulse{
+    0%,100%{ opacity:.75; }
+    50%{ opacity:1; }
+  }
 
   /* ============ Loading states (shared, main app + admin) ============
      Two variants, already reviewed and picked — structure/animation

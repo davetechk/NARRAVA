@@ -88,19 +88,103 @@ async function loadAppSettings(){
 }
 loadAppSettings();
 
+// Small hand-drawn gear (rim + hub + a ring of teeth), pure stroke line
+// work — used twice below, spun in opposite directions. Built with a
+// loop rather than 16 hand-typed rotated rects (2 gears x 8 teeth).
+function maintenanceGearHtml(cx, cy, r){
+  const teeth = 8, toothLen = r * 0.3, toothW = r * 0.22;
+  let teethHtml = '';
+  for(let i = 0; i < teeth; i++){
+    const angle = (360 / teeth) * i;
+    teethHtml += '<rect x="' + (cx - toothW / 2) + '" y="' + (cy - r - toothLen) + '" width="' + toothW + '" height="' + toothLen +
+      '" fill="none" stroke="var(--text)" stroke-width="2.5" stroke-linejoin="round" transform="rotate(' + angle + ' ' + cx + ' ' + cy + ')"/>';
+  }
+  return '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="var(--text)" stroke-width="3"/>' +
+    '<circle cx="' + cx + '" cy="' + cy + '" r="' + (r * 0.32) + '" fill="none" stroke="var(--text)" stroke-width="2.5"/>' +
+    teethHtml;
+}
+
+// The real maintenance scene: an original hand-drawn-style illustration,
+// not a copy of anything — two gears (mscene-gear-a/b) turn opposite
+// ways behind Narrava's real logo; a crane (mscene-crane-fixed is the
+// static arm, mscene-crane-rig is the cable+hook+panel that animates)
+// lowers the scene's one flat var(--leaf) accent — a small panel — in
+// beside the logo, holds it there a moment, then lifts it away and
+// fades out before the next pass; the logo itself (mscene-logo) gently
+// rises and settles each cycle; a wrench rocks on its bolt
+// (mscene-wrench) with a couple of blinking sparks nearby
+// (mscene-spark). Every other stroke is var(--text) line work — no
+// other fill anywhere in the scene. NARRAVA_LOGO_SVG (shared-utils.js)
+// is used verbatim: not one path or fill color is touched, the only
+// thing added to its own <svg> tag is x/y/width/height to place and
+// size it inside this larger scene, exactly the way an <img> would be
+// positioned — the same non-destructive composition narravaLoaderHtml
+// already relies on elsewhere.
+function maintenanceSceneHtml(){
+  const logoSvg = NARRAVA_LOGO_SVG.replace(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1008 1061" class="narrava-mark-icon">',
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1008 1061" class="narrava-mark-icon mscene-logo" x="133" y="75" width="104" height="110">'
+  );
+  return (
+    '<div class="maintenance-screen">' +
+      '<svg class="maintenance-scene" viewBox="0 0 340 230" preserveAspectRatio="xMidYMid meet" aria-hidden="true" focusable="false">' +
+        '<g class="mscene-gear mscene-gear-a">' + maintenanceGearHtml(108, 85, 34) + '</g>' +
+        '<g class="mscene-gear mscene-gear-b">' + maintenanceGearHtml(225, 178, 28) + '</g>' +
+        '<g class="mscene-wrench">' +
+          '<circle cx="90" cy="205" r="7" fill="none" stroke="var(--text)" stroke-width="2.5"/>' +
+          '<line x1="90" y1="199" x2="90" y2="211" stroke="var(--text)" stroke-width="2"/>' +
+          '<line x1="84" y1="205" x2="96" y2="205" stroke="var(--text)" stroke-width="2"/>' +
+          '<path d="M90,205 L58,178" fill="none" stroke="var(--text)" stroke-width="5" stroke-linecap="round"/>' +
+          '<path d="M58,178 L49,170 M58,178 L48,182" fill="none" stroke="var(--text)" stroke-width="4" stroke-linecap="round"/>' +
+        '</g>' +
+        '<g class="mscene-spark mscene-spark-1"><line x1="42" y1="158" x2="48" y2="164" stroke="var(--text)" stroke-width="2" stroke-linecap="round"/><line x1="48" y1="158" x2="42" y2="164" stroke="var(--text)" stroke-width="2" stroke-linecap="round"/></g>' +
+        '<g class="mscene-spark mscene-spark-2"><line x1="30" y1="170" x2="35" y2="175" stroke="var(--text)" stroke-width="2" stroke-linecap="round"/><line x1="35" y1="170" x2="30" y2="175" stroke="var(--text)" stroke-width="2" stroke-linecap="round"/></g>' +
+        '<g class="mscene-spark mscene-spark-3"><line x1="48" y1="145" x2="53" y2="150" stroke="var(--text)" stroke-width="2" stroke-linecap="round"/><line x1="53" y1="145" x2="48" y2="150" stroke="var(--text)" stroke-width="2" stroke-linecap="round"/></g>' +
+        logoSvg +
+        '<g class="mscene-crane-fixed">' +
+          '<line x1="270" y1="15" x2="270" y2="25" stroke="var(--text)" stroke-width="3" stroke-linecap="round"/>' +
+          '<path d="M240,25 L300,25" fill="none" stroke="var(--text)" stroke-width="3" stroke-linecap="round"/>' +
+        '</g>' +
+        '<g class="mscene-crane-rig">' +
+          '<line x1="270" y1="25" x2="270" y2="88" stroke="var(--text)" stroke-width="2.5" stroke-linecap="round"/>' +
+          '<path d="M270,88 q0,9 9,9" fill="none" stroke="var(--text)" stroke-width="3" stroke-linecap="round"/>' +
+          '<rect x="250" y="92" width="40" height="26" rx="4" fill="var(--leaf)"/>' +
+        '</g>' +
+      '</svg>' +
+      '<div class="maintenance-title">We’re making Narrava better</div>' +
+      '<div class="maintenance-sub">We’ll be back shortly.</div>' +
+    '</div>'
+  );
+}
+
+// Re-checks the exact same public app_settings read loadAppSettings()
+// already does at startup — reused as-is rather than duplicated, which
+// also means a failed check leaves appSettings (and its
+// maintenance_mode_enabled=true) exactly as it was, so staying on the
+// screen and trying again next interval falls out for free, with no
+// separate error-handling path to keep in sync. One real reload, never
+// a toast, never a retry storm.
+async function checkMaintenanceStillOn(){
+  await loadAppSettings();
+  if(!appSettings.maintenance_mode_enabled){
+    location.reload();
+  }
+}
+
 // Real maintenance mode (see init() below and discover.js's
 // initDiscover(), both of which bail out before loading anything real
 // once appSettingsReady confirms it's on) — replaces the entire real
-// page with one plain, honest message, nothing else. The admin panel
+// page with the hand-drawn maintenance scene above, nothing else, then
+// starts the one and only recheck timer (guarded so a second call, if
+// it ever happened, could never leave two running). The admin panel
 // lives under admin/*.html, an entirely separate set of pages this
 // function never touches, so it stays fully reachable regardless —
 // confirmed live, not just assumed from separate file boundaries.
+let maintenanceRecheckTimer = null;
 function renderMaintenanceMode(){
-  document.body.innerHTML =
-    '<div class="maintenance-screen">' +
-      '<div class="maintenance-title">We’ll be back soon</div>' +
-      '<div class="maintenance-sub">Narrava is temporarily down for maintenance. Please check back shortly.</div>' +
-    '</div>';
+  document.body.innerHTML = maintenanceSceneHtml();
+  if(maintenanceRecheckTimer) clearInterval(maintenanceRecheckTimer);
+  maintenanceRecheckTimer = setInterval(checkMaintenanceStillOn, 60000);
 }
 
 // Real video playback state — a real native <video> element plus hls.js

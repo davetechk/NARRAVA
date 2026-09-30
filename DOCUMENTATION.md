@@ -65,11 +65,18 @@ Browser (static files in narrava/)          Supabase                       Bunny
   `js/shared-utils.js`, used by every loading state in both the consumer app and admin (feed,
   Home, Library, comments, the desktop Watch player and its episode grid, admin's Series List and
   Episodes tables, and the Bunny-upload-processing toast). The center mark — and, in the `'pulse'`
-  variant, the copy inside each echoing ring — is `NARRAVA_MARK_SVG`, Narrava's real triangle logo
-  as a single clean path (`img/narrava-mark.svg`, not the old ~90-path trace), `fill="currentColor"`
-  so `.narrava-mark-icon` in `styles.css` colors it `var(--leaf)`. Under
+  variant, the copy inside each echoing ring — is `NARRAVA_LOGO_SVG`, the full, unmodified contents
+  of `img/load_img_icon.svg` inlined as real `<svg>` markup (only the `<?xml?>` line, the generator
+  comment, and the non-visual C2PA `<metadata>` block are dropped — every path and fill color is
+  untouched). Its facet colors are baked into the markup itself, not `currentColor`, so
+  `.narrava-mark-icon` in `styles.css` doesn't set a color on it. Under
   `prefers-reduced-motion: reduce`, the pulse variant's rings are hidden entirely and the center
   mark switches from its normal breathing scale animation to a plain opacity fade — no scaling.
+- **`narrava/img/load_img_icon.svg` is Narrava's one and only logo.** Its shape (179 paths) must
+  never be redrawn, retraced, or simplified — only its fill colors may ever change. The app icon
+  PNGs (`icon-180.png`, `icon-192.png`, `icon-512.png`, `icon-triangle.png`) are regenerated
+  renders of this same file at fixed sizes, not independent artwork; if the logo's colors change
+  again, regenerate those PNGs from it rather than hand-editing them.
 - **`narrava/sw.js`, `manifest.json`, `img/`**: the installable-app pieces.
 - **`js/config.js`**: the Supabase URL and the *anon* (public) key. These are meant to be in the
   browser; what the key can actually do is decided by database policies. A service-role key must

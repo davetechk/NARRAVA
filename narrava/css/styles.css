@@ -68,17 +68,21 @@
      dots specifically for the one real wait this app has where the
      on-screen state genuinely lags reality — Bunny Stream still
      processing an episode after upload. The mark at the center is
-     Narrava's own real triangle logo — a clean single-path vector
-     (narrava/img/narrava-mark.svg), inlined as real <svg> markup
-     (NARRAVA_MARK_SVG in shared-utils.js, fill="currentColor" so it's
-     colored from here) rather than an <img src> — no broken-image path
-     to get wrong — in place of the placeholder "N" box, used as-is with
-     no added circle or background shape behind it. The pulse variant's
-     two echoing rings are the same mark too now (not a plain rounded
-     square), sized to fill .pulse-ring; the center copy is sized by
-     .narrava-mark-icon below, its own viewBox scaling inside it the
-     same way an <img> would. See narravaLoaderHtml() in shared-utils.js
-     for the markup this CSS is styling. */
+     Narrava's one real logo, the full faceted triangle
+     (narrava/img/load_img_icon.svg — never redrawn/simplified, see the
+     note where it's inlined), as real <svg> markup (NARRAVA_LOGO_SVG in
+     shared-utils.js) rather than an <img src> — no broken-image path to
+     get wrong — in place of the placeholder "N" box, used as-is with no
+     added circle or background shape behind it. Its facet colors are
+     baked into the markup itself, not currentColor, so nothing here
+     sets a color on it. The pulse variant's two echoing rings are the
+     same logo too now (not a plain rounded square), sized to fill
+     .pulse-ring; the center copy is sized by .narrava-mark-icon below —
+     width and height equal (even though the logo's own viewBox isn't
+     square) so its default preserveAspectRatio letterboxes it instead
+     of squashing it, the same way an <img> would. See
+     narravaLoaderHtml() in shared-utils.js for the markup this CSS is
+     styling. */
   .narrava-loading-block{
     display:flex;flex-direction:column;align-items:center;
     gap:14px;
@@ -102,7 +106,6 @@
     width:32px;height:32px;
     position:relative;z-index:2;
     display:block;
-    color:var(--leaf);
   }
   /* Variant: gentle pulse — general purpose */
   .narrava-loader-pulse .pulse-ring{

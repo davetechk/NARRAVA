@@ -88,101 +88,420 @@ async function loadAppSettings(){
 }
 loadAppSettings();
 
-// Small hand-drawn gear (rim + hub + a ring of teeth), pure stroke line
-// work — used twice below, spun in opposite directions. Built with a
-// loop rather than 16 hand-typed rotated rects (2 gears x 8 teeth).
-function maintenanceGearHtml(cx, cy, r){
-  const teeth = 8, toothLen = r * 0.3, toothW = r * 0.22;
-  let teethHtml = '';
-  for(let i = 0; i < teeth; i++){
-    const angle = (360 / teeth) * i;
-    teethHtml += '<rect x="' + (cx - toothW / 2) + '" y="' + (cy - r - toothLen) + '" width="' + toothW + '" height="' + toothLen +
-      '" fill="none" stroke="var(--text)" stroke-width="2.5" stroke-linejoin="round" transform="rotate(' + angle + ' ' + cx + ' ' + cy + ')"/>';
+// The maintenance scene, ported verbatim from maintenance.html (repo
+// root — the source reference, left untouched) into app.js so it can be
+// dropped in via document.body.innerHTML. Every path, shape, id, class
+// and piece of text below is identical to that file; the only things
+// changed are the seven --ink/--paper/--muted/--green/--green-deep/
+// --spark/--metal custom properties, renamed --mt-* and scoped under
+// .maintenance-screen (see styles.css) so they can never collide with
+// or be affected by the app's own --ink/--muted (different values,
+// different meaning) — every rule that used them in maintenance.html is
+// scoped the same way. This screen intentionally draws its own version
+// of the logo, because its "loose piece" (the pill) has to move
+// separately from the rest of the shape — that's the one place in the
+// whole app that doesn't use NARRAVA_LOGO_SVG; everywhere else still
+// does.
+function maintenanceMarkupHtml(){
+  return `<div class="maintenance-screen"><main>
+  <svg class="scene" viewBox="40 20 680 440" role="img" aria-label="A mechanic tightening a bolt on the app logo with a wrench">
+    <defs>
+      <!-- Hand-drawn "line boil": the displacement seed changes a few times a second -->
+      <filter id="boil" x="-5%" y="-5%" width="110%" height="110%">
+        <feTurbulence id="boilNoise" type="fractalNoise" baseFrequency="0.03" numOctaves="2" seed="1" result="n" />
+        <feDisplacementMap in="SourceGraphic" in2="n" scale="2.6" xChannelSelector="R" yChannelSelector="G" />
+      </filter>
+      <!-- Logo silhouette (logo coordinates, 228 x 240) -->
+      <mask id="logoMask" maskUnits="userSpaceOnUse" x="-20" y="-20" width="270" height="280">
+        <path d="M15 15 L213 120 L15 225 Z" fill="#fff" stroke="#fff" stroke-width="30" stroke-linejoin="round" />
+      </mask>
+    </defs>
+
+    <!-- ground -->
+    <g filter="url(#boil)">
+      <path class="ink no-fill" d="M70 432 Q 180 429 300 433 T 520 431 T 700 433" />
+      <path class="ink no-fill" d="M92 442 L 120 442 M 640 442 L 676 442" opacity=".6" />
+    </g>
+    <ellipse id="logoShadow" cx="292" cy="432" rx="110" ry="6" fill="var(--mt-ink)" opacity=".08" />
+
+    <!-- gears -->
+    <g filter="url(#boil)">
+      <g id="gearA" transform="translate(96 108)"><path class="ink fill-paper" /><circle class="ink fill-paper" r="7" /></g>
+      <g id="gearB" transform="translate(136 64)"><path class="ink fill-paper" /><circle class="ink fill-paper" r="4.5" /></g>
+    </g>
+
+    <!-- LOGO -->
+    <g id="logo">
+      <g transform="translate(150 90) scale(1.25)">
+        <g mask="url(#logoMask)">
+          <!-- rounded silhouette -->
+          <path d="M15 15 L213 120 L15 225 Z" fill="#25c561" stroke="#25c561" stroke-width="30" stroke-linejoin="round" />
+          <rect x="60" y="-10" width="99" height="260" fill="#1fd55e" />
+          <polygon points="58,10 104,72 104,168 58,230" fill="#23e05f" />
+          <rect x="-20" y="-10" width="80" height="260" fill="#3ee472" />
+          <!-- socket where the loose piece belongs -->
+          <rect x="104" y="57" width="55" height="126" rx="27.5" fill="#17a94f" />
+          <!-- the loose piece -->
+          <rect id="pillShadow" x="104" y="57" width="55" height="126" rx="27.5" fill="#0f7a39" opacity="0" />
+          <g id="pill">
+            <rect x="104" y="57" width="55" height="126" rx="27.5" fill="#3de471" />
+          </g>
+          <!-- shine on repair -->
+          <rect id="shine" x="-120" y="-20" width="46" height="300" fill="#fff" opacity="0" transform="skewX(-18)" />
+        </g>
+        <!-- wobble lines when loose -->
+        <g id="looseLines" filter="url(#boil)" opacity="0">
+          <path class="ink no-fill" d="M172 52 q 8 -6 4 -16" stroke-width="2.6" />
+          <path class="ink no-fill" d="M184 62 q 10 -4 10 -14" stroke-width="2.6" />
+          <path class="ink no-fill" d="M172 190 q 8 6 4 16" stroke-width="2.6" />
+        </g>
+      </g>
+    </g>
+
+    <!-- bolt + wrench (scene coords, positioned by script) -->
+    <g id="bolt" filter="url(#boil)">
+      <polygon class="ink fill-metal" points="10,0 5,8.66 -5,8.66 -10,0 -5,-8.66 5,-8.66" />
+      <circle class="fill-ink" r="2.2" />
+    </g>
+    <circle id="clickRing" r="10" fill="none" stroke="var(--mt-green)" stroke-width="4" opacity="0" />
+    <g id="sparks"></g>
+
+    <!-- MECHANIC -->
+    <g filter="url(#boil)">
+      <ellipse cx="520" cy="433" rx="70" ry="5" fill="var(--mt-ink)" opacity=".08" />
+      <g id="body">
+        <g transform="translate(-16 -18)">
+          <!-- back arm, hand on hip -->
+          <path class="ink no-fill" d="M530 250 L 556 290 L 537 320" stroke-width="27" />
+          <path d="M530 250 L 556 290 L 537 320" fill="none" stroke="var(--mt-paper)" stroke-width="20.5" stroke-linecap="round" stroke-linejoin="round" />
+          <circle class="ink fill-paper" cx="536" cy="322" r="8" />
+
+          <!-- legs -->
+          <path d="M500 335 L 468 385 L 474 432" fill="none" stroke="var(--mt-ink)" stroke-width="25" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="M528 335 L 556 382 L 588 420" fill="none" stroke="var(--mt-ink)" stroke-width="25" stroke-linecap="round" stroke-linejoin="round" />
+          <path class="fill-ink" d="M488 326 L 542 326 L 540 350 L 492 350 Z" />
+          <path d="M478 392 l -4 10 M 482 412 l -1 9 M 556 392 l 6 8 M 571 402 l 5 7 M 503 350 l -6 10" stroke="var(--mt-paper)" stroke-width="2.2" stroke-linecap="round" />
+
+          <!-- shoes -->
+          <path class="ink fill-paper" d="M484 428 Q 488 446 478 450 L 448 450 Q 438 448 444 439 Q 458 434 466 428 Z" />
+          <path class="ink no-fill" d="M442 444 L 482 444" stroke-width="2.4" />
+          <path class="ink fill-paper" d="M580 412 L 600 424 Q 604 436 594 440 L 574 450 Q 564 452 566 442 Q 574 430 576 418 Z" />
+          <path class="ink no-fill" d="M568 446 L 598 432" stroke-width="2.4" />
+
+          <!-- jacket -->
+          <path class="ink fill-paper" d="M482 238 Q 506 226 534 238 L 544 332 Q 514 340 486 332 Z" />
+          <path class="ink no-fill" d="M498 236 L 508 258 L 518 234" stroke-width="2.6" />
+          <path class="ink no-fill" d="M508 258 L 506 330" stroke-width="2.4" />
+          <path class="ink no-fill" d="M520 296 L 534 296" stroke-width="2.4" />
+          <path class="ink no-fill" d="M486 316 Q 514 322 543 316" stroke-width="2.4" />
+
+          <!-- head -->
+          <path class="ink no-fill" d="M505 222 L 506 232" />
+          <circle class="ink fill-paper" cx="502" cy="202" r="23" />
+          <circle cx="494" cy="213" r="4.5" fill="var(--mt-green)" opacity=".55" />
+          <ellipse id="eye" class="fill-ink" cx="489" cy="203" rx="2.4" ry="3" />
+          <path class="ink no-fill" d="M482 214 Q 487 218 492 215" stroke-width="2.4" />
+          <path class="ink no-fill" d="M514 200 q 6 2 3 9" stroke-width="2.4" />
+          <!-- cap -->
+          <path class="ink fill-ink" d="M480 196 Q 482 176 504 175 Q 526 176 526 196 Q 504 190 480 196 Z" />
+          <path class="ink fill-ink" d="M482 195 L 462 199 Q 460 193 470 191 L 484 189 Z" />
+          <circle cx="506" cy="183" r="3.2" fill="var(--mt-green)" />
+        </g>
+      </g>
+
+      <!-- working arm + wrench (positioned by script) -->
+      <g id="wrench">
+        <path class="ink fill-metal" d="M14 -6 L 98 -6 Q 104 0 98 6 L 14 6 Z" />
+        <path class="ink fill-metal" d="M-2 -17 A 17 17 0 1 1 -2 17 L 6 9 A 9 9 0 1 0 6 -9 Z" transform="rotate(180)" />
+        <circle class="ink fill-paper" cx="86" cy="0" r="3" />
+      </g>
+      <path id="armOutline" fill="none" stroke="var(--mt-ink)" stroke-width="27" stroke-linecap="round" stroke-linejoin="round" />
+      <path id="armFill" fill="none" stroke="var(--mt-paper)" stroke-width="20.5" stroke-linecap="round" stroke-linejoin="round" />
+      <path id="cuff" class="ink no-fill" stroke-width="2.4" />
+      <circle id="fist" class="ink fill-paper" r="8.5" />
+    </g>
+
+    <!-- toolbox -->
+    <g filter="url(#boil)">
+      <path class="ink no-fill" d="M104 396 L 104 386 Q 116 378 128 386 L 128 396" />
+      <rect class="ink fill-metal" x="92" y="394" width="40" height="8" rx="2" transform="rotate(-8 112 398)" />
+      <path class="ink fill-ink" d="M86 386 L 92 370 L 98 372 L 94 388 Z" />
+      <path class="ink no-fill" d="M92 372 L 100 346" />
+      <path class="ink fill-paper" d="M144 390 L 150 356 L 160 358 L 154 392 Z" />
+      <rect class="ink" x="143" y="350" width="26" height="12" rx="3" fill="var(--mt-green)" transform="rotate(10 156 356)" />
+      <rect class="ink fill-paper" x="66" y="394" width="110" height="38" rx="5" />
+      <path class="ink no-fill" d="M66 406 L 176 406" />
+      <rect class="ink" x="112" y="400" width="18" height="11" rx="2" fill="var(--mt-green)" />
+    </g>
+  </svg>
+
+  <h1>Tightening a few bolts</h1>
+  <p>We're doing scheduled maintenance to keep things running smoothly. Your data is safe, and we'll be back shortly.</p>
+  <button type="button" onclick="location.reload()">Check again</button>
+</main></div>`;
+}
+
+// The Bricolage Grotesque stylesheet link maintenance.html loads in its
+// own <head> — added to the real page's head only while this screen is
+// showing (never on a normal visit), and only once even if this somehow
+// ran twice. .maintenance-screen's own font-family keeps the file's
+// exact fallback stack, so the scene still looks right if this never
+// finishes loading.
+function ensureMaintenanceFont(){
+  if(document.getElementById('mtFontLink')) return;
+  const link = document.createElement('link');
+  link.id = 'mtFontLink';
+  link.rel = 'stylesheet';
+  link.href = 'https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap';
+  document.head.appendChild(link);
+}
+
+// The animation's own script, from maintenance.html, moved into a named
+// function since setting innerHTML doesn't run <script> tags — every
+// statement inside is exactly as that file has it (only the two
+// var(--spark)/var(--ink) string literals near the bottom are renamed
+// to var(--mt-spark)/var(--mt-ink), the same rename as everywhere else
+// this screen's markup/CSS references those custom properties).
+function startMaintenanceAnimation(){
+  const $ = (id) => document.getElementById(id);
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // Logo placement (must match the transform on the logo's inner group)
+  const LX = 150, LY = 90, K = 1.25;
+  const PILL_C = { x: 131.5, y: 120 };     // pill centre in logo coords
+  const SHOULDER = { x: 478, y: 232 };     // working shoulder in scene coords
+  const L1 = 50, L2 = 50;                   // upper arm, forearm
+  const GRIP = 86;                          // distance bolt -> hand along wrench
+  const PERIOD = 6.4;
+
+  // Gear shapes
+  function gearPath(R, r, teeth) {
+    const pts = [];
+    const step = (Math.PI * 2) / (teeth * 4);
+    for (let i = 0; i < teeth * 4; i++) {
+      const rad = (i % 4 < 2) ? R : r;
+      const a = i * step;
+      pts.push(`${(Math.cos(a) * rad).toFixed(2)},${(Math.sin(a) * rad).toFixed(2)}`);
+    }
+    return "M" + pts.join(" L") + " Z";
   }
-  return '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="var(--text)" stroke-width="3"/>' +
-    '<circle cx="' + cx + '" cy="' + cy + '" r="' + (r * 0.32) + '" fill="none" stroke="var(--text)" stroke-width="2.5"/>' +
-    teethHtml;
+  $("gearA").querySelector("path").setAttribute("d", gearPath(24, 18, 9));
+  $("gearB").querySelector("path").setAttribute("d", gearPath(15, 11, 7));
+
+  // Sparks
+  const SPARK_N = 7;
+  const sparks = [];
+  for (let i = 0; i < SPARK_N; i++) {
+    const l = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    l.setAttribute("stroke", i % 2 ? "var(--mt-spark)" : "var(--mt-ink)");
+    l.setAttribute("stroke-width", i % 2 ? 3.4 : 2.6);
+    l.setAttribute("stroke-linecap", "round");
+    l.setAttribute("opacity", 0);
+    $("sparks").appendChild(l);
+    sparks.push({ el: l, a: 0 });
+  }
+
+  // Easing helpers
+  const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const inCubic = (t) => t * t * t;
+  const inOutSine = (t) => -(Math.cos(Math.PI * t) - 1) / 2;
+  const outBack = (t) => { const c = 1.9; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };
+  const outCubic = (t) => 1 - Math.pow(1 - t, 3);
+
+  // Impacts: three wrench pulls, the third seats the piece
+  const IMPACTS = [0.5, 1.7, 2.9];
+  const POP_AT = 5.4;
+
+  function stateAt(t) {
+    const s = { theta: -25, off: 1, hop: 0, shine: -1, ring: -1, pop: -1 };
+
+    if (t < 3.6) {
+      const c = Math.min(2, Math.floor(t / 1.2));
+      const u = t - c * 1.2;
+      s.theta = u < 0.5 ? lerp(-25, 18, inCubic(u / 0.5)) : lerp(18, -25, inOutSine(clamp((u - 0.5) / 0.7)));
+      // pill slides a third of the way home on each impact
+      let off = 1;
+      IMPACTS.forEach((ti, i) => { off -= (1 / 3) * outCubic(clamp((t - ti) / 0.14)); });
+      s.off = off;
+    } else if (t < POP_AT) {
+      s.off = 0;
+      s.theta = lerp(-25, -8, inOutSine(clamp((t - 3.6) / 0.8)));
+    } else {
+      const p = clamp((t - POP_AT) / 0.35);
+      s.off = outBack(p);
+      s.pop = t - POP_AT;
+      s.theta = lerp(-8, -25, inOutSine(clamp((t - POP_AT) / 0.9)));
+    }
+
+    // celebration after the final impact
+    const done = t - 2.9;
+    if (done > 0 && done < 0.7) s.ring = done / 0.7;
+    if (t > 3.0 && t < 3.7) s.shine = (t - 3.0) / 0.7;
+    if (t > 3.05 && t < 3.45) s.hop = -Math.sin(Math.PI * (t - 3.05) / 0.4) * 11;
+    if (t > 3.55 && t < 3.85) s.hop = -Math.sin(Math.PI * (t - 3.55) / 0.3) * 6;
+    return s;
+  }
+
+  function lastImpact(t) {
+    let last = -99;
+    for (const ti of IMPACTS) if (t >= ti) last = ti;
+    if (t >= POP_AT) last = POP_AT;
+    return last;
+  }
+
+  let gearAngle = 0, lastNow = null, seed = 1, lastSeed = 0;
+  let blinkAt = 2.2;
+
+  function render(now) {
+    const sec = now / 1000;
+    const dt = lastNow == null ? 0 : Math.min(0.05, sec - lastNow);
+    lastNow = sec;
+    const t = reduce ? 1.5 : sec % PERIOD;
+    const s = reduce ? { theta: -10, off: 0.4, hop: 0, shine: -1, ring: -1, pop: -1 } : stateAt(t);
+
+    // logo shake after impacts
+    const since = t - lastImpact(t);
+    const shakeAmp = (!reduce && since >= 0 && since < 0.4) ? 3.2 * Math.exp(-since * 9) : 0;
+    const sx = Math.sin(since * 70) * shakeAmp;
+    const sy = Math.cos(since * 55) * shakeAmp * 0.6;
+    $("logo").setAttribute("transform", `translate(${sx.toFixed(2)} ${sy.toFixed(2)})`);
+
+    // loose piece
+    const wob = reduce ? 0 : Math.sin(sec * 9) * 2.2 * s.off;
+    const pdx = s.off * 12, pdy = -s.off * 5, prot = s.off * 9 + wob;
+    $("pill").setAttribute("transform", `translate(${pdx} ${pdy}) rotate(${prot} ${PILL_C.x} ${PILL_C.y})`);
+    $("pillShadow").setAttribute("transform", `translate(${pdx * 0.5 + 4} ${pdy * 0.5 + 5}) rotate(${prot} ${PILL_C.x} ${PILL_C.y})`);
+    $("pillShadow").setAttribute("opacity", (0.35 * clamp(s.off * 1.5)).toFixed(2));
+    $("looseLines").setAttribute("opacity", clamp(s.off * 1.4 - 0.2).toFixed(2));
+
+    // shine sweep
+    $("shine").setAttribute("opacity", s.shine >= 0 ? (0.5 * Math.sin(Math.PI * s.shine)).toFixed(2) : 0);
+    $("shine").setAttribute("x", lerp(-40, 280, s.shine >= 0 ? s.shine : 0));
+
+    // bolt position (scene)
+    const bx = LX + K * (PILL_C.x + pdx) + sx;
+    const by = LY + K * (PILL_C.y + pdy) + sy;
+    $("bolt").setAttribute("transform", `translate(${bx} ${by}) rotate(${s.theta + prot})`);
+
+    // click ring
+    if (s.ring >= 0) {
+      $("clickRing").setAttribute("cx", bx); $("clickRing").setAttribute("cy", by);
+      $("clickRing").setAttribute("r", 10 + s.ring * 60);
+      $("clickRing").setAttribute("opacity", (1 - s.ring).toFixed(2));
+    } else $("clickRing").setAttribute("opacity", 0);
+
+    // sparks on each impact
+    sparks.forEach((sp, i) => {
+      const age = since;
+      if (reduce || age < 0 || age > 0.38 || lastImpact(t) === POP_AT) { sp.el.setAttribute("opacity", 0); return; }
+      const ang = (-160 + i * (140 / (SPARK_N - 1)) + (lastImpact(t) * 37) % 20) * Math.PI / 180;
+      const p = outCubic(age / 0.38);
+      const r1 = 14 + p * 34, r2 = r1 + 10 * (1 - p) + 3;
+      sp.el.setAttribute("x1", bx + Math.cos(ang) * r1); sp.el.setAttribute("y1", by + Math.sin(ang) * r1);
+      sp.el.setAttribute("x2", bx + Math.cos(ang) * r2); sp.el.setAttribute("y2", by + Math.sin(ang) * r2);
+      sp.el.setAttribute("opacity", (1 - p).toFixed(2));
+    });
+
+    // body lean + hop
+    const lean = -((s.theta + 25) / 43) * 4;
+    $("body").setAttribute("transform", `translate(${lean.toFixed(2)} ${s.hop.toFixed(2)})`);
+
+    // wrench
+    const th = s.theta * Math.PI / 180;
+    $("wrench").setAttribute("transform", `translate(${bx} ${by}) rotate(${s.theta})`);
+
+    // arm IK: shoulder -> elbow -> hand on the wrench grip
+    const hx = bx + Math.cos(th) * GRIP, hy = by + Math.sin(th) * GRIP;
+    const shx = SHOULDER.x + lean, shy = SHOULDER.y + s.hop;
+    let dx = hx - shx, dy = hy - shy;
+    let d = Math.hypot(dx, dy);
+    d = clamp(d, 10, L1 + L2 - 0.5);
+    const base = Math.atan2(dy, dx);
+    const a = Math.acos(clamp((L1 * L1 + d * d - L2 * L2) / (2 * L1 * d), -1, 1));
+    const e1 = { x: shx + Math.cos(base + a) * L1, y: shy + Math.sin(base + a) * L1 };
+    const e2 = { x: shx + Math.cos(base - a) * L1, y: shy + Math.sin(base - a) * L1 };
+    const el = e1.y > e2.y ? e1 : e2;              // elbow bends downward
+    const fx = hx - el.x, fy = hy - el.y, fl = Math.hypot(fx, fy) || 1;
+    const wx = hx - (fx / fl) * 9, wy = hy - (fy / fl) * 9;  // wrist, just short of the fist
+    const armD = `M${shx.toFixed(1)} ${shy.toFixed(1)} L${el.x.toFixed(1)} ${el.y.toFixed(1)} L${wx.toFixed(1)} ${wy.toFixed(1)}`;
+    $("armOutline").setAttribute("d", armD);
+    $("armFill").setAttribute("d", armD);
+    const nx = -fy / fl, ny = fx / fl, cx = hx - (fx / fl) * 13, cy = hy - (fy / fl) * 13;
+    $("cuff").setAttribute("d", `M${cx + nx * 10} ${cy + ny * 10} L${cx - nx * 10} ${cy - ny * 10}`);
+    $("fist").setAttribute("cx", hx); $("fist").setAttribute("cy", hy);
+
+    // gears (spin faster right after an impact)
+    const boost = (since >= 0 && since < 0.6) ? 260 * (1 - since / 0.6) : 0;
+    gearAngle += dt * (28 + boost);
+    $("gearA").setAttribute("transform", `translate(96 108) rotate(${gearAngle})`);
+    $("gearB").setAttribute("transform", `translate(136 64) rotate(${-gearAngle * 1.6 + 12})`);
+
+    // blink
+    if (!reduce) {
+      const bt = sec % 3.4;
+      $("eye").setAttribute("ry", (bt > blinkAt && bt < blinkAt + 0.12) ? 0.6 : 3);
+    }
+
+    // line boil
+    if (!reduce && sec - lastSeed > 0.13) {
+      seed = (seed % 4) + 1;
+      $("boilNoise").setAttribute("seed", seed);
+      lastSeed = sec;
+    }
+
+    if (!reduce) requestAnimationFrame(render);
+  }
+  requestAnimationFrame(render);
 }
 
-// The real maintenance scene: an original hand-drawn-style illustration,
-// not a copy of anything — two gears (mscene-gear-a/b) turn opposite
-// ways behind Narrava's real logo; a crane (mscene-crane-fixed is the
-// static arm, mscene-crane-rig is the cable+hook+panel that animates)
-// lowers the scene's one flat var(--leaf) accent — a small panel — in
-// beside the logo, holds it there a moment, then lifts it away and
-// fades out before the next pass; the logo itself (mscene-logo) gently
-// rises and settles each cycle; a wrench rocks on its bolt
-// (mscene-wrench) with a couple of blinking sparks nearby
-// (mscene-spark). Every other stroke is var(--text) line work — no
-// other fill anywhere in the scene. NARRAVA_LOGO_SVG (shared-utils.js)
-// is used verbatim: not one path or fill color is touched, the only
-// thing added to its own <svg> tag is x/y/width/height to place and
-// size it inside this larger scene, exactly the way an <img> would be
-// positioned — the same non-destructive composition narravaLoaderHtml
-// already relies on elsewhere.
-function maintenanceSceneHtml(){
-  const logoSvg = NARRAVA_LOGO_SVG.replace(
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1008 1061" class="narrava-mark-icon">',
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1008 1061" class="narrava-mark-icon mscene-logo" x="133" y="75" width="104" height="110">'
-  );
-  return (
-    '<div class="maintenance-screen">' +
-      '<svg class="maintenance-scene" viewBox="0 0 340 230" preserveAspectRatio="xMidYMid meet" aria-hidden="true" focusable="false">' +
-        '<g class="mscene-gear mscene-gear-a">' + maintenanceGearHtml(108, 85, 34) + '</g>' +
-        '<g class="mscene-gear mscene-gear-b">' + maintenanceGearHtml(225, 178, 28) + '</g>' +
-        '<g class="mscene-wrench">' +
-          '<circle cx="90" cy="205" r="7" fill="none" stroke="var(--text)" stroke-width="2.5"/>' +
-          '<line x1="90" y1="199" x2="90" y2="211" stroke="var(--text)" stroke-width="2"/>' +
-          '<line x1="84" y1="205" x2="96" y2="205" stroke="var(--text)" stroke-width="2"/>' +
-          '<path d="M90,205 L58,178" fill="none" stroke="var(--text)" stroke-width="5" stroke-linecap="round"/>' +
-          '<path d="M58,178 L49,170 M58,178 L48,182" fill="none" stroke="var(--text)" stroke-width="4" stroke-linecap="round"/>' +
-        '</g>' +
-        '<g class="mscene-spark mscene-spark-1"><line x1="42" y1="158" x2="48" y2="164" stroke="var(--text)" stroke-width="2" stroke-linecap="round"/><line x1="48" y1="158" x2="42" y2="164" stroke="var(--text)" stroke-width="2" stroke-linecap="round"/></g>' +
-        '<g class="mscene-spark mscene-spark-2"><line x1="30" y1="170" x2="35" y2="175" stroke="var(--text)" stroke-width="2" stroke-linecap="round"/><line x1="35" y1="170" x2="30" y2="175" stroke="var(--text)" stroke-width="2" stroke-linecap="round"/></g>' +
-        '<g class="mscene-spark mscene-spark-3"><line x1="48" y1="145" x2="53" y2="150" stroke="var(--text)" stroke-width="2" stroke-linecap="round"/><line x1="53" y1="145" x2="48" y2="150" stroke="var(--text)" stroke-width="2" stroke-linecap="round"/></g>' +
-        logoSvg +
-        '<g class="mscene-crane-fixed">' +
-          '<line x1="270" y1="15" x2="270" y2="25" stroke="var(--text)" stroke-width="3" stroke-linecap="round"/>' +
-          '<path d="M240,25 L300,25" fill="none" stroke="var(--text)" stroke-width="3" stroke-linecap="round"/>' +
-        '</g>' +
-        '<g class="mscene-crane-rig">' +
-          '<line x1="270" y1="25" x2="270" y2="88" stroke="var(--text)" stroke-width="2.5" stroke-linecap="round"/>' +
-          '<path d="M270,88 q0,9 9,9" fill="none" stroke="var(--text)" stroke-width="3" stroke-linecap="round"/>' +
-          '<rect x="250" y="92" width="40" height="26" rx="4" fill="var(--leaf)"/>' +
-        '</g>' +
-      '</svg>' +
-      '<div class="maintenance-title">We’re making Narrava better</div>' +
-      '<div class="maintenance-sub">We’ll be back shortly.</div>' +
-    '</div>'
-  );
-}
-
-// Re-checks the exact same public app_settings read loadAppSettings()
-// already does at startup — reused as-is rather than duplicated, which
-// also means a failed check leaves appSettings (and its
-// maintenance_mode_enabled=true) exactly as it was, so staying on the
-// screen and trying again next interval falls out for free, with no
-// separate error-handling path to keep in sync. One real reload, never
-// a toast, never a retry storm.
+// Re-checks the same public app_settings read loadAppSettings() already
+// does at startup, but — unlike loadAppSettings() itself, which is left
+// completely unchanged for normal startup — this never infers success
+// from a side effect. It reloads ONLY when this read explicitly comes
+// back with no error, a real row, and that row's maintenance_mode_enabled
+// is literally false. Any error, timeout, thrown exception, or a row
+// that's missing/empty/still-true all fall through to "do nothing,
+// silently try again next interval" — no toast, no assumption. A
+// maintenanceCheckInFlight guard skips a tick outright if the previous
+// check is still waiting on a slow response, so a slow request can
+// never stack a second one on top of it.
+let maintenanceCheckInFlight = false;
 async function checkMaintenanceStillOn(){
-  await loadAppSettings();
-  if(!appSettings.maintenance_mode_enabled){
-    location.reload();
+  if(maintenanceCheckInFlight) return;
+  maintenanceCheckInFlight = true;
+  try {
+    const { data, error } = await supabaseClient
+      .from('app_settings')
+      .select('free_mode_enabled, maintenance_mode_enabled, featured_series_count')
+      .eq('id', true)
+      .single();
+    if(!error && data && data.maintenance_mode_enabled === false){
+      location.reload();
+    }
+  } catch(err){
+    console.error('Narrava: maintenance recheck failed — staying on screen, retrying at the next interval', err);
+  } finally {
+    maintenanceCheckInFlight = false;
   }
 }
 
 // Real maintenance mode (see init() below and discover.js's
 // initDiscover(), both of which bail out before loading anything real
 // once appSettingsReady confirms it's on) — replaces the entire real
-// page with the hand-drawn maintenance scene above, nothing else, then
-// starts the one and only recheck timer (guarded so a second call, if
-// it ever happened, could never leave two running). The admin panel
-// lives under admin/*.html, an entirely separate set of pages this
-// function never touches, so it stays fully reachable regardless —
-// confirmed live, not just assumed from separate file boundaries.
+// page with the maintenance scene above, nothing else, starts its
+// animation (innerHTML doesn't run <script> tags, so this has to happen
+// explicitly right after), and starts the one and only recheck timer
+// (guarded so a second call, if it ever happened, could never leave two
+// running). The admin panel lives under admin/*.html, an entirely
+// separate set of pages this function never touches, so it stays fully
+// reachable regardless — confirmed live, not just assumed from separate
+// file boundaries.
 let maintenanceRecheckTimer = null;
 function renderMaintenanceMode(){
-  document.body.innerHTML = maintenanceSceneHtml();
+  ensureMaintenanceFont();
+  document.body.innerHTML = maintenanceMarkupHtml();
+  startMaintenanceAnimation();
   if(maintenanceRecheckTimer) clearInterval(maintenanceRecheckTimer);
   maintenanceRecheckTimer = setInterval(checkMaintenanceStillOn, 60000);
 }

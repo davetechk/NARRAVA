@@ -45,101 +45,94 @@
   }
 
   /* Real maintenance mode (app_settings.maintenance_mode_enabled — see
-     app.js's renderMaintenanceMode/maintenanceSceneHtml) — replaces the
-     entire real page, nothing else loads underneath it. The admin panel
-     (admin/*.html) never loads this file's own JS-driven takeover — it's
-     a completely separate set of pages — so it stays reachable
-     regardless. Montserrat is already loaded (index.html's Google Fonts
-     link, unaffected by body being replaced), but this screen gets a
-     full system-font fallback stack of its own on top of that, since a
-     maintenance window is exactly the moment a flaky connection might
-     not have delivered the web font either. */
+     app.js's renderMaintenanceMode/maintenanceMarkupHtml/
+     startMaintenanceAnimation) — replaces the entire real page, nothing
+     else loads underneath it. The admin panel (admin/*.html) never
+     loads this file's own JS-driven takeover — it's a completely
+     separate set of pages — so it stays reachable regardless.
+
+     Everything below is ported from maintenance.html (repo root, the
+     source reference — left untouched) exactly as that file has it,
+     values and all, EXCEPT: the file's --paper/--ink/--muted/--green/
+     --green-deep/--spark/--metal are renamed --mt-paper/--mt-ink/
+     --mt-muted/--mt-green/--mt-green-deep/--mt-spark/--mt-metal, fixed
+     to that file's :root[data-theme="dark"] values always (this app is
+     dark-only, so there's no light-mode branch to keep), and every rule
+     that file wrote globally (:root, body, main, h1, p, button, .ink,
+     .fill-paper, .fill-ink, .fill-metal, .no-fill) is scoped under
+     .maintenance-screen instead — so none of it can leak into, or be
+     affected by, the app's own --ink/--muted (different values,
+     different elements) or its global h1/p/button styles. */
   .maintenance-screen{
+    --mt-paper:#141613;
+    --mt-ink:#ecece6;
+    --mt-muted:#a3a79f;
+    --mt-green:#25c561;
+    --mt-green-deep:#1a9e4c;
+    --mt-spark:#f7941d;
+    --mt-metal:#5c6368;
+
     position:fixed;inset:0;
-    display:flex;align-items:center;justify-content:center;
-    flex-direction:column;
-    gap:14px;
-    background:var(--ink);color:var(--text);
-    font-family:'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-    text-align:center;padding:24px;
+    background:var(--mt-paper);
+    color:var(--mt-ink);
+    font-family:"Bricolage Grotesque", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display:grid;
+    place-items:center;
+    padding-top:calc(env(safe-area-inset-top,0px) + 24px);
+    padding-left:20px;
+    padding-right:20px;
+    padding-bottom:calc(env(safe-area-inset-bottom,0px) + 40px);
     overflow:hidden;
   }
-  .maintenance-scene{
+  .maintenance-screen main{
     width:100%;
-    max-width:340px;
+    max-width:680px;
+    text-align:center;
+  }
+  .maintenance-screen .scene{
+    width:100%;
     height:auto;
     display:block;
+    overflow:visible;
   }
-  .maintenance-title{font-weight:800;font-size:20px;}
-  .maintenance-sub{color:var(--muted);font-size:14px;max-width:320px;line-height:1.5;}
+  .maintenance-screen h1{
+    font-size:clamp(1.75rem, 1.2rem + 2.4vw, 2.6rem);
+    font-weight:800;
+    letter-spacing:-0.02em;
+    line-height:1.1;
+    margin:8px 0 12px;
+    font-variation-settings:"opsz" 96;
+  }
+  .maintenance-screen p{
+    font-size:1.05rem;
+    line-height:1.55;
+    color:var(--mt-muted);
+    max-width:42ch;
+    margin:0 auto 28px;
+  }
+  .maintenance-screen button{
+    font:inherit;
+    font-weight:600;
+    font-size:1rem;
+    color:#fff;
+    background:var(--mt-green-deep);
+    border:2.5px solid var(--mt-ink);
+    border-radius:999px;
+    padding:12px 26px;
+    cursor:pointer;
+    box-shadow:3px 3px 0 var(--mt-ink);
+    transition:transform .12s ease, box-shadow .12s ease;
+  }
+  .maintenance-screen button:hover{ transform:translate(-1px, -1px); box-shadow:4px 4px 0 var(--mt-ink); }
+  .maintenance-screen button:active{ transform:translate(2px, 2px); box-shadow:1px 1px 0 var(--mt-ink); }
+  .maintenance-screen button:focus-visible{ outline:3px solid var(--mt-green); outline-offset:4px; }
 
-  /* The scene itself (see maintenanceSceneHtml() in app.js for the
-     markup): two gears turning opposite ways behind the logo, a crane
-     lowering the scene's one flat var(--leaf) accent (a small panel) in
-     beside the logo and lifting it away again on a loop, the logo
-     gently rising and settling each cycle, and a wrench rocking on its
-     bolt with a couple of blinking sparks. transform/opacity only, so
-     it stays smooth on cheap Android phones. */
-  .mscene-gear-a{ animation:mscene-spin-cw 9s linear infinite; transform-origin:108px 85px; }
-  .mscene-gear-b{ animation:mscene-spin-ccw 7s linear infinite; transform-origin:225px 178px; }
-  @keyframes mscene-spin-cw{ to{ transform:rotate(360deg); } }
-  @keyframes mscene-spin-ccw{ to{ transform:rotate(-360deg); } }
-
-  .mscene-wrench{ animation:mscene-wrench-rock 2.6s ease-in-out infinite; transform-origin:90px 205px; }
-  @keyframes mscene-wrench-rock{
-    0%,100%{ transform:rotate(-9deg); }
-    50%{ transform:rotate(9deg); }
-  }
-
-  .mscene-spark{ opacity:0; animation:mscene-spark-blink 1.3s ease-in-out infinite; }
-  .mscene-spark-2{ animation-delay:.35s; }
-  .mscene-spark-3{ animation-delay:.7s; }
-  @keyframes mscene-spark-blink{
-    0%,60%,100%{ opacity:0; }
-    30%{ opacity:1; }
-  }
-
-  .mscene-logo{ animation:mscene-logo-bob 6s ease-in-out infinite; }
-  @keyframes mscene-logo-bob{
-    0%,100%{ transform:translateY(0); }
-    30%{ transform:translateY(2px); }
-    55%{ transform:translateY(-2px); }
-  }
-
-  /* Lowers in hidden-above, fades in, docks (the "set it into place"
-     dwell), lifts back up, fades out, dwells hidden — one 6s loop
-     matching the logo's own bob above so the two read as connected. */
-  .mscene-crane-rig{ animation:mscene-crane-cycle 6s ease-in-out infinite; }
-  @keyframes mscene-crane-cycle{
-    0%{ transform:translateY(-52px); opacity:0; }
-    10%{ transform:translateY(-52px); opacity:1; }
-    30%{ transform:translateY(0); opacity:1; }
-    55%{ transform:translateY(0); opacity:1; }
-    75%{ transform:translateY(-52px); opacity:1; }
-    88%,100%{ transform:translateY(-52px); opacity:0; }
-  }
-
-  /* prefers-reduced-motion: the finished scene, completely still — the
-     panel already docked, gears stopped, wrench at rest, sparks off —
-     with only a slow opacity pulse left on the text. */
-  @media (prefers-reduced-motion: reduce){
-    .mscene-gear-a, .mscene-gear-b, .mscene-wrench, .mscene-logo{
-      animation:none;
-    }
-    .mscene-spark{ animation:none; opacity:0; }
-    .mscene-crane-rig{
-      animation:none;
-      transform:translateY(0);
-      opacity:1;
-    }
-    .maintenance-title, .maintenance-sub{
-      animation:mscene-text-pulse 3s ease-in-out infinite;
-    }
-  }
-  @keyframes mscene-text-pulse{
-    0%,100%{ opacity:.75; }
-    50%{ opacity:1; }
-  }
+  /* SVG ink styles */
+  .maintenance-screen .ink{ stroke:var(--mt-ink); stroke-width:3.2; stroke-linecap:round; stroke-linejoin:round; }
+  .maintenance-screen .fill-paper{ fill:var(--mt-paper); }
+  .maintenance-screen .fill-ink{ fill:var(--mt-ink); }
+  .maintenance-screen .fill-metal{ fill:var(--mt-metal); }
+  .maintenance-screen .no-fill{ fill:none; }
 
   /* ============ Loading states (shared, main app + admin) ============
      Two variants, already reviewed and picked — structure/animation

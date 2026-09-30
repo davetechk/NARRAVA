@@ -418,18 +418,35 @@ Details worth knowing:
   - *Free Mode*: nothing is treated as locked. Per-series free-episode counts aren't changed;
     they're just ignored while it's on.
   - *Maintenance Mode*: the consumer app replaces the whole page with an animated maintenance
-    scene (`renderMaintenanceMode`/`maintenanceSceneHtml` in `js/app.js`, styled in
-    `css/styles.css`'s `.mscene-*` rules) before doing anything else, including creating an
-    anonymous account — the same `init()` gate as before, just a different message. The scene is
-    inline SVG + CSS only (hand-drawn line work in `var(--text)`, the real logo via
-    `NARRAVA_LOGO_SVG` at its own colors, one flat `var(--leaf)` accent panel), with a visible
-    text line ("We're making Narrava better") and no time estimate anywhere. While it's showing,
-    the page re-runs the exact same `app_settings` read (`loadAppSettings()`) every 60 seconds
-    (one `setInterval`, cleared before any replacement so there's never more than one); the
-    moment that read comes back with maintenance off, the page does one `location.reload()`. A
-    failed recheck just leaves the last-known settings in place and tries again next interval —
-    no toast, no retry storm. Under `prefers-reduced-motion: reduce`, the scene freezes on its
-    "panel docked, gears stopped" frame and only the text keeps a slow opacity pulse. The admin
+    scene before doing anything else, including creating an anonymous account — the same
+    `init()` gate as before, just a different screen. The animation itself comes from
+    `maintenance.html` at the repo root — a hand-built reference file, kept there unmodified —
+    ported into `maintenanceMarkupHtml()` (the markup) and `startMaintenanceAnimation()` (its
+    script, moved into a real function since `innerHTML` doesn't execute `<script>` tags; the
+    render logic, easing and timing are untouched) in `js/app.js`, styled by the scoped rules in
+    `css/styles.css`. **This is the one screen in the app that draws its own version of the
+    Narrava logo** (its "loose piece" has to animate separately from the rest of the shape) —
+    everywhere else in the app, the loader included, uses `NARRAVA_LOGO_SVG` and only
+    `NARRAVA_LOGO_SVG`. The file's seven custom properties (`--paper`/`--ink`/`--muted`/`--green`/
+    `--green-deep`/`--spark`/`--metal`) are renamed `--mt-*` and defined once on `.maintenance-screen`
+    itself, always at that file's dark-theme values (this app has no light mode) — every rule the
+    file wrote globally (`body`, `main`, `h1`, `p`, `button`, `.ink`, `.fill-*`, `.no-fill`) is
+    scoped under `.maintenance-screen` too, so none of it can leak into, or be affected by, the
+    app's own `--ink`/`--muted` or its other pages' `h1`/`p`/`button` styles. The Bricolage
+    Grotesque stylesheet link the file loads is added to `<head>` only while this screen is
+    showing (`ensureMaintenanceFont()`), with the file's own system-font fallback stack kept as-is
+    for if it doesn't load in time. While the screen is up, `checkMaintenanceStillOn()` re-runs
+    the same public `app_settings` read every 60 seconds (one `setInterval`, cleared before any
+    replacement so there's never more than one) and reloads with one `location.reload()` **only**
+    when that read explicitly comes back with no error, a real row, and
+    `maintenance_mode_enabled === false`; any error, timeout, or missing/empty/still-true data
+    does nothing and waits for the next interval — no toast, no assumption that silence means
+    "off". A `maintenanceCheckInFlight` guard skips a tick outright if the previous check is still
+    waiting on a slow response, so a slow read can never stack a second one on top of it.
+    (`loadAppSettings()` itself — the shared startup read every other page uses — is unchanged;
+    this recheck performs its own explicit-success read rather than trusting that function's
+    side effects.) Under `prefers-reduced-motion: reduce`, the scene freezes on one frame and only
+    the heading/paragraph keep animating, exactly as `maintenance.html` itself does. The admin
     panel is unaffected, so it can always be switched back off.
   - *Featured Series Count*: how many featured series the desktop banner shows (falls back to a
     random series if none are featured).

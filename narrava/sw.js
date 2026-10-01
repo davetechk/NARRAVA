@@ -7,11 +7,12 @@
 // on a flaky connection. Supabase/CDN requests are left alone entirely —
 // this never touches cross-origin requests, only this app's own files.
 
-const CACHE_NAME = 'narrava-shell-v25';
+const CACHE_NAME = 'narrava-shell-v26';
 
 const PRECACHE_URLS = [
   './',
   './index.html',
+  './privacy.html',
   './manifest.json',
   './css/styles.css',
   './img/icon-192.png',
@@ -30,6 +31,7 @@ const PRECACHE_URLS = [
   './js/discover.js',
   './js/library.js',
   './js/history.js',
+  './js/help.js',
   './js/watch.js',
   './js/auth.js',
   './js/profile.js',

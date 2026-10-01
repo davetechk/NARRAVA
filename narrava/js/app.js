@@ -614,6 +614,8 @@ const likeBtn = document.getElementById('likeBtn');
 const bookmarkBtn = document.getElementById('bookmarkBtn');
 const commentBtn = document.getElementById('commentBtn');
 const commentCount = document.getElementById('commentCount');
+const saveCount = document.getElementById('saveCount');
+const shareCount = document.getElementById('shareCount');
 const commentsSheetBackdrop = document.getElementById('commentsSheetBackdrop');
 const commentsSheet = document.getElementById('commentsSheet');
 const commentsSheetClose = document.getElementById('commentsSheetClose');
@@ -640,6 +642,7 @@ const ctaRow = document.querySelector('.ctarow');
 const discoverScreen = document.getElementById('discoverScreen');
 const libraryScreen = document.getElementById('libraryScreen');
 const historyScreen = document.getElementById('historyScreen');
+const helpScreen = document.getElementById('helpScreen');
 const profileScreen = document.getElementById('profileScreen');
 const watchScreen = document.getElementById('watchScreen');
 const navHome = document.getElementById('navHome');
@@ -753,7 +756,7 @@ updateMuteButton();
 // phone-frame presentation. Below the breakpoint neither class does
 // anything — mobile stays exactly as it was.
 // Which screen is showing ('discover' | 'feed' | 'library' | 'profile' |
-// 'history' | 'watch'), kept by showScreen — nav.js reads it to keep the browser history
+// 'history' | 'help' | 'watch'), kept by showScreen — nav.js reads it to keep the browser history
 // in step with real navigation.
 let activeScreenName = 'discover';
 
@@ -769,9 +772,11 @@ function showScreen(name){
   libraryScreen.classList.toggle('screen-hidden', name !== 'library');
   profileScreen.classList.toggle('screen-hidden', name !== 'profile');
   historyScreen.classList.toggle('screen-hidden', name !== 'history');
+  helpScreen.classList.toggle('screen-hidden', name !== 'help');
   watchScreen.classList.toggle('screen-hidden', name !== 'watch');
-  // History is reached from Profile, so Profile stays the highlighted tab.
-  const profileTabActive = name === 'profile' || name === 'history';
+  // History and Help & Feedback are reached from Profile, so Profile
+  // stays the highlighted tab.
+  const profileTabActive = name === 'profile' || name === 'history' || name === 'help';
   navHome.classList.toggle('active', name === 'discover');
   navForYou.classList.toggle('active', name === 'feed');
   navLibrary.classList.toggle('active', name === 'library');
@@ -1474,6 +1479,8 @@ function render(){
   likeBtn.classList.toggle('liked', s.liked);
   bookmarkBtn.classList.toggle('saved', s.saved);
   commentCount.textContent = s.commentCount;
+  saveCount.textContent = s.saves;
+  shareCount.textContent = s.shares;
   if(!s.socialLoaded) loadFeedSocialState(s);
   coinBalance.textContent = coins;
   buildSpine(s.currentEp, s.totalEp);
@@ -1508,11 +1515,15 @@ async function loadFeedSocialState(s){
   s.liked = state.liked;
   s.saved = state.saved;
   s.commentCount = state.commentCount;
+  s.saves = state.saveCount;
+  s.shares = state.shareCount;
   if(slides[idx] === s){
     likeCount.textContent = s.likes;
     likeBtn.classList.toggle('liked', s.liked);
     bookmarkBtn.classList.toggle('saved', s.saved);
     commentCount.textContent = s.commentCount;
+    saveCount.textContent = s.saves;
+    shareCount.textContent = s.shares;
   }
 }
 
@@ -1739,14 +1750,19 @@ likeBtn.addEventListener('click', async ()=>{
   if(slides[idx] === s) render();
 });
 
-// Same real shape as like, against series_saves — personal only, no
-// public count.
+// Same real shape as like, against series_saves: a failed (or signed-
+// out) toggle returns null and nothing on screen changes; a successful
+// one re-fetches the real save total (and share total — same call)
+// rather than guessing it locally.
 bookmarkBtn.addEventListener('click', async ()=>{
   if(slides.length === 0) return;
   const s = slides[idx];
   const newSaved = await toggleSeriesSave(s.id, s.saved);
   if(newSaved === null) return;
   s.saved = newSaved;
+  const counts = await fetchSeriesSaveShareCounts(s.id);
+  s.saves = counts.saves;
+  s.shares = counts.shares;
   bookmarkBtn.classList.add('pulse');
   setTimeout(()=>bookmarkBtn.classList.remove('pulse'), 350);
   if(slides[idx] === s) render();
@@ -1833,6 +1849,25 @@ function closeEpisodeGrid(){
 epBadge.addEventListener('click', openEpisodeGrid);
 episodeGridClose.addEventListener('click', closeEpisodeGrid);
 episodeGridBackdrop.addEventListener('click', closeEpisodeGrid);
+
+// A share has completed and record_series_share has finished (see
+// recordSeriesShare, shared-utils.js): re-fetch that series' real
+// counts — one call — and show them wherever that series is on screen,
+// the feed here and the desktop Watch page (renderWatchSaveShareCounts,
+// watch.js). Never +1 locally: the database counts at most one share
+// per person per series per day.
+document.addEventListener('narrava:series-shared', async (e) => {
+  const s = slides.find(x => x.id === e.detail.seriesId);
+  if(!s) return;
+  const counts = await fetchSeriesSaveShareCounts(s.id);
+  s.saves = counts.saves;
+  s.shares = counts.shares;
+  if(slides[idx] === s){
+    saveCount.textContent = s.saves;
+    shareCount.textContent = s.shares;
+  }
+  renderWatchSaveShareCounts(s);
+});
 
 // Real sharing (shareSeries, shared-utils.js) — the browser's own native
 // share sheet where available, a small fallback popup where it isn't.

@@ -27,6 +27,27 @@ async function fetchSeriesLikeCount(seriesId){
   }
 }
 
+// Public save + share totals for one series — one call,
+// get_series_social_counts, which returns a single { saves, shares } row
+// (no row at all for a series that isn't published). Shares are the
+// database's own count: at most one per person per series per day (see
+// record_series_share). Same failure behaviour as fetchSeriesLikeCount
+// above: logged, and 0 shown.
+async function fetchSeriesSaveShareCounts(seriesId){
+  try {
+    const { data, error } = await supabaseClient.rpc('get_series_social_counts', { p_series_id: seriesId });
+    if(error) throw error;
+    const row = Array.isArray(data) ? data[0] : data;
+    return {
+      saves: row ? (Number(row.saves) || 0) : 0,
+      shares: row ? (Number(row.shares) || 0) : 0
+    };
+  } catch(err){
+    console.error('Narrava: failed to fetch series save/share counts', err);
+    return { saves: 0, shares: 0 };
+  }
+}
+
 // Real select-own-row reads — series_likes/series_saves have no RPC of
 // their own, so this is a normal scoped read against the existing
 // table/RLS, same as every other "does this row exist for me" check
@@ -55,14 +76,21 @@ async function fetchMySeriesLikeSaveState(seriesId, userId){
 // below) rather than a separate count-only query, so the number shown
 // next to the Comment icon on the main screen can never drift from the
 // same real total the opened panel's own heading shows.
+// saveCount/shareCount ride along in the same Promise.all (one
+// get_series_social_counts call), so all four numbers under the icons
+// load together, the same way, in both places.
 async function fetchSeriesSocialState(seriesId){
   const userId = await getSignedInUserId();
-  const [likeCount, myState, commentCount] = await Promise.all([
+  const [likeCount, myState, commentCount, saveShare] = await Promise.all([
     fetchSeriesLikeCount(seriesId),
     fetchMySeriesLikeSaveState(seriesId, userId),
-    fetchSeriesCommentCount(seriesId)
+    fetchSeriesCommentCount(seriesId),
+    fetchSeriesSaveShareCounts(seriesId)
   ]);
-  return { likeCount, liked: myState.liked, saved: myState.saved, commentCount };
+  return {
+    likeCount, liked: myState.liked, saved: myState.saved, commentCount,
+    saveCount: saveShare.saves, shareCount: saveShare.shares
+  };
 }
 
 // Toggles a real row in series_likes for the signed-in viewer. Returns
@@ -116,8 +144,9 @@ async function fetchMySavedSeriesIds(){
   }
 }
 
-// Same shape as toggleSeriesLike, against series_saves — personal only,
-// no public count (never asked for, saves don't need one). Deliberately
+// Same shape as toggleSeriesLike, against series_saves. The public
+// total shown under the Save icon comes from fetchSeriesSaveShareCounts
+// above, re-fetched by the callers after a successful toggle. Deliberately
 // getRealAccountUserId, not getSignedInUserId: saving a series still
 // needs a genuine, real (sign-up-backed) account — a real anonymous
 // account is not enough here, unlike like/comment/reply.

@@ -1523,6 +1523,39 @@
   }
   .history-ep{margin-top:4px;font-size:12px;font-weight:600;color:var(--leaf-light);}
   .history-date{flex-shrink:0;font-size:11.5px;color:var(--muted);}
+  /* Help & Feedback screen (help.js): the Profile menu's own cards and
+     rows (.profile-menu/.profile-row), in the History shell. Contact
+     and About are cards with their details shown in place. */
+  .help-list{max-width:420px;}
+  .help-card{padding:14px 16px 16px;}
+  .help-card-head{
+    display:flex;align-items:center;gap:12px;
+    font-family:'Montserrat',sans-serif;
+    font-weight:700;font-size:13.5px;
+    color:var(--text);
+  }
+  .help-email{
+    margin:12px 0 0;
+    font-size:15px;font-weight:700;
+    color:var(--text);
+    overflow-wrap:anywhere;
+  }
+  .help-actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px;}
+  .help-actions .pill-cta-btn{text-decoration:none;}
+  .help-secondary-btn{
+    margin-top:14px;
+    background:none;
+    border:1px solid rgba(255,255,255,0.18);
+    color:var(--text);
+    font-family:'Montserrat',sans-serif;
+    font-weight:700;font-size:13px;
+    padding:9px 20px;
+    border-radius:24px;
+    cursor:pointer;
+  }
+  .help-about-name{margin-top:12px;font-size:18px;font-weight:800;color:var(--text);}
+  .help-about-line{margin-top:4px;font-size:13px;color:var(--text);line-height:1.45;}
+  .help-about-meta{margin-top:8px;font-size:12px;color:var(--muted);}
   /* Generic small pill CTA — Library's own "Log in" empty-state button,
      and (see narravaLoadFailedHtml, shared-utils.js) the real "Try
      again" retry action on a genuinely failed video load. One shared
@@ -1631,8 +1664,8 @@
     text-align:center;
   }
   .profile-feature svg{width:18px;height:18px;color:var(--leaf-light);}
-  /* The one tappable tile (Download -> "Coming soon"): a real <button>,
-     reset so it looks exactly like its <div> neighbours. */
+  /* All four tiles are real <button>s (each -> "Coming soon"), reset so
+     they look exactly like the plain <div> tiles they replaced. */
   button.profile-feature{font-family:inherit;line-height:inherit;cursor:pointer;}
 
   .profile-menu{
@@ -2997,9 +3030,10 @@
       padding:5px 12px;
       border-radius:999px;
     }
-    /* Centered, evenly-spaced icon+label row, matching the real site's
-       own like/bookmark/share row proportions — no counts next to any
-       of them, since nothing here is persisted yet (see watch.js). */
+    /* Centered, evenly-spaced icon row, matching the real site's own
+       like/bookmark/share row proportions. Each label shows that
+       series' real count once loaded (likes, comments, shares, saves —
+       see watch.js's loadWatchSocialState). */
     .watch-actions{
       display:flex;
       justify-content:space-around;

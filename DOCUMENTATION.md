@@ -211,12 +211,25 @@ screen too, reached from Profile (Profile stays the highlighted tab while it's o
   "That series isn't available". Empty: "Nothing watched yet." Failure or no answer within
   10 seconds: "Couldn't load your history right now." with a Try again button. History is built
   from `watch_progress`; no front-end code ever deletes those rows (see Watch progress below).
+- **Help & Feedback** (`help.js`, Profile → Help & Feedback): built like History — same
+  `.library` shell, header and back arrow (`navBack()`), Profile stays highlighted. Its content
+  is static markup in `index.html`, styled with the Profile menu's own cards/rows:
+  - **Privacy Policy** — a plain link to `privacy.html`, opened in a new tab (see
+    [Privacy policy page](#privacy-policy-page)).
+  - **Contact** — `support@narrava.com`, with "Open email app"
+    (`mailto:support@narrava.com?subject=Narrava%20support`) and "Copy email" (clipboard, then
+    the shared toast "Email copied"; "Could not copy email — please try again" if the browser
+    refuses).
+  - **About** — "Narrava", "Short Nollywood dramas, made for your phone.", "Version " +
+    `APP_VERSION`, and "© 2026 Narrava Entertainment".
+  - **`APP_VERSION`** is a single constant at the top of `shared-utils.js` (currently `'1.0.0'`).
+    It is the only place the version lives. **Bump it on every release.**
 - **Profile** (`profile.js`): log in / sign out, username, install-app button, wallet balance
-  (see below), History (above), and an Admin Panel link that only appears if you're an admin.
-  The Membership banner, Earn Rewards, Gifts, and Download (both the menu row and the Download
-  feature tile) all show the same "Coming soon" toast, as does tapping a VIP poster on Home.
-  Top Up, Language and Help & Feedback keep their own toasts. The other feature tiles
-  (Originals, Daily Coins, HD Quality) are still plain labels that do nothing.
+  (see below), History and Help & Feedback (above), and an Admin Panel link that only appears if
+  you're an admin. The Membership banner, Earn Rewards, Gifts, the Download row, and all four
+  feature tiles (Originals, Daily Coins, Download, HD Quality — each a real `<button>` reset to
+  look exactly like the old `<div>` tiles) show the same "Coming soon" toast, as does tapping a
+  VIP poster on Home. Top Up and Language keep their own toasts.
 - **Watch page (desktop only)** (`watch.js`): video, breadcrumb, like/save/share/comments, and
   a numbered episode grid.
 
@@ -398,8 +411,28 @@ rows drop out of History too.
 All in `social.js` and `comments-panel.js`, against real tables (`series_likes`, `series_saves`,
 `series_comments`, `comment_likes`).
 
-- Like count comes from the `get_series_like_count` function. Saves are personal, with no public
-  count.
+- **The four numbers under the icons** (like, comment, share, save) appear in both the mobile
+  feed's action rail (`#likeCount`, `#commentCount`, `#shareCount`, `#saveCount`) and the
+  desktop Watch page's row (`#watchLikeCount` … `#watchSaveCount`). They're all loaded together,
+  once per series, by `fetchSeriesSocialState()` (`social.js`) — called from
+  `loadFeedSocialState` (`app.js`) and `loadWatchSocialState` (`watch.js`) — and shown as plain
+  whole numbers (`0`, `13`, `24`; no "1.2K" shortening), in the same span that shows the word
+  ("Like", "Share", "Save") only until the first render. Until a series' numbers arrive, and if
+  a load fails (logged as `Narrava: …`), each shows `0`.
+  - Like count: `get_series_like_count`. Comment count: the length of `get_series_comments`.
+  - Save and share counts: **one** call, `get_series_social_counts(p_series_id)` →
+    `fetchSeriesSaveShareCounts()`, which returns a single `{ saves, shares }` row for a
+    published series (no row for anything else). The share number is the database's count —
+    at most one per person per series per day.
+  - After a like/unlike or save/unsave **succeeds**, the real count is re-fetched and shown
+    (likes via `get_series_like_count`, saves via `get_series_social_counts`); nothing is guessed
+    locally. If the write fails, or the viewer isn't allowed (signed out / anonymous for saves —
+    the sign-in modal opens), the toggle returns `null` and nothing on screen changes.
+  - After a share **completes** (native sheet resolved, or a fallback action finished — see
+    Share counting below), `recordSeriesShare()` fires `narrava:series-shared` once
+    `record_series_share` has finished; `app.js` listens, re-fetches that series'
+    counts and updates the feed and, via `renderWatchSaveShareCounts()`, the Watch page. Never
+    +1 locally: a second share the same day doesn't change the number, and the screen shows that.
 - Comments come from one function, `get_series_comments`, which returns every comment and reply
   for a series in a flat list, with like counts, whether *you* liked each, and the author's
   display name. The front end builds the threads from `parent_comment_id`. Replies can nest to
@@ -566,6 +599,27 @@ Details worth knowing:
     can launch behind a real, pre-built switch instead of shipping wide open.
   - If the settings can't be loaded, the app quietly uses safe defaults (nothing overridden).
 
+## Privacy policy page
+
+`privacy.html` (next to `index.html`) is Narrava's public privacy policy — the link the app
+stores ask for, at `/privacy.html`. Help & Feedback → Privacy Policy opens it in a new tab.
+
+- **Word for word.** Its text is `PRIVACY_POLICY.md` exactly — the HTML only adds structure
+  (headings, paragraphs, lists). Nothing is reworded, shortened or added; not even a site name or
+  a "back" link. To change the policy, edit `PRIVACY_POLICY.md`, then mirror the change into
+  `privacy.html` exactly, and re-check that the two match (strip the Markdown markers and
+  compare line by line). The bracketed placeholders — `[DATE]`, `[LEGAL COMPANY NAME]`,
+  `[REGISTERED ADDRESS]`, `[MINIMUM AGE]` — are deliberately still in both and stay until the
+  real details exist.
+- **Static.** Plain HTML with its own inline CSS (the app's dark colours and Montserrat, the
+  same Google Fonts link the app uses). **No scripts of any kind**: it never loads supabase-js,
+  `app.js` or anything else, so it never runs the app's init, the maintenance-mode check or the
+  anonymous sign-in, and it stays readable during Maintenance Mode. Don't add scripts or link
+  `styles.css` to it.
+- It's in `sw.js`'s precache list, so it also opens offline once the app has been installed.
+- `PRIVACY_POLICY.md` sits in the same served folder, so it's publicly reachable too
+  (`/PRIVACY_POLICY.md`); harmless, since it's the same public text.
+
 ## Installable app (PWA)
 
 `manifest.json` + `sw.js` + `pwa-install.js`. On Android/Chrome the app can be installed from a
@@ -659,7 +713,7 @@ order, and files call functions defined in other files (for example `app.js` cal
 calls happen after everything has loaded, but a new file has to go in the right place in the
 list, and names must not collide across files. The current order: `protect` → `layout-guard` → `config` → supabase-js → hls.js
 → `supabase-client` → `shared-utils` → `video-player` → `watch-progress` → `visit-log` →
-`social` → `comments-panel` → `feed-data` → `app` → `discover` → `library` → `history` → `watch` → `auth` →
+`social` → `comments-panel` → `feed-data` → `app` → `discover` → `library` → `history` → `help` → `watch` → `auth` →
 `profile` → `pwa-install` → `nav`. Admin pages load `config`, supabase-js, `supabase-client`,
 `shared-utils`, `admin-shared`, and one `admin-<page>.js` each.
 
@@ -729,7 +783,8 @@ visited_at) · `purchases` and `coin_transactions` (see below).
 **Database functions (RPC):** `get_continue_watching`, `get_series_like_count`,
 `get_series_comments`, `admin_list_users`, `admin_total_users`, `admin_total_revenue`,
 `admin_visit_stats`, `admin_daily_visits`, `record_episode_view`, `record_series_share`,
-`admin_most_watched_series`, `get_series_rankings`, `get_watch_history`. (`admin_user_stats` also exists and is intentionally unused.)
+`admin_most_watched_series`, `get_series_rankings`, `get_watch_history`,
+`get_series_social_counts`. (`admin_user_stats` also exists and is intentionally unused.)
 
 **Edge Functions:** `bunny-signed-playback-url` (viewers) · `bunny-upload-init`,
 `bunny-delete-video`, `admin-suspend-user` (admin only).
@@ -758,8 +813,8 @@ Do not describe any of this as working.
 - **Revenue.** The Revenue & Analytics page reads `purchases` and `coin_transactions`, but
   nothing in this repo writes to either, so its numbers are zero. Subscriptions and ad revenue
   are labelled "Inactive".
-- **Membership, Earn Rewards, Gifts, Download, Language, Help & Feedback:** menu rows/tiles
-  that only show a toast.
+- **Membership, Earn Rewards, Gifts, Download, Language, and the Originals / Daily Coins /
+  Download / HD Quality tiles:** only show a toast.
 - **VIP** (posters only show a "Coming soon" toast).
 - **Download as a feature** — there's no download button on the like/comment/save/share row.
 - **Stored episode durations.** `episodes.duration_seconds` is never written; the length shown on

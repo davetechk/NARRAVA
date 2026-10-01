@@ -108,6 +108,8 @@ async function fetchSlides() {
           saved: false,
           liked: false,
           commentCount: 0,
+          saves: 0,
+          shares: 0,
           socialLoaded: false,
           coinCost: 2,
           freeEpisodeCount: freeEpisodeCount,

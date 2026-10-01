@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Narrava Privacy Policy</title>
+<meta name="theme-color" content="#0D130E">
+<link rel="icon" href="img/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<!--
+  Narrava's public privacy policy (the link the app stores need).
+
+  Rules — see DOCUMENTATION.md, "Privacy policy page":
+  * The text is PRIVACY_POLICY.md word for word. Change the policy there
+    first, then mirror it here exactly; never edit wording only here.
+    Bracketed placeholders ([DATE], [LEGAL COMPANY NAME],
+    [REGISTERED ADDRESS], [MINIMUM AGE]) stay as written until the real
+    details exist.
+  * Static HTML + CSS only. No scripts of any kind: it must never run the
+    app's init, maintenance-mode check or anonymous sign-in, so it stays
+    readable on its own and while Maintenance Mode is on. Its styles are
+    inline (not css/styles.css) so nothing from the app can affect it.
+-->
+<style>
+  :root{
+    --ink:#0D130E;
+    --text:#F4F7F1;
+    --muted:#9BAE95;
+    --leaf-light:#62E390;
+  }
+  *{box-sizing:border-box;}
+  html{-webkit-text-size-adjust:100%;}
+  body{
+    margin:0;
+    background:var(--ink);
+    color:var(--text);
+    font-family:'Montserrat',system-ui,-apple-system,'Segoe UI',sans-serif;
+    font-size:16px;
+    line-height:1.7;
+  }
+  .policy{
+    max-width:720px;
+    margin:0 auto;
+    padding:calc(32px + env(safe-area-inset-top)) 20px calc(56px + env(safe-area-inset-bottom));
+  }
+  h1{
+    font-size:28px;
+    font-weight:800;
+    line-height:1.25;
+    margin:0 0 12px;
+  }
+  h2{
+    font-size:20px;
+    font-weight:800;
+    line-height:1.3;
+    margin:40px 0 12px;
+    padding-top:24px;
+    border-top:1px solid rgba(255,255,255,0.08);
+  }
+  h3{
+    font-size:16px;
+    font-weight:700;
+    color:var(--leaf-light);
+    margin:26px 0 8px;
+  }
+  p{margin:0 0 14px;color:rgba(244,247,241,0.88);}
+  ul{margin:0 0 16px;padding-left:22px;color:rgba(244,247,241,0.88);}
+  li{margin:0 0 8px;}
+  li::marker{color:var(--leaf-light);}
+  @media (min-width:700px){
+    body{font-size:17px;}
+    .policy{padding-top:56px;}
+    h1{font-size:34px;}
+    h2{font-size:22px;}
+  }
+</style>
+</head>
+<body>
+  <main class="policy">
+    <h1>Narrava Privacy Policy</h1>
+    <p>Effective date: [DATE]</p>
+    <p>This policy explains what information Narrava collects when you use our app and website, why we collect it, and the choices you have. Narrava is operated by [LEGAL COMPANY NAME], [REGISTERED ADDRESS], Nigeria ("Narrava", "we", "us").</p>
+    <p>If you have any questions, contact us at support@narrava.com.</p>
+    <h2>Information we collect</h2>
+    <h3>When you just watch</h3>
+    <p>You don't need to sign up to watch on Narrava. When you open the app, we automatically create an anonymous account for your device. It is a random ID with no name, email or phone number attached. It lets us remember your progress, likes and saves without asking you to register.</p>
+    <h3>When you create an account</h3>
+    <p>If you sign up, we collect your email address and a password. Your password is stored securely by our authentication provider, and we never see it in readable form. You can also choose a display name. Anything you did on your anonymous account (your progress, likes and saves) moves over to your new account, so nothing is lost.</p>
+    <h3>What you do in the app</h3>
+    <p>To make Narrava work, we record:</p>
+    <ul>
+      <li>the episodes you watch and where you stopped, so you can continue watching and see your history</li>
+      <li>episode views, counted once per person per episode per day, so we can rank the most watched series</li>
+      <li>the series you like and save</li>
+      <li>comments you post, which are public and shown with your display name</li>
+      <li>shares you complete, counted once per person per series per day</li>
+      <li>the dates and times you visit the app, so we can understand how many people use Narrava</li>
+    </ul>
+    <h3>Payments</h3>
+    <p>When paid features launch, payments will be handled by Paystack. We never see or store your full card or bank details. We keep a record of each purchase, including the amount, the currency, the date, and the payment reference, so we can give you what you paid for and help if something goes wrong.</p>
+    <h3>Ads</h3>
+    <p>When ad supported features launch, our advertising partner may collect information about your device in order to show and measure ads. We will update this policy to name that partner before ads go live.</p>
+    <h3>Information stored on your device</h3>
+    <p>The app stores a small amount of information on your phone or browser, such as your login session and some app files so Narrava loads faster and works on weak connections. Clearing your browser data or uninstalling the app removes it.</p>
+    <h2>How we use your information</h2>
+    <p>We use your information only to:</p>
+    <ul>
+      <li>run Narrava, play your videos, and remember your progress</li>
+      <li>keep your account secure and prevent abuse</li>
+      <li>show public features such as comments and rankings</li>
+      <li>understand how the app is used so we can improve it</li>
+      <li>process payments and give you the coins or subscription you paid for</li>
+      <li>respond when you contact us</li>
+    </ul>
+    <p>We do not sell your personal information.</p>
+    <h2>Who we share it with</h2>
+    <p>We use trusted service providers to run Narrava. They process information only on our behalf:</p>
+    <ul>
+      <li>Supabase, for our database and accounts</li>
+      <li>Bunny.net, to stream video to you</li>
+      <li>Vercel, to host our website and app</li>
+      <li>Google Fonts, to load the fonts the app uses</li>
+      <li>Paystack, to process payments (when payments launch)</li>
+    </ul>
+    <p>Some of these providers may store information outside Nigeria. We choose providers that protect information to a high standard.</p>
+    <p>We may also share information if the law requires it, or to protect the safety of our users or the public.</p>
+    <h2>How long we keep it</h2>
+    <p>We keep your information for as long as your account is active. If you ask us to delete your account, we delete your personal information, except records we must keep by law, such as payment records.</p>
+    <h2>Your rights</h2>
+    <p>You can ask us to:</p>
+    <ul>
+      <li>tell you what information we hold about you</li>
+      <li>correct information that is wrong</li>
+      <li>delete your account and your personal information</li>
+    </ul>
+    <p>To do any of these, email support@narrava.com from the email address linked to your account. We will reply within 30 days.</p>
+    <h2>Children</h2>
+    <p>Narrava is not intended for children under [MINIMUM AGE]. If you believe a child has created an account, contact us and we will delete it.</p>
+    <h2>Security</h2>
+    <p>We protect your information with secure connections, strict access rules on our database, and by never storing card details ourselves. No system is perfectly secure, but we work hard to keep your information safe.</p>
+    <h2>Changes to this policy</h2>
+    <p>We may update this policy as Narrava grows, for example when payments or ads launch. When we do, we will change the effective date at the top, and for important changes we will let you know in the app.</p>
+    <h2>Contact us</h2>
+    <p>Email: support@narrava.com</p>
+  </main>
+</body>
+</html>

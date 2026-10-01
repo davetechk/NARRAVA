@@ -70,6 +70,8 @@ const watchSaveBtn = document.getElementById('watchSaveBtn');
 const watchShareBtn = document.getElementById('watchShareBtn');
 const watchCommentBtn = document.getElementById('watchCommentBtn');
 const watchCommentCount = document.getElementById('watchCommentCount');
+const watchSaveCount = document.getElementById('watchSaveCount');
+const watchShareCount = document.getElementById('watchShareCount');
 const watchCommentsBackdrop = document.getElementById('watchCommentsBackdrop');
 const watchCommentsClose = document.getElementById('watchCommentsClose');
 const watchCommentsBody = document.getElementById('watchCommentsBody');
@@ -329,6 +331,8 @@ async function openWatchScreen(slideIndex, resume){
   watchLikeCount.textContent = String(slide.likes);
   watchSaveBtn.classList.toggle('active', slide.saved);
   watchCommentCount.textContent = String(slide.commentCount);
+  watchSaveCount.textContent = String(slide.saves);
+  watchShareCount.textContent = String(slide.shares);
   watchEpisodes = [];
   watchEpRangesEl.innerHTML = '';
   // The player itself (watchPlayerHost above) keeps the real logo loader
@@ -370,12 +374,24 @@ async function loadWatchSocialState(slide){
   slide.liked = state.liked;
   slide.saved = state.saved;
   slide.commentCount = state.commentCount;
+  slide.saves = state.saveCount;
+  slide.shares = state.shareCount;
   if(watchSlide === slide){
     watchLikeBtn.classList.toggle('active', slide.liked);
     watchLikeCount.textContent = String(slide.likes);
     watchSaveBtn.classList.toggle('active', slide.saved);
     watchCommentCount.textContent = String(slide.commentCount);
+    renderWatchSaveShareCounts(slide);
   }
+}
+
+// Writes a slide's save/share totals under the Save/Share icons, only if
+// it's the series this page is showing. Also called by app.js's
+// 'narrava:series-shared' listener after a completed share.
+function renderWatchSaveShareCounts(slide){
+  if(watchSlide !== slide) return;
+  watchSaveCount.textContent = String(slide.saves);
+  watchShareCount.textContent = String(slide.shares);
 }
 
 // Same as the browser's own Back: returns to whatever screen this was
@@ -459,15 +475,22 @@ watchLikeBtn.addEventListener('click', async () => {
     watchLikeCount.textContent = String(slide.likes);
   }
 });
-// Same real shape as like, against series_saves — personal only, no
-// public count.
+// Same real shape as like, against series_saves: nothing changes on a
+// failed/signed-out toggle (null); after a successful one the real save
+// total is re-fetched (one get_series_social_counts call), not guessed.
 watchSaveBtn.addEventListener('click', async () => {
   if(!watchSlide) return;
   const slide = watchSlide;
   const newSaved = await toggleSeriesSave(slide.id, slide.saved);
   if(newSaved === null) return;
   slide.saved = newSaved;
-  if(watchSlide === slide) watchSaveBtn.classList.toggle('active', slide.saved);
+  const counts = await fetchSeriesSaveShareCounts(slide.id);
+  slide.saves = counts.saves;
+  slide.shares = counts.shares;
+  if(watchSlide === slide){
+    watchSaveBtn.classList.toggle('active', slide.saved);
+    renderWatchSaveShareCounts(slide);
+  }
 });
 // Real sharing (shareSeries, shared-utils.js) — same real mechanism the
 // mobile feed's own shareBtn uses, not a second implementation.

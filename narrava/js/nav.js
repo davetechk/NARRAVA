@@ -42,7 +42,7 @@
 
 // The state object sitting on the current history entry:
 //   { narrava:true, screen, watching, sid, n }
-//   screen   'discover' | 'feed' | 'library' | 'profile' | 'history' | 'watch'
+//   screen   'discover' | 'feed' | 'library' | 'profile' | 'history' | 'help' | 'watch'
 //   watching true while inside a series on the feed screen
 //   sid      id of the series being watched (only used to reopen it if the
 //            browser's Forward button lands on this entry again)

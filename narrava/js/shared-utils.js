@@ -4,6 +4,10 @@
 // admin page (admin/*.html) — one source, included by all of them,
 // rather than duplicating either function.
 
+// The app's release version, shown on Help & Feedback -> About
+// (help.js). The one place it's defined: bump it on every release.
+const APP_VERSION = '1.0.0';
+
 function escapeHtml(str){
   return String(str)
     .replace(/&/g, '&amp;')
@@ -173,11 +177,17 @@ if(shareSheetBackdrop){
 // forget, same rules as recordEpisodeViewOnce (video-player.js): never
 // awaited in a way that could delay anything, and a failure only ever
 // reaches the console. Only the series id is ever sent.
+//
+// Once the call has finished (either way), fires 'narrava:series-shared'
+// on document with { seriesId } — app.js listens and re-fetches the real
+// share count shown under the Share icon, rather than adding 1 locally
+// (the database counts at most one share per person per series per day).
 function recordSeriesShare(seriesId){
   if(!seriesId) return;
   supabaseClient.rpc('record_series_share', { p_series_id: seriesId })
     .then(({ error }) => { if(error) console.error('Narrava: failed to record series share', error); })
-    .catch(err => console.error('Narrava: failed to record series share', err));
+    .catch(err => console.error('Narrava: failed to record series share', err))
+    .finally(() => document.dispatchEvent(new CustomEvent('narrava:series-shared', { detail: { seriesId } })));
 }
 
 // The one place the link format is defined — build (seriesShareUrl) and

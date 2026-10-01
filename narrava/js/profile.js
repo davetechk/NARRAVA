@@ -9,9 +9,10 @@
 // Two rows are wired to something real: My Wallet (a logged-in user's
 // coin_balance, read straight off their own `profiles` row, covered by
 // the existing select-own RLS policy) and History (its own screen,
-// history.js). The membership banner, Earn Rewards, Gifts and Download
-// (the row and the feature tile) all show the same "Coming soon" toast;
-// Top Up, Language and Help & Feedback keep their own toasts.
+// history.js), and Help & Feedback opens its own screen (help.js). The
+// membership banner, Earn Rewards, Gifts, Download (the row) and all four
+// feature tiles show the same "Coming soon" toast; Top Up and Language
+// keep their own toasts.
 
 const profilePanel = document.getElementById('profilePanel');
 
@@ -107,10 +108,10 @@ function renderProfileMenu(){
       : '') +
 
     '<div class="profile-features">' +
-      '<div class="profile-feature">' + PROFILE_ICONS.rewards + '<span>Originals</span></div>' +
-      '<div class="profile-feature">' + PROFILE_ICONS.topup + '<span>Daily Coins</span></div>' +
+      '<button type="button" class="profile-feature" id="featureOriginals">' + PROFILE_ICONS.rewards + '<span>Originals</span></button>' +
+      '<button type="button" class="profile-feature" id="featureDailyCoins">' + PROFILE_ICONS.topup + '<span>Daily Coins</span></button>' +
       '<button type="button" class="profile-feature" id="featureDownload">' + PROFILE_ICONS.download + '<span>Download</span></button>' +
-      '<div class="profile-feature">' + PROFILE_ICONS.history + '<span>HD Quality</span></div>' +
+      '<button type="button" class="profile-feature" id="featureHdQuality">' + PROFILE_ICONS.history + '<span>HD Quality</span></button>' +
     '</div>' +
 
     '<div class="profile-menu">' +
@@ -162,7 +163,8 @@ function wireProfileRows(loggedIn){
   if(loginRow) loginRow.addEventListener('click', () => openAuthModal('login'));
 
   // Not built yet — every one of these says so the same way.
-  ['membershipBanner', 'rowRewards', 'rowGifts', 'rowDownload', 'featureDownload'].forEach(id => {
+  ['membershipBanner', 'rowRewards', 'rowGifts', 'rowDownload',
+   'featureOriginals', 'featureDailyCoins', 'featureDownload', 'featureHdQuality'].forEach(id => {
     document.getElementById(id).addEventListener('click', () => showToast('Coming soon'));
   });
 
@@ -183,9 +185,9 @@ function wireProfileRows(loggedIn){
   const usernameRow = document.getElementById('rowUsername');
   if(usernameRow) usernameRow.addEventListener('click', openUsernameModal);
 
-  ['rowLanguage', 'rowHelp'].forEach(id => {
-    document.getElementById(id).addEventListener('click', () => showToast('Coming soon'));
-  });
+  document.getElementById('rowHelp').addEventListener('click', () => showScreen('help'));
+
+  document.getElementById('rowLanguage').addEventListener('click', () => showToast('Coming soon'));
 
   const signOutRow = document.getElementById('rowSignOut');
   if(signOutRow){

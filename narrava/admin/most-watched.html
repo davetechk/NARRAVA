@@ -3,30 +3,34 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Narrava Admin — System Settings</title>
+<title>Narrava Admin — Most Watched</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../css/styles.css?v=9">
 <link rel="stylesheet" href="../css/admin.css">
 </head>
-<body class="admin-page" data-page="system-settings">
+<body class="admin-page" data-page="most-watched">
 
 <div class="toast" id="toast"></div>
 
 <div class="admin-shell">
   <nav class="admin-sidebar" id="adminSidebar"></nav>
   <main class="admin-main">
+
     <div class="admin-topbar">
       <div>
-        <h1>System Settings</h1>
-        <div class="admin-topbar-sub">Platform-wide configuration</div>
+        <h1>Most Watched</h1>
+        <div class="admin-topbar-sub">Every series, ranked by real views</div>
       </div>
     </div>
 
     <div class="admin-panel">
-      <div class="admin-panel-head"><div><h2>Platform Controls</h2><div class="admin-panel-sub">Real, live settings — every change here takes effect immediately on the real app</div></div></div>
-      <div id="settingsRows"></div>
+      <div class="admin-panel-head">
+        <div><h2>Series Ranked by Views</h2><div class="admin-panel-sub">Views, likes, comments, saves and shares — all real counts</div></div>
+      </div>
+      <div id="mostWatchedTableWrap"></div>
     </div>
+
   </main>
 </div>
 
@@ -35,6 +39,6 @@
 <script src="../js/supabase-client.js"></script>
 <script src="../js/shared-utils.js?v=1"></script>
 <script src="../js/admin-shared.js?v=1"></script>
-<script src="../js/admin-settings.js?v=1"></script>
+<script src="../js/admin-most-watched.js?v=1"></script>
 </body>
 </html>

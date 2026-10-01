@@ -80,7 +80,8 @@ Browser (static files in narrava/)          Supabase                       Bunny
   admin's Series List and Episodes tables (real `<thead>`, skeleton body rows). The helpers
   (`skeletonPosterGridHtml`, `skeletonHomeHeroHtml`, `skeletonHomeShelvesHtml`,
   `skeletonCommentRowsHtml`, `skeletonWatchEpisodeGridHtml`, `skeletonAdminSeriesTableHtml`,
-  `skeletonAdminEpisodesTableHtml`) live in `js/shared-utils.js` next to `narravaLoaderHtml()`;
+  `skeletonAdminEpisodesTableHtml`, `skeletonAdminMostWatchedTableHtml`) live in
+  `js/shared-utils.js` next to `narravaLoaderHtml()`;
   each reuses the real content class it's standing in for (`.poster-card`, `.watch-ep-card`, the
   admin table shell) so its sizing/border-radius always matches whatever replaces it, and none of
   them ever contain real text, numbers, names or images. `.skeleton-block` (styles.css) is the one
@@ -99,11 +100,13 @@ Browser (static files in narrava/)          Supabase                       Bunny
   instead (no `transform`/`background-position` change), and the center logo follows its own
   reduced-motion rule above unchanged.
 - **Maintenance screen size**: the whole animation (scene + heading + paragraph + button) in
-  `.maintenance-screen` is sized at 0.78× the values `maintenance.html` itself uses — the scene via
-  a percentage width (78%, not 100%, so it shrinks on mobile too) rather than only capping the
-  desktop `max-width`, and every h1/p/button font-size, margin and padding scaled by the same
-  factor. Nothing about the drawing, its script, its colors, or its timing changed — only these
-  CSS numbers.
+  `.maintenance-screen` has been scaled down twice now — first to 0.78× the values
+  `maintenance.html` itself uses, then a second pass took that result down by a further ~18%
+  (0.82× on top of the first pass, so ~0.64× the original file's numbers overall) — the scene via
+  a percentage width (64%, not 100%, so it shrinks on mobile too) rather than only capping the
+  desktop `max-width`, and every h1/p/button font-size, margin, padding and box-shadow scaled by
+  the same factor each pass. Nothing about the drawing, its script, its colors, or its timing
+  changed — only these CSS numbers.
 - **`narrava/img/load_img_icon.svg` is Narrava's one and only logo.** Its shape (179 paths) must
   never be redrawn, retraced, or simplified — only its fill colors may ever change. The app icon
   PNGs (`icon-180.png`, `icon-192.png`, `icon-512.png`, `icon-triangle.png`) are regenerated
@@ -317,6 +320,19 @@ episode row as soon as the file has gone to Bunny, but Bunny then needs time to 
 admin panel says so in a toast. Until encoding finishes, playback will fail and go through the
 retry/failure path above.
 
+**Episode views.** `attachViewTracking()` (`video-player.js`) wires both real players (the mobile
+For You feed's `promotePreload` in `app.js`, and the desktop Watch page's `watchPlayEpisode` in
+`watch.js`) to call `record_episode_view` (RPC) once an episode has genuinely accumulated 3 real
+seconds of forward playback — tracked as the sum of real progress between consecutive
+`timeupdate` events while the video is actually playing, so a pause, a stall/buffer, or a seek
+never counts toward it. `recordEpisodeViewOnce()` keeps an in-memory set so it fires at most once
+per episode per page session (replaying the same episode, or seeking back into it, never re-counts
+it in the same session) — the database function itself separately counts at most once per person
+per episode per day, which is a separate, server-side rule this front end doesn't need to know
+about. Fire and forget: never awaited in a way that could delay playback, and a failure only ever
+reaches the console. Only the episode id is ever sent — never a user id, series id, or a count
+computed in the browser.
+
 ## Watch progress and Continue Watching
 
 While something plays, the position is saved to `watch_progress` (one row per user + episode,
@@ -362,6 +378,14 @@ All in `social.js` and `comments-panel.js`, against real tables (`series_likes`,
     Maintenance Mode on, links are not acted on.
   - There are no social preview cards (title/image when the link is pasted into a chat): those
     need a server to render tags per link, and this is a static site.
+  - **Share counting.** `recordSeriesShare()` (`shared-utils.js`) calls `record_series_share`
+    (RPC) only when a share has genuinely *completed* — after `navigator.share()` resolves
+    successfully (never on cancel or its own error), or after a fallback action in the popup
+    actually finishes (the link genuinely copied, or a WhatsApp/Facebook share target genuinely
+    opened) — never just from opening the fallback sheet itself. Since `shareSeries()` is the one
+    place every share button in the app calls into, this is wired in one place and covers all of
+    them. Fire and forget, same rules as episode views above. Unlike views, a share is never
+    deduplicated client-side — every genuinely completed share counts.
 
 ## The admin panel
 
@@ -383,7 +407,8 @@ there.
 | **User Management** | Lists real accounts (not anonymous ones); suspend / unsuspend. |
 | **Analytics** | Visits today and last 7 days, unique visitors, a daily chart. |
 | **Revenue & Analytics** | Exists, but every number is honestly zero right now. See [Not built yet](#not-built-yet). |
-| **System Settings** | Free Mode, Maintenance Mode, Featured Series Count (below). |
+| **Most Watched** | Every series ranked by real views, from `admin_most_watched_series` (already ranked server-side — never re-sorted here). Rank, cover + title, status badge, views, likes, comments, saves, shares. |
+| **System Settings** | Free Mode, Maintenance Mode, Featured Series Count, Ad Unlock, Subscription Payments, Coin Payments (below). |
 
 **On a phone (≤860px wide)**, every page above is fully usable, with nothing removed. Details worth
 knowing before you change admin UI:
@@ -482,6 +507,12 @@ Details worth knowing:
     panel is unaffected, so it can always be switched back off.
   - *Featured Series Count*: how many featured series the desktop banner shows (falls back to a
     random series if none are featured).
+  - *Ad Unlock* (`ad_unlock_enabled`), *Subscription Payments* (`subscriptions_enabled`), *Coin
+    Payments* (`coin_purchases_enabled`): three more switches on the same row, saved through the
+    same `updateSetting()` path. These three don't do anything yet — the consumer app doesn't
+    read them at all, since the payment features they'll gate ([Not built
+    yet](#not-built-yet)) don't exist yet either. They exist now purely so the eventual features
+    can launch behind a real, pre-built switch instead of shipping wide open.
   - If the settings can't be loaded, the app quietly uses safe defaults (nothing overridden).
 
 ## Installable app (PWA)
@@ -640,13 +671,14 @@ Names and columns below are only what the front end touches; the real tables may
 bunny_video_id, duration_seconds, created_at) · `genres` · `series_genres` · `profiles` (id,
 display_name, is_admin, coin_balance) · `watch_progress` (user_id + episode_id unique;
 series_id, position_seconds, updated_at) · `series_likes` · `series_saves` · `series_comments`
-(with `parent_comment_id`) · `comment_likes` · `app_settings` (single row, `id = true`) ·
-`page_visits` (user_id, visited_at) · `purchases` and `coin_transactions` (see below).
+(with `parent_comment_id`) · `comment_likes` · `app_settings` (single row, `id = true`, including
+`ad_unlock_enabled`, `subscriptions_enabled`, `coin_purchases_enabled`) · `page_visits` (user_id,
+visited_at) · `purchases` and `coin_transactions` (see below).
 
 **Database functions (RPC):** `get_continue_watching`, `get_series_like_count`,
 `get_series_comments`, `admin_list_users`, `admin_total_users`, `admin_total_revenue`,
-`admin_visit_stats`, `admin_daily_visits`. (`admin_user_stats` also exists and is intentionally
-unused.)
+`admin_visit_stats`, `admin_daily_visits`, `record_episode_view`, `record_series_share`,
+`admin_most_watched_series`. (`admin_user_stats` also exists and is intentionally unused.)
 
 **Edge Functions:** `bunny-signed-playback-url` (viewers) · `bunny-upload-init`,
 `bunny-delete-video`, `admin-suspend-user` (admin only).
@@ -677,5 +709,7 @@ Do not describe any of this as working.
   are labelled "Inactive".
 - **Membership, Earn Rewards, Gifts, History, Download, Language, Help & Feedback:** menu rows
   that only show a toast.
-- **Rankings** (no view tracking) and **VIP** (posters do nothing).
+- **Rankings** (the tab itself still isn't wired to the real view counts now tracked for the admin
+  Most Watched page — it remains just the database's default order) and **VIP** (posters do
+  nothing).
 - **Episode durations**, which are never recorded.

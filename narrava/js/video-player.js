@@ -250,3 +250,59 @@ async function attachEpisodePlayback(videoEl, episodeId, onFailure){
 
   return { hls, destroy };
 }
+
+// ================= Real episode-view counting =================
+//
+// Counts a real episode view only once real genuine watching has
+// happened — 3 real seconds of actual playback, counted only while the
+// video is truly playing (not paused, buffering, or seeking) — and only
+// once per episode per page session. Shared by both real players (the
+// mobile For You feed, app.js, and the desktop Watch page, watch.js) so
+// the same real rule is enforced identically in both places instead of
+// two separate implementations drifting apart. Fire and forget: the RPC
+// call never blocks or delays playback, and a failure only ever reaches
+// the console, never the viewer. Only the episode id is ever sent — no
+// user id, series id or count is computed here; the database decides
+// the rest (see record_episode_view).
+const viewedEpisodeIds = new Set();
+
+function recordEpisodeViewOnce(episodeId){
+  if(!episodeId || viewedEpisodeIds.has(episodeId)) return;
+  viewedEpisodeIds.add(episodeId);
+  supabaseClient.rpc('record_episode_view', { p_episode_id: episodeId })
+    .then(({ error }) => { if(error) console.error('Narrava: failed to record episode view', error); })
+    .catch(err => console.error('Narrava: failed to record episode view', err));
+}
+
+// Wires a real <video> element to trigger recordEpisodeViewOnce once it
+// has genuinely accumulated 3 real seconds of forward playback — tracked
+// as the sum of real progress between consecutive 'timeupdate' events
+// while the video is actually playing (not video.paused, not
+// video.seeking), so a pause, a stall/buffer, or a seek never counts
+// toward it. A jump larger than 1.5s between two timeupdate events is
+// treated as a seek (not real playback) and dropped rather than counted.
+// getEpisodeId is a function, not a plain id, since the caller's active
+// episode can change while the same <video> element stays around a
+// little longer (a stale 'timeupdate' from a video that's being torn
+// down) — it always reads the real current one, and returning a falsy
+// value from it is how a caller says "this video isn't the active one
+// right now, don't count anything for it".
+function attachViewTracking(video, getEpisodeId){
+  let accumulated = 0;
+  let lastTime = video.currentTime;
+
+  const resetBaseline = () => { lastTime = video.currentTime; };
+  video.addEventListener('seeking', resetBaseline);
+  video.addEventListener('playing', resetBaseline);
+
+  video.addEventListener('timeupdate', () => {
+    const episodeId = getEpisodeId();
+    if(!episodeId){ lastTime = video.currentTime; return; }
+    if(video.paused || video.seeking){ lastTime = video.currentTime; return; }
+    const dt = video.currentTime - lastTime;
+    lastTime = video.currentTime;
+    if(dt <= 0 || dt > 1.5) return; // not real forward playback (a seek/jump)
+    accumulated += dt;
+    if(accumulated >= 3) recordEpisodeViewOnce(episodeId);
+  });
+}

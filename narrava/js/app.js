@@ -1146,6 +1146,7 @@ function promotePreload(target){
   currentVideoEpisodeId = target.id;
   currentVideoSeriesId = target.seriesId;
   attachPlaybackControls(entry.video);
+  attachViewTracking(entry.video, () => (currentVideoEpisodeId === target.id) ? target.id : null);
 
   // The automatic resume's jump-back-in (see enterMobileWatching): this
   // episode's video has just genuinely become the active one for the

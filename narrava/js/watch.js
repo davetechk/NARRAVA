@@ -171,6 +171,7 @@ async function watchPlayEpisode(ep, resumeSeconds){
   }
   watchVideoEl = video;
   watchPlaybackCtl = ctl;
+  attachViewTracking(video, () => (watchActiveEpisodeId === episodeId) ? episodeId : null);
   watchScrubRange.value = video.currentTime || 0;
   // Same defensive read as app.js's attachPlaybackControls: if metadata
   // somehow already loaded by the time this runs, don't wait on an

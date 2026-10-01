@@ -94,6 +94,7 @@ if(shareSheetBackdrop){
     try {
       await navigator.clipboard.writeText(pendingShareData.url);
       showToast('Link copied');
+      recordSeriesShare(pendingShareData.seriesId);
     } catch(err){
       console.error('Narrava: failed to copy share link', err);
       showToast('Could not copy link — please try again');
@@ -104,13 +105,30 @@ if(shareSheetBackdrop){
     if(!pendingShareData) return;
     const text = pendingShareData.text + ' ' + pendingShareData.url;
     window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank', 'noopener');
+    recordSeriesShare(pendingShareData.seriesId);
     closeShareFallback();
   });
   shareFacebookBtn.addEventListener('click', () => {
     if(!pendingShareData) return;
     window.open('https://www.facebook.com/sharer/sharer.php?u=' + encodeURIComponent(pendingShareData.url), '_blank', 'noopener');
+    recordSeriesShare(pendingShareData.seriesId);
     closeShareFallback();
   });
+}
+
+// ================= Real share counting =================
+//
+// Counts a real series share only once a share has genuinely completed
+// — never on cancel, on error, or just from opening the fallback sheet
+// (see shareSeries/openShareFallback above, the only callers). Fire and
+// forget, same rules as recordEpisodeViewOnce (video-player.js): never
+// awaited in a way that could delay anything, and a failure only ever
+// reaches the console. Only the series id is ever sent.
+function recordSeriesShare(seriesId){
+  if(!seriesId) return;
+  supabaseClient.rpc('record_series_share', { p_series_id: seriesId })
+    .then(({ error }) => { if(error) console.error('Narrava: failed to record series share', error); })
+    .catch(err => console.error('Narrava: failed to record series share', err));
 }
 
 // The one place the link format is defined — build (seriesShareUrl) and
@@ -138,11 +156,13 @@ async function shareSeries(title, seriesId){
   const shareData = {
     title: 'Narrava',
     text: 'Check out "' + title + '" on Narrava!',
-    url: seriesShareUrl(seriesId)
+    url: seriesShareUrl(seriesId),
+    seriesId: seriesId
   };
   if(navigator.share){
     try {
       await navigator.share(shareData);
+      recordSeriesShare(seriesId);
     } catch(err){
       if(err && err.name !== 'AbortError') console.error('Narrava: native share failed', err);
     }
@@ -511,6 +531,30 @@ function skeletonAdminEpisodesTableHtml(count){
   for(let i = 0; i < count; i++) rows += skeletonAdminEpisodeRowHtml();
   return '<div class="admin-table-wrap"><table class="admin-table">' +
     '<thead><tr><th>Episode</th><th>Duration</th><th>Status</th><th>Uploaded</th><th>Actions</th></tr></thead>' +
+    '<tbody>' + rows + '</tbody>' +
+  '</table></div>';
+}
+
+// Admin Most Watched table: rank, cover+title, status badge, then the
+// four real count columns — same two-function shape as the series/
+// episodes tables above.
+function skeletonAdminMostWatchedRowHtml(){
+  return '<tr>' +
+    '<td>' + skeletonBoxHtml('20px', '15px', '4px') + '</td>' +
+    '<td><div class="admin-row-cell">' + skeletonBoxHtml('42px', '42px', '8px') + '<div>' + skeletonBoxHtml('140px', '13px', '4px') + '</div></div></td>' +
+    '<td>' + skeletonBoxHtml('50px', '20px', '20px') + '</td>' +
+    '<td>' + skeletonBoxHtml('34px', '13px', '4px') + '</td>' +
+    '<td>' + skeletonBoxHtml('30px', '13px', '4px') + '</td>' +
+    '<td>' + skeletonBoxHtml('30px', '13px', '4px') + '</td>' +
+    '<td>' + skeletonBoxHtml('30px', '13px', '4px') + '</td>' +
+    '<td>' + skeletonBoxHtml('30px', '13px', '4px') + '</td>' +
+  '</tr>';
+}
+function skeletonAdminMostWatchedTableHtml(count){
+  let rows = '';
+  for(let i = 0; i < count; i++) rows += skeletonAdminMostWatchedRowHtml();
+  return '<div class="admin-table-wrap"><table class="admin-table">' +
+    '<thead><tr><th>#</th><th>Series</th><th>Status</th><th>Views</th><th>Likes</th><th>Comments</th><th>Saves</th><th>Shares</th></tr></thead>' +
     '<tbody>' + rows + '</tbody>' +
   '</table></div>';
 }

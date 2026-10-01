@@ -92,54 +92,56 @@
     padding-bottom:calc(env(safe-area-inset-bottom,0px) + 40px);
     overflow:hidden;
   }
-  /* Whole animation sized down ~22% (within the requested 20-25% range)
-     on every screen size — the drawing, colors, motion, timing and text
-     are all completely untouched; every number below is just the
-     matching original value (see maintenance.html) times 0.78. The
-     scene shrinks via a percentage width (not 100%) so it scales down
-     on mobile too, not just against the desktop max-width cap. */
+  /* Whole animation sized down twice now: first to ~0.78x the original
+     maintenance.html values, then this second pass takes that result
+     down by a further ~18% (0.82x on top of the 0.78x — 0.78*0.82 =
+     0.64x the original), on every screen size — the drawing, colors,
+     motion, timing and text are all completely untouched, only these
+     CSS sizes moved. The scene shrinks via a percentage width (not
+     100%) so it scales down on mobile too, not just against the
+     desktop max-width cap. */
   .maintenance-screen main{
     width:100%;
-    max-width:530px;
+    max-width:435px;
     text-align:center;
   }
   .maintenance-screen .scene{
-    width:78%;
+    width:64%;
     height:auto;
     display:block;
     overflow:visible;
     margin:0 auto;
   }
   .maintenance-screen h1{
-    font-size:clamp(1.37rem, 0.94rem + 1.87vw, 2.03rem);
+    font-size:clamp(1.12rem, 0.77rem + 1.53vw, 1.66rem);
     font-weight:800;
     letter-spacing:-0.02em;
     line-height:1.1;
-    margin:6px 0 9px;
+    margin:5px 0 7px;
     font-variation-settings:"opsz" 96;
   }
   .maintenance-screen p{
-    font-size:0.82rem;
+    font-size:0.67rem;
     line-height:1.55;
     color:var(--mt-muted);
     max-width:42ch;
-    margin:0 auto 22px;
+    margin:0 auto 18px;
   }
   .maintenance-screen button{
     font:inherit;
     font-weight:600;
-    font-size:0.78rem;
+    font-size:0.64rem;
     color:#fff;
     background:var(--mt-green-deep);
-    border:2px solid var(--mt-ink);
+    border:1.6px solid var(--mt-ink);
     border-radius:999px;
-    padding:9px 20px;
+    padding:7px 16px;
     cursor:pointer;
-    box-shadow:2.3px 2.3px 0 var(--mt-ink);
+    box-shadow:1.9px 1.9px 0 var(--mt-ink);
     transition:transform .12s ease, box-shadow .12s ease;
   }
-  .maintenance-screen button:hover{ transform:translate(-1px, -1px); box-shadow:3.1px 3.1px 0 var(--mt-ink); }
-  .maintenance-screen button:active{ transform:translate(2px, 2px); box-shadow:0.8px 0.8px 0 var(--mt-ink); }
+  .maintenance-screen button:hover{ transform:translate(-1px, -1px); box-shadow:2.5px 2.5px 0 var(--mt-ink); }
+  .maintenance-screen button:active{ transform:translate(2px, 2px); box-shadow:0.66px 0.66px 0 var(--mt-ink); }
   .maintenance-screen button:focus-visible{ outline:3px solid var(--mt-green); outline-offset:4px; }
 
   /* SVG ink styles */

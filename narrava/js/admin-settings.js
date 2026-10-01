@@ -11,7 +11,10 @@
 
 const APP_SETTINGS_ID = true;
 
-let settings = { free_mode_enabled: false, maintenance_mode_enabled: false, featured_series_count: 5 };
+let settings = {
+  free_mode_enabled: false, maintenance_mode_enabled: false, featured_series_count: 5,
+  ad_unlock_enabled: false, subscriptions_enabled: false, coin_purchases_enabled: false
+};
 
 function settingsRowsHtml(){
   return (
@@ -38,6 +41,27 @@ function settingsRowsHtml(){
         '<input type="number" min="0" class="auth-input admin-settings-number" id="featuredCountInput" value="' + settings.featured_series_count + '">' +
         '<button type="submit" class="admin-btn admin-btn-primary small">Save</button>' +
       '</form>' +
+    '</div>' +
+    '<div class="admin-settings-row">' +
+      '<div class="admin-settings-row-text">' +
+        '<div class="admin-row-title">Ad Unlock</div>' +
+        '<div class="admin-row-sub">Lets viewers watch ads to unlock episodes. Takes effect once this feature launches.</div>' +
+      '</div>' +
+      '<button type="button" class="admin-switch' + (settings.ad_unlock_enabled ? ' on' : '') + '" id="adUnlockSwitch" aria-label="Toggle ad unlock"></button>' +
+    '</div>' +
+    '<div class="admin-settings-row">' +
+      '<div class="admin-settings-row-text">' +
+        '<div class="admin-row-title">Subscription Payments</div>' +
+        '<div class="admin-row-sub">Lets viewers pay for a subscription to unlock episodes. Takes effect once this feature launches.</div>' +
+      '</div>' +
+      '<button type="button" class="admin-switch' + (settings.subscriptions_enabled ? ' on' : '') + '" id="subscriptionsSwitch" aria-label="Toggle subscription payments"></button>' +
+    '</div>' +
+    '<div class="admin-settings-row">' +
+      '<div class="admin-settings-row-text">' +
+        '<div class="admin-row-title">Coin Payments</div>' +
+        '<div class="admin-row-sub">Lets viewers buy coins to unlock episodes. Takes effect once this feature launches.</div>' +
+      '</div>' +
+      '<button type="button" class="admin-switch' + (settings.coin_purchases_enabled ? ' on' : '') + '" id="coinPurchasesSwitch" aria-label="Toggle coin payments"></button>' +
     '</div>'
   );
 }
@@ -58,7 +82,7 @@ async function updateSetting(patch){
       .from('app_settings')
       .update(patch)
       .eq('id', APP_SETTINGS_ID)
-      .select('free_mode_enabled, maintenance_mode_enabled, featured_series_count')
+      .select('free_mode_enabled, maintenance_mode_enabled, featured_series_count, ad_unlock_enabled, subscriptions_enabled, coin_purchases_enabled')
       .single();
     if(error) throw error;
     if(!data) throw new Error('This account isn’t allowed to change settings.');
@@ -113,6 +137,42 @@ function wireSettings(){
       showToast('Featured count updated to ' + raw + ' ✓');
     }
   });
+
+  document.getElementById('adUnlockSwitch').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    const ok = await updateSetting({ ad_unlock_enabled: !settings.ad_unlock_enabled });
+    if(ok){
+      renderSettings();
+      showToast('Ad Unlock is now ' + (settings.ad_unlock_enabled ? 'ON' : 'off') + ' ✓');
+    } else {
+      btn.disabled = false;
+    }
+  });
+
+  document.getElementById('subscriptionsSwitch').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    const ok = await updateSetting({ subscriptions_enabled: !settings.subscriptions_enabled });
+    if(ok){
+      renderSettings();
+      showToast('Subscription Payments is now ' + (settings.subscriptions_enabled ? 'ON' : 'off') + ' ✓');
+    } else {
+      btn.disabled = false;
+    }
+  });
+
+  document.getElementById('coinPurchasesSwitch').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    const ok = await updateSetting({ coin_purchases_enabled: !settings.coin_purchases_enabled });
+    if(ok){
+      renderSettings();
+      showToast('Coin Payments is now ' + (settings.coin_purchases_enabled ? 'ON' : 'off') + ' ✓');
+    } else {
+      btn.disabled = false;
+    }
+  });
 }
 
 (async () => {
@@ -121,7 +181,7 @@ function wireSettings(){
   try {
     const { data, error } = await supabaseClient
       .from('app_settings')
-      .select('free_mode_enabled, maintenance_mode_enabled, featured_series_count')
+      .select('free_mode_enabled, maintenance_mode_enabled, featured_series_count, ad_unlock_enabled, subscriptions_enabled, coin_purchases_enabled')
       .eq('id', APP_SETTINGS_ID)
       .single();
     if(error) throw error;

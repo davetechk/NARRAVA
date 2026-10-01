@@ -60,6 +60,7 @@ const watchMuteBtn = document.getElementById('watchMuteBtn');
 const watchPlayerBox = document.getElementById('watchPlayerBox');
 const watchPlayerHost = document.getElementById('watchPlayerHost');
 const watchScrubRange = document.getElementById('watchScrubRange');
+const watchScrubDuration = document.getElementById('watchScrubDuration');
 const watchBreadcrumbEl = document.getElementById('watchBreadcrumb');
 const watchTitleEl = document.getElementById('watchTitle');
 const watchTagsEl = document.getElementById('watchTags');
@@ -128,6 +129,7 @@ async function watchPlayEpisode(ep, resumeSeconds){
   watchVideoEl = null;
   watchPlaybackCtl = null;
   watchPlayerBox.classList.remove('has-video', 'paused');
+  watchScrubDuration.textContent = ''; // the new episode's length isn't known yet — never show the previous one's
 
   const video = document.createElement('video');
   video.controls = false;
@@ -178,6 +180,9 @@ async function watchPlayEpisode(ep, resumeSeconds){
   // event that's already fired and will never fire again.
   watchScrubRange.max = (video.duration && isFinite(video.duration)) ? video.duration : 0;
   watchScrubRange.style.setProperty('--scrub-pct', '0%');
+  // Episode length at the bar's right end — same as app.js's
+  // attachPlaybackControls: blank until the real duration is known.
+  watchScrubDuration.textContent = videoDurationLabel(video);
 
   video.addEventListener('canplay', function onCanPlay(){
     video.removeEventListener('canplay', onCanPlay);
@@ -192,6 +197,11 @@ async function watchPlayEpisode(ep, resumeSeconds){
   video.addEventListener('loadedmetadata', () => {
     if(watchVideoEl !== video) return;
     watchScrubRange.max = video.duration || 0;
+    watchScrubDuration.textContent = videoDurationLabel(video);
+  });
+  video.addEventListener('durationchange', () => {
+    if(watchVideoEl !== video) return;
+    watchScrubDuration.textContent = videoDurationLabel(video);
   });
   video.addEventListener('timeupdate', () => {
     if(watchVideoEl !== video || watchScrubbing) return;

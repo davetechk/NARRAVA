@@ -750,6 +750,20 @@
     background:var(--leaf-light);
     box-shadow:0 1px 4px rgba(0,0,0,0.5);
   }
+  /* Episode's total length at the right end of either scrub bar
+     (#scrubDuration / #watchScrubDuration) — straight off the real
+     video.duration, empty (and so taking no width) until that's known.
+     Shares the flex row with .scrub-range, which takes the remaining
+     width, so it never overlaps the bar. */
+  .scrub-duration{
+    flex-shrink:0;
+    font-size:11.5px;font-weight:700;
+    font-variant-numeric:tabular-nums;
+    color:var(--text);
+    text-shadow:0 1px 3px rgba(0,0,0,0.7);
+    pointer-events:none;
+  }
+  .scrub-duration:empty{display:none;}
   .scrub-range::-webkit-slider-runnable-track{
     height:4px;
     border-radius:2px;
@@ -1386,6 +1400,36 @@
     display:flex;align-items:center;justify-content:center;
   }
   .poster-card .poster-lock svg{width:12px;height:12px;}
+  /* Rankings tab / desktop Top shelf only (posterCardHtml's `ranking`
+     arg, discover.js): rank badge + real view count, top-left. Same
+     dark translucent chip as .poster-lock; the top three ranks get the
+     existing gold. Sits outside .poster-title so the desktop shelf's
+     hover-only title never hides it. */
+  .poster-card .poster-rank-meta{
+    position:absolute;top:6px;left:6px;right:6px;
+    display:flex;align-items:center;gap:5px;
+    pointer-events:none;
+  }
+  .poster-card .poster-rank{
+    flex-shrink:0;
+    min-width:24px;height:24px;padding:0 6px;
+    border-radius:999px;
+    background:rgba(4,7,5,0.72);
+    color:var(--text);
+    font-family:'Montserrat',sans-serif;
+    font-size:12px;font-weight:800;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .poster-card .poster-rank.top{background:var(--gold);color:#0D130E;}
+  .poster-card .poster-views{
+    min-width:0;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    height:20px;line-height:20px;padding:0 8px;
+    border-radius:999px;
+    background:rgba(4,7,5,0.65);
+    color:var(--text);
+    font-size:10.5px;font-weight:700;
+  }
 
   .discover-empty{
     text-align:center;
@@ -1439,6 +1483,46 @@
     grid-template-columns:repeat(auto-fill, minmax(140px, 1fr));
     gap:12px;
   }
+  /* History screen (history.js): the same .library shell/header/body,
+     plus a back arrow in the header (it's reached from Profile, not the
+     nav bar) and a list of rows instead of a poster grid. */
+  .library-header.has-back{
+    display:flex;align-items:center;gap:8px;
+  }
+  .library-back{
+    width:34px;height:34px;margin-left:-8px;
+    display:flex;align-items:center;justify-content:center;
+    background:none;border:none;border-radius:50%;
+    color:var(--text);cursor:pointer;
+  }
+  .library-back svg{width:22px;height:22px;}
+  .history-list{
+    display:flex;flex-direction:column;gap:10px;
+    max-width:720px;
+  }
+  .history-row{
+    display:flex;align-items:center;gap:12px;
+    width:100%;padding:8px;
+    background:rgba(255,255,255,0.03);
+    border:1px solid rgba(255,255,255,0.06);
+    border-radius:12px;
+    color:var(--text);text-align:left;
+    font-family:inherit;cursor:pointer;
+  }
+  .history-cover{
+    flex-shrink:0;
+    width:54px;aspect-ratio:2/3;
+    border-radius:8px;overflow:hidden;
+    background:var(--panel-2);
+  }
+  .history-cover img{width:100%;height:100%;object-fit:cover;display:block;}
+  .history-info{flex:1;min-width:0;}
+  .history-title{
+    font-size:14px;font-weight:800;line-height:1.3;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .history-ep{margin-top:4px;font-size:12px;font-weight:600;color:var(--leaf-light);}
+  .history-date{flex-shrink:0;font-size:11.5px;color:var(--muted);}
   /* Generic small pill CTA — Library's own "Log in" empty-state button,
      and (see narravaLoadFailedHtml, shared-utils.js) the real "Try
      again" retry action on a genuinely failed video load. One shared
@@ -1547,6 +1631,9 @@
     text-align:center;
   }
   .profile-feature svg{width:18px;height:18px;color:var(--leaf-light);}
+  /* The one tappable tile (Download -> "Coming soon"): a real <button>,
+     reset so it looks exactly like its <div> neighbours. */
+  button.profile-feature{font-family:inherit;line-height:inherit;cursor:pointer;}
 
   .profile-menu{
     background:var(--panel-2);

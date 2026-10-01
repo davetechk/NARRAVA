@@ -39,6 +39,55 @@ function showToast(msg){
   setTimeout(()=>toast.classList.remove('show'), 2200);
 }
 
+// A video's own real duration (seconds, straight off video.duration) as
+// "2:47", or "1:02:05" past an hour. Returns '' for anything not yet
+// genuinely known (NaN before loadedmetadata, Infinity for a live
+// stream, 0) — callers show nothing rather than a fake "0:00".
+function formatDuration(seconds){
+  if(typeof seconds !== 'number' || !isFinite(seconds) || seconds <= 0) return '';
+  const total = Math.round(seconds);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const ss = (s < 10 ? '0' : '') + s;
+  if(h > 0) return h + ':' + (m < 10 ? '0' : '') + m + ':' + ss;
+  return m + ':' + ss;
+}
+
+// The scrub bar's duration label for a real <video>: '' until the
+// element itself reports metadata (readyState >= HAVE_METADATA). hls.js
+// can set a duration a moment before that; the label still waits.
+function videoDurationLabel(video){
+  if(!video || video.readyState < 1) return '';
+  return formatDuration(video.duration);
+}
+
+// "Today" / "Yesterday" / "12 Sep 2026" for a real timestamp, judged by
+// the viewer's own local calendar day (not a rolling 24 hours).
+function formatWatchedDate(iso){
+  const d = new Date(iso);
+  if(isNaN(d.getTime())) return '';
+  const startOfDay = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const days = Math.round((startOfDay(new Date()) - startOfDay(d)) / 86400000);
+  if(days === 0) return 'Today';
+  if(days === 1) return 'Yesterday';
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
+}
+
+// Rejects if `promise` hasn't settled within `ms` — so a request that
+// never answers still lands in the caller's own error branch instead of
+// leaving a skeleton up forever.
+function withTimeout(promise, ms){
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('Timed out after ' + ms + 'ms')), ms);
+    Promise.resolve(promise).then(
+      v => { clearTimeout(timer); resolve(v); },
+      e => { clearTimeout(timer); reject(e); }
+    );
+  });
+}
+
 // ================= Real sharing =================
 //
 // The one real share mechanism for a series — used by both the mobile

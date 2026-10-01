@@ -15,6 +15,19 @@ let genres = [];
 let seriesGenreMap = {}; // series id -> Set of genre ids
 
 let activeTab = 'popular';
+
+// Rankings (mobile Rankings tab + desktop Top shelf): the real order
+// from get_series_rankings — real views, already sorted server-side and
+// never re-sorted here. Each row is matched to a series already in
+// `slides`; an id the app doesn't have (not published / not loaded) is
+// simply skipped. rank is the position in that matched list, fixed —
+// a search on the tab filters rows but never renumbers them.
+//   'loading' -> skeleton cards
+//   'ready'   -> rankedItems: [{ slide, rank, views }]
+//   'failed'  -> the tab/shelf's previous unranked behaviour, said plainly
+let rankingsState = 'loading';
+let rankedItems = [];
+const RANKINGS_TIMEOUT_MS = 10000;
 let searchQuery = '';
 let selectedGenreIds = new Set();
 
@@ -31,16 +44,60 @@ function posterArtSrc(slide){
 
 // Shared by the mobile tabs+grid below and the desktop shelves — one
 // card markup, not two, so both ever look and behave identically.
-function posterCardHtml(slide, locked){
+// `ranking` ({ rank, views }) is only passed for Rankings/Top cards: a
+// rank badge plus the real view count, top-left, always visible (the
+// desktop shelf hides .poster-title until hover, so these can't live
+// inside it).
+function posterCardHtml(slide, locked, ranking){
   const src = posterArtSrc(slide);
   const img = src ? '<img src="' + src + '" alt="">' : '';
   const lock = locked
     ? '<div class="poster-lock"><svg viewBox="0 0 24 24" fill="#E8B85C"><path d="M6 10V8a6 6 0 0112 0v2h1a1 1 0 011 1v9a1 1 0 01-1 1H5a1 1 0 01-1-1v-9a1 1 0 011-1h1zm2 0h8V8a4 4 0 00-8 0v2z"/></svg></div>'
     : '';
+  const rank = ranking
+    ? '<div class="poster-rank-meta">' +
+        '<span class="poster-rank' + (ranking.rank <= 3 ? ' top' : '') + '">' + ranking.rank + '</span>' +
+        '<span class="poster-views">' + formatViews(ranking.views) + '</span>' +
+      '</div>'
+    : '';
   return '<div class="poster-card' + (locked ? ' locked' : '') + '" data-slide-index="' + slides.indexOf(slide) + '">' +
-    img + lock +
+    img + lock + rank +
     '<div class="poster-title">' + slide.title + '</div>' +
   '</div>';
+}
+
+// "1,204 views" / "1 view" / "0 views" — the real number, grouped.
+function formatViews(n){
+  const v = Number(n) || 0;
+  return v.toLocaleString('en-US') + (v === 1 ? ' view' : ' views');
+}
+
+async function loadRankings(){
+  try {
+    // app.js resolves slidesReady only after bootstrapAnonymousSession —
+    // get_series_rankings refuses a caller with no session at all
+    // ("permission denied", seen live on a first-ever visit), so this
+    // must not run before that. Matching also needs the loaded series.
+    await slidesReady;
+    const { data, error } = await withTimeout(
+      supabaseClient.rpc('get_series_rankings', { result_limit: 100 }),
+      RANKINGS_TIMEOUT_MS
+    );
+    if(error) throw error;
+    if(!Array.isArray(data)) throw new Error('get_series_rankings returned no list');
+    const items = [];
+    data.forEach(row => {
+      const slide = slides.find(s => s.id === row.series_id);
+      if(!slide) return; // not a series this app has loaded — skip, don't invent one
+      items.push({ slide, rank: items.length + 1, views: row.views });
+    });
+    rankedItems = items;
+    rankingsState = 'ready';
+  } catch(err){
+    console.error('Narrava: failed to load rankings', err);
+    rankedItems = [];
+    rankingsState = 'failed';
+  }
 }
 
 function matchesSearch(slide){
@@ -61,8 +118,10 @@ function currentTabSlides(){
       return false;
     });
   }
-  // popular, rankings, vip: whatever order the series query returned,
-  // no invented ranking of any kind.
+  // popular, vip (and rankings when its real order couldn't be
+  // loaded): whatever order the series query returned, no invented
+  // ranking of any kind. A loaded Rankings tab doesn't use this list
+  // at all — see renderRankingsBody.
 
   return list.filter(matchesSearch);
 }
@@ -98,11 +157,25 @@ function renderPopularGrid(list, locked){
   return html;
 }
 
+// Rankings tab: skeleton while loading, the real ranked list once
+// loaded, and — if the load failed — the tab's previous plain list with
+// a note saying so, never stuck on the skeleton. Returns null in the
+// failed case so renderDiscoverBody falls through to its normal grid.
+function renderRankingsBody(){
+  if(rankingsState === 'loading'){
+    return '<div class="poster-grid">' + skeletonPosterGridHtml(6) + '</div>';
+  }
+  if(rankingsState === 'failed') return null;
+  const list = rankedItems.filter(item => matchesSearch(item.slide));
+  if(list.length === 0) return '<div class="discover-empty">No series match right now.</div>';
+  return '<div class="poster-grid">' + list.map(item => posterCardHtml(item.slide, false, item)).join('') + '</div>';
+}
+
 function renderDiscoverBody(){
   let html = '';
 
-  if(activeTab === 'rankings'){
-    html += '<div class="discover-note">Rankings coming soon — we don\'t track view counts yet, so this is just the full list for now.</div>';
+  if(activeTab === 'rankings' && rankingsState === 'failed'){
+    html += '<div class="discover-note">Couldn\'t load rankings right now — showing all series instead.</div>';
   }
 
   if(activeTab === 'categories'){
@@ -115,18 +188,24 @@ function renderDiscoverBody(){
     }
   }
 
-  const list = currentTabSlides();
-  html += (activeTab === 'popular')
-    ? renderPopularGrid(list, false)
-    : renderPosterGrid(list, activeTab === 'vip');
+  const rankingsHtml = (activeTab === 'rankings') ? renderRankingsBody() : null;
+  if(rankingsHtml !== null){
+    html += rankingsHtml;
+  } else {
+    const list = currentTabSlides();
+    html += (activeTab === 'popular')
+      ? renderPopularGrid(list, false)
+      : renderPosterGrid(list, activeTab === 'vip');
+  }
 
   discoverBody.innerHTML = html;
 
-  discoverBody.querySelectorAll('.poster-card').forEach(card => {
+  discoverBody.querySelectorAll('.poster-card:not(.skeleton-block)').forEach(card => {
     card.addEventListener('click', () => {
       // VIP gating isn't real yet — posters in this tab are a visual
-      // placeholder only, tapping them does nothing for now.
-      if(activeTab === 'vip') return;
+      // placeholder only; tapping one says so with the same "Coming
+      // soon" toast every other unbuilt item uses.
+      if(activeTab === 'vip'){ showToast('Coming soon'); return; }
       openSeriesInFeed(parseInt(card.dataset.slideIndex, 10));
     });
   });
@@ -161,25 +240,32 @@ function shelvesData(){
   const newRelease = slides.slice().sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
   if(newRelease.length) shelves.push({ key: 'new', title: 'New Release', items: newRelease });
 
-  // Top: there's no real view-count/watch data yet, so this is
-  // deliberately NOT a popularity ranking — that would mean inventing
-  // numbers. featured_at is a real, already-existing signal (an admin
-  // decision, not a fabricated stat), so featured series surface first
-  // and everything else keeps its normal order after that. The caption
-  // says plainly that this isn't ranked by views, the same honesty
-  // pattern the mobile Rankings tab already uses for this exact gap.
-  const top = slides.slice().sort((a, b) => {
-    const af = a.featuredAt ? new Date(a.featuredAt).getTime() : 0;
-    const bf = b.featuredAt ? new Date(b.featuredAt).getTime() : 0;
-    return bf - af;
-  });
-  if(top.length){
-    shelves.push({
-      key: 'top',
-      title: 'Top',
-      caption: 'No view-count data yet — featured series shown first, not ranked by views',
-      items: top
+  // Top: the same real view ranking as the mobile Rankings tab
+  // (rankedItems, from get_series_rankings — never re-sorted here).
+  // Skeleton cards while it loads. If it failed to load, falls back to
+  // the shelf's previous order — featured series first (featured_at, a
+  // real admin decision), everything else after — and the caption says
+  // plainly that it isn't ranked by views.
+  if(rankingsState === 'loading'){
+    shelves.push({ key: 'top', title: 'Top', loading: true, items: [] });
+  } else if(rankingsState === 'ready'){
+    if(rankedItems.length){
+      shelves.push({ key: 'top', title: 'Top', items: rankedItems.map(item => item.slide), ranking: rankedItems });
+    }
+  } else {
+    const top = slides.slice().sort((a, b) => {
+      const af = a.featuredAt ? new Date(a.featuredAt).getTime() : 0;
+      const bf = b.featuredAt ? new Date(b.featuredAt).getTime() : 0;
+      return bf - af;
     });
+    if(top.length){
+      shelves.push({
+        key: 'top',
+        title: 'Top',
+        caption: 'Couldn\'t load view counts — featured series shown first, not ranked by views',
+        items: top
+      });
+    }
   }
 
   // One shelf per genre that actually has at least one series tagged.
@@ -207,7 +293,9 @@ function shelfHtml(shelf){
     '</div>' +
     '<div class="shelf-row-wrap">' +
       '<button type="button" class="shelf-arrow shelf-arrow-left hide" aria-label="Scroll left">' + SHELF_ARROW_LEFT_SVG + '</button>' +
-      '<div class="shelf-row">' + shelf.items.map(s => posterCardHtml(s, false)).join('') + '</div>' +
+      '<div class="shelf-row">' + (shelf.loading
+        ? skeletonPosterGridHtml(5)
+        : shelf.items.map((s, i) => posterCardHtml(s, false, shelf.ranking ? shelf.ranking[i] : null)).join('')) + '</div>' +
       '<button type="button" class="shelf-arrow shelf-arrow-right" aria-label="Scroll right">' + SHELF_ARROW_RIGHT_SVG + '</button>' +
     '</div>' +
   '</div>';
@@ -243,7 +331,7 @@ function renderShelves(){
     ? shelves.map(shelfHtml).join('')
     : '<div class="discover-empty">No series available right now.</div>';
 
-  discoverShelves.querySelectorAll('.poster-card').forEach(card => {
+  discoverShelves.querySelectorAll('.poster-card:not(.skeleton-block)').forEach(card => {
     card.addEventListener('click', () => openSeriesInFeed(parseInt(card.dataset.slideIndex, 10)));
   });
 
@@ -259,11 +347,12 @@ function renderShelves(){
 // desktop column in place of the shelves, with a way back. Genre
 // shelves land on the existing Categories tab with that one genre
 // already selected, New Release lands on the existing New tab, and Top
-// — since it isn't a real ranking — lands on the plain, unranked
-// Popular tab rather than implying a "top" tab that doesn't exist.
+// lands on the Rankings tab — the same real view ranking, as a grid.
 function expandShelf(key){
   if(key === 'new'){
     activeTab = 'new';
+  } else if(key === 'top'){
+    activeTab = 'rankings';
   } else if(key.indexOf('genre:') === 0){
     activeTab = 'categories';
     selectedGenreIds = new Set([key.slice('genre:'.length)]);
@@ -626,6 +715,11 @@ async function initDiscover(){
   if(discoverShelves) discoverShelves.innerHTML = skeletonHomeShelvesHtml();
   if(discoverBody) discoverBody.innerHTML = '<div class="poster-grid">' + skeletonPosterGridHtml(6) + '</div>';
 
+  // Started now, in parallel with everything else; the Rankings tab and
+  // Top shelf show skeleton cards until it settles (success or failure),
+  // then both re-render below — independent of the rest of Home.
+  const rankingsLoaded = loadRankings();
+
   const [genreRows, links] = await Promise.all([fetchGenres(), fetchSeriesGenres()]);
   genres = genreRows;
   links.forEach(link => {
@@ -639,6 +733,11 @@ async function initDiscover(){
   renderDiscoverBody();
   renderTopbarSearchGrid(); // unfiltered by default — every real series, no invented ranking
   hideSkeletonLogo();
+
+  rankingsLoaded.then(() => {
+    renderShelves();
+    if(activeTab === 'rankings') renderDiscoverBody();
+  });
 
   await continueWatchingReady; // app.js: don't render the bar until it has real data
   renderContinueWatchingBar();

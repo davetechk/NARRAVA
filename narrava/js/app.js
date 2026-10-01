@@ -625,6 +625,7 @@ const unlockBtn = document.getElementById('unlockBtn');
 const unlockLabel = document.getElementById('unlockLabel');
 const scrubRange = document.getElementById('scrubRange');
 const videoControls = document.getElementById('videoControls');
+const scrubDuration = document.getElementById('scrubDuration');
 const coinBalance = document.getElementById('coinBalance');
 const feed = document.getElementById('feed');
 const playToggle = document.getElementById('playToggle');
@@ -638,6 +639,7 @@ const payBtn = document.getElementById('payBtn');
 const ctaRow = document.querySelector('.ctarow');
 const discoverScreen = document.getElementById('discoverScreen');
 const libraryScreen = document.getElementById('libraryScreen');
+const historyScreen = document.getElementById('historyScreen');
 const profileScreen = document.getElementById('profileScreen');
 const watchScreen = document.getElementById('watchScreen');
 const navHome = document.getElementById('navHome');
@@ -751,7 +753,7 @@ updateMuteButton();
 // phone-frame presentation. Below the breakpoint neither class does
 // anything — mobile stays exactly as it was.
 // Which screen is showing ('discover' | 'feed' | 'library' | 'profile' |
-// 'watch'), kept by showScreen — nav.js reads it to keep the browser history
+// 'history' | 'watch'), kept by showScreen — nav.js reads it to keep the browser history
 // in step with real navigation.
 let activeScreenName = 'discover';
 
@@ -766,15 +768,18 @@ function showScreen(name){
   discoverScreen.classList.toggle('screen-hidden', name !== 'discover');
   libraryScreen.classList.toggle('screen-hidden', name !== 'library');
   profileScreen.classList.toggle('screen-hidden', name !== 'profile');
+  historyScreen.classList.toggle('screen-hidden', name !== 'history');
   watchScreen.classList.toggle('screen-hidden', name !== 'watch');
+  // History is reached from Profile, so Profile stays the highlighted tab.
+  const profileTabActive = name === 'profile' || name === 'history';
   navHome.classList.toggle('active', name === 'discover');
   navForYou.classList.toggle('active', name === 'feed');
   navLibrary.classList.toggle('active', name === 'library');
-  navProfile.classList.toggle('active', name === 'profile');
+  navProfile.classList.toggle('active', profileTabActive);
   topbarHome.classList.toggle('active', name === 'discover');
   topbarForYou.classList.toggle('active', name === 'feed');
   topbarLibrary.classList.toggle('active', name === 'library');
-  topbarProfile.classList.toggle('active', name === 'profile');
+  topbarProfile.classList.toggle('active', profileTabActive);
   document.body.classList.toggle('discover-active', name === 'discover');
   document.body.classList.toggle('feed-active', name === 'feed');
 
@@ -1022,6 +1027,7 @@ function setArt(art){
 function setBgHasVideo(hasVideo){
   bgvideo.classList.toggle('has-video', hasVideo);
   videoControls.classList.toggle('has-video', hasVideo);
+  if(!hasVideo) scrubDuration.textContent = ''; // no video, no duration — never a leftover from the previous episode
 }
 
 // The real wait for a real episode's video to actually become playable
@@ -1192,10 +1198,21 @@ function attachPlaybackControls(video){
   // still genuinely needs this same listener for.
   scrubRange.max = (video.duration && isFinite(video.duration)) ? video.duration : 0;
   scrubRange.style.setProperty('--scrub-pct', '0%');
+  // Episode length at the bar's right end: this video's own real
+  // duration if already known, otherwise blank until loadedmetadata
+  // (videoDurationLabel, shared-utils.js, returns '' before metadata) — display
+  // only, nothing here touches seeking or playback.
+  scrubDuration.textContent = videoDurationLabel(video);
 
   video.addEventListener('loadedmetadata', () => {
     if(currentVideoEl !== video) return;
     scrubRange.max = video.duration || 0;
+    scrubDuration.textContent = videoDurationLabel(video);
+  });
+  // HLS can refine the duration after loadedmetadata.
+  video.addEventListener('durationchange', () => {
+    if(currentVideoEl !== video) return;
+    scrubDuration.textContent = videoDurationLabel(video);
   });
   video.addEventListener('timeupdate', () => {
     if(currentVideoEl !== video || scrubbing) return;

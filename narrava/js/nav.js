@@ -42,7 +42,7 @@
 
 // The state object sitting on the current history entry:
 //   { narrava:true, screen, watching, sid, n }
-//   screen   'discover' | 'feed' | 'library' | 'profile' | 'watch'
+//   screen   'discover' | 'feed' | 'library' | 'profile' | 'history' | 'watch'
 //   watching true while inside a series on the feed screen
 //   sid      id of the series being watched (only used to reopen it if the
 //            browser's Forward button lands on this entry again)
@@ -154,6 +154,7 @@ async function navApply(target){
       if(target.screen === 'discover') refreshContinueWatchingMap().then(renderContinueWatchingBar);
       else if(target.screen === 'library') renderLibraryScreen();
       else if(target.screen === 'profile') renderProfileScreen();
+      else if(target.screen === 'history') renderHistoryScreen();
     }
   } finally {
     navApplying = false;

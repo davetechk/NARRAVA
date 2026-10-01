@@ -74,7 +74,9 @@ Browser (static files in narrava/)          Supabase                       Bunny
   the Bunny-upload-processing toast.
 - **Skeleton loading**: everywhere else that used to show the pulsing logo loader now shows a
   content-shaped skeleton instead — Home (the desktop hero banner, the desktop shelves, and the
-  mobile poster grid, in `js/discover.js`), Library's poster grid (`js/library.js`), the comments
+  mobile poster grid, in `js/discover.js`, plus the Rankings tab and Top shelf while their ranking
+  loads), Library's poster grid (`js/library.js`), History's rows (`js/history.js`, its own
+  `skeletonHistoryRowsHtml`), the comments
   sheet's avatar+two-line rows (`js/comments-panel.js`), the desktop Watch page's episode grid
   (`js/watch.js` — the player itself keeps the full loader, only the grid became a skeleton), and
   admin's Series List and Episodes tables (real `<thead>`, skeleton body rows). The helpers
@@ -131,14 +133,31 @@ major), `hls.js` 1.5.17, and `tus-js-client` 4.2.2 (admin pages that upload vide
 ## The consumer app
 
 **Screens** (bottom bar on mobile, top bar on desktop): Home (the default), For You, Library,
-Profile. On desktop, opening a series goes to a dedicated Watch page instead.
+Profile. On desktop, opening a series goes to a dedicated Watch page instead. History is a
+screen too, reached from Profile (Profile stays the highlighted tab while it's open).
 
 - **Home** (`discover.js`): on mobile, a search box, tabs, and a poster grid. Popular is just
-  the order the database returns; New sorts by creation date; Categories filters by genre;
-  Rankings and VIP are placeholders (Rankings says plainly that view counts aren't tracked; VIP
-  posters do nothing when tapped). On desktop: a rotating banner of featured series plus
-  horizontal shelves (New Release, Top, then one per genre that has series). "Top" is not a
-  popularity ranking. It puts featured series first, and it says so on screen.
+  the order the database returns; New sorts by creation date; Categories filters by genre; VIP
+  is a placeholder (tapping a VIP poster shows the "Coming soon" toast). On desktop: a rotating
+  banner of featured series plus horizontal shelves (New Release, Top, then one per genre that
+  has series).
+  - **Rankings (mobile tab) and Top (desktop shelf)** are the same real view ranking, from the
+    `get_series_rankings` function (`result_limit: 100`), which returns `series_id` + `views` for
+    published series, already sorted. That order is final: the front end never re-sorts it. Each
+    row is matched to a series the app already loaded (`slides`); an id it doesn't have is
+    skipped. Each card shows a rank badge (1, 2, 3… — the position in the matched list; the top
+    three are gold) and the real count ("1,204 views", "1 view", "0 views"), top-left, outside
+    the title so the desktop shelf's hover-only title never hides it. Searching on the tab
+    filters rows without renumbering them. "View all" on Top opens the Rankings tab.
+  - It's fetched once per page load (`loadRankings()`), **after** `slidesReady` — which app.js
+    resolves only once the anonymous-session bootstrap is done. That ordering matters: the
+    function refuses a caller with no session at all ("permission denied for function
+    get_series_rankings", seen live on a first-ever visit when it ran earlier).
+  - Skeleton poster cards while loading (tab and shelf). On failure — an error, or no answer
+    within 10 seconds (`withTimeout`, `shared-utils.js`) — the tab falls back to its old plain
+    list with the note "Couldn't load rankings right now — showing all series instead", and the
+    Top shelf to its old featured-first order with the caption "Couldn't load view counts —
+    featured series shown first, not ranked by views". Never stuck on the skeleton.
 - **For You** (`app.js`): the mobile swipe feed. One series at a time, full screen. Tapping
   enters "watching" that series: swipe up/down now moves between that series' *episodes*
   (stops at episode 1 going back; rolls into the next series after the last episode). The small
@@ -146,7 +165,17 @@ Profile. On desktop, opening a series goes to a dedicated Watch page instead.
   and pause; press-and-hold plays at 2×. The controls (name, description, icons, scrub bar) auto-hide
   two seconds after entering a series, and again two seconds after a tap reveals them if nobody
   taps again. A second tap inside that window pauses instead, and the timer only restarts once
-  the video is playing again. Name, description and the like/comment/share/save icons use the same bottom offsets
+  the video is playing again.
+  - **Episode length on the scrub bar.** Both players (this feed's `#scrubDuration`, the Watch
+    page's `#watchScrubDuration`) show the episode's total length at the right end of the bar,
+    e.g. "2:34" (m:ss; h:mm:ss past an hour). It comes from the `<video>` element's own
+    `duration`, via `videoDurationLabel()` (`shared-utils.js`), which returns nothing until the
+    element's `readyState` reaches HAVE_METADATA — so there's never a "0:00" or a guess, and
+    hls.js setting a duration a moment earlier doesn't count. Updated on `loadedmetadata` and
+    `durationchange`, and cleared whenever the episode changes (the feed's `setBgHasVideo(false)`,
+    the start of `watchPlayEpisode`). A preloaded next episode already knows its length, so it
+    shows straight away. Display only: seeking and playback are unchanged. It shares the bar's
+    flex row (`.scrub-duration`), so it never overlaps it; checked at 320px, 390px and 1280px. Name, description and the like/comment/share/save icons use the same bottom offsets
   while browsing and while watching, so they don't jump when someone taps in. The only
   difference is deliberate: browsing has the Continue button under the description, so the text
   sits that button's height higher.
@@ -170,9 +199,24 @@ Profile. On desktop, opening a series goes to a dedicated Watch page instead.
     playback logic; the desktop watch page still plays with sound as before. Tested live in
     desktop Chrome only.
 - **Library** (`library.js`): series you've saved. Needs a real (non-anonymous) account.
+- **History** (`history.js`, Profile → History): every series you've watched, newest first, from
+  the `get_watch_history` function (`result_limit: 100`), which only ever returns the signed-in
+  caller's own rows — an anonymous account has history too. Each row: cover, title,
+  "Episode N" (`last_episode_number`) and when (`last_watched_at`: "Today", "Yesterday", or
+  "12 Sep 2026", by the viewer's local calendar day — `formatWatchedDate()`, `shared-utils.js`).
+  Built like Library: same `.library` shell and header (plus a back arrow, which behaves like the
+  browser's Back via `navBack()`), skeleton rows with the one faint center logo, re-fetched every
+  time it opens. Tapping a row calls `openSeriesInFeed` — exactly what a Library poster does,
+  including the silent resume. A series in history that's no longer loaded (unpublished) shows
+  "That series isn't available". Empty: "Nothing watched yet." Failure or no answer within
+  10 seconds: "Couldn't load your history right now." with a Try again button. History is built
+  from `watch_progress`; no front-end code ever deletes those rows (see Watch progress below).
 - **Profile** (`profile.js`): log in / sign out, username, install-app button, wallet balance
-  (see below), and an Admin Panel link that only appears if you're an admin. Most of the other
-  rows (Earn Rewards, Gifts, History, Download, Language, Help) just show a "coming soon" toast.
+  (see below), History (above), and an Admin Panel link that only appears if you're an admin.
+  The Membership banner, Earn Rewards, Gifts, and Download (both the menu row and the Download
+  feature tile) all show the same "Coming soon" toast, as does tapping a VIP poster on Home.
+  Top Up, Language and Help & Feedback keep their own toasts. The other feature tiles
+  (Originals, Daily Coins, HD Quality) are still plain labels that do nothing.
 - **Watch page (desktop only)** (`watch.js`): video, breadcrumb, like/save/share/comments, and
   a numbered episode grid.
 
@@ -343,6 +387,12 @@ That one result feeds two things: opening any series silently resumes at the sav
 position (if more than half a second in), and on mobile Home a small floating "Continue" bar
 shows the most recent one (dismissing it lasts only until the next page load).
 
+The History screen reads the same table through `get_watch_history`. Nothing in the front end
+ever deletes a `watch_progress` row: finishing an episode or a series leaves its row in place
+(only an upsert of the position). Whether the *database* removes rows — for example a cascade
+when an admin deletes an episode or series — can't be seen from this repo; if it does, those
+rows drop out of History too.
+
 ## Likes, saves, comments
 
 All in `social.js` and `comments-panel.js`, against real tables (`series_likes`, `series_saves`,
@@ -384,8 +434,9 @@ All in `social.js` and `comments-panel.js`, against real tables (`series_likes`,
     actually finishes (the link genuinely copied, or a WhatsApp/Facebook share target genuinely
     opened) — never just from opening the fallback sheet itself. Since `shareSeries()` is the one
     place every share button in the app calls into, this is wired in one place and covers all of
-    them. Fire and forget, same rules as episode views above. Unlike views, a share is never
-    deduplicated client-side — every genuinely completed share counts.
+    them. Fire and forget, same rules as episode views above. The browser records every
+    genuinely completed share, but the database counts at most one share per person per series
+    per day, the same way views are counted once per person per episode per day.
 
 ## The admin panel
 
@@ -608,7 +659,7 @@ order, and files call functions defined in other files (for example `app.js` cal
 calls happen after everything has loaded, but a new file has to go in the right place in the
 list, and names must not collide across files. The current order: `protect` → `layout-guard` → `config` → supabase-js → hls.js
 → `supabase-client` → `shared-utils` → `video-player` → `watch-progress` → `visit-log` →
-`social` → `comments-panel` → `feed-data` → `app` → `discover` → `library` → `watch` → `auth` →
+`social` → `comments-panel` → `feed-data` → `app` → `discover` → `library` → `history` → `watch` → `auth` →
 `profile` → `pwa-install` → `nav`. Admin pages load `config`, supabase-js, `supabase-client`,
 `shared-utils`, `admin-shared`, and one `admin-<page>.js` each.
 
@@ -678,7 +729,7 @@ visited_at) · `purchases` and `coin_transactions` (see below).
 **Database functions (RPC):** `get_continue_watching`, `get_series_like_count`,
 `get_series_comments`, `admin_list_users`, `admin_total_users`, `admin_total_revenue`,
 `admin_visit_stats`, `admin_daily_visits`, `record_episode_view`, `record_series_share`,
-`admin_most_watched_series`. (`admin_user_stats` also exists and is intentionally unused.)
+`admin_most_watched_series`, `get_series_rankings`, `get_watch_history`. (`admin_user_stats` also exists and is intentionally unused.)
 
 **Edge Functions:** `bunny-signed-playback-url` (viewers) · `bunny-upload-init`,
 `bunny-delete-video`, `admin-suspend-user` (admin only).
@@ -707,9 +758,9 @@ Do not describe any of this as working.
 - **Revenue.** The Revenue & Analytics page reads `purchases` and `coin_transactions`, but
   nothing in this repo writes to either, so its numbers are zero. Subscriptions and ad revenue
   are labelled "Inactive".
-- **Membership, Earn Rewards, Gifts, History, Download, Language, Help & Feedback:** menu rows
+- **Membership, Earn Rewards, Gifts, Download, Language, Help & Feedback:** menu rows/tiles
   that only show a toast.
-- **Rankings** (the tab itself still isn't wired to the real view counts now tracked for the admin
-  Most Watched page — it remains just the database's default order) and **VIP** (posters do
-  nothing).
-- **Episode durations**, which are never recorded.
+- **VIP** (posters only show a "Coming soon" toast).
+- **Download as a feature** — there's no download button on the like/comment/save/share row.
+- **Stored episode durations.** `episodes.duration_seconds` is never written; the length shown on
+  the scrub bar is read live from the video once it loads, not from the database.

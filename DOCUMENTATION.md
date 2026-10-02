@@ -604,7 +604,7 @@ Details worth knowing:
 `privacy.html` (next to `index.html`) is Narrava's public privacy policy — the link the app
 stores ask for, at `/privacy.html`. Help & Feedback → Privacy Policy opens it in a new tab.
 
-- **Word for word.** Its text is `PRIVACY_POLICY.md` exactly — the HTML only adds structure
+- **Word for word.** Its text is `PRIVACY_POLICY.md` (in the repo root, outside `narrava/`) exactly — the HTML only adds structure
   (headings, paragraphs, lists). Nothing is reworded, shortened or added; not even a site name or
   a "back" link. To change the policy, edit `PRIVACY_POLICY.md`, then mirror the change into
   `privacy.html` exactly, and re-check that the two match (strip the Markdown markers and
@@ -617,8 +617,8 @@ stores ask for, at `/privacy.html`. Help & Feedback → Privacy Policy opens it 
   anonymous sign-in, and it stays readable during Maintenance Mode. Don't add scripts or link
   `styles.css` to it.
 - It's in `sw.js`'s precache list, so it also opens offline once the app has been installed.
-- `PRIVACY_POLICY.md` sits in the same served folder, so it's publicly reachable too
-  (`/PRIVACY_POLICY.md`); harmless, since it's the same public text.
+- `PRIVACY_POLICY.md` is the source text and lives in the repo root, deliberately outside the
+  deployed `narrava/` folder, so it is never served — `privacy.html` is the only public copy.
 
 ## Installable app (PWA)
 

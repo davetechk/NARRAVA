@@ -35,8 +35,8 @@
 //   app.js: showScreen, activeScreenName, feed, idx, slides, goTo,
 //     openSeriesInFeed, clearPendingResume, refreshContinueWatchingMap,
 //     renderContinueWatchingBar, closeCommentsSheet, closeEpisodeGrid,
-//     closeSheet, closeTopbarSearch, topbarSearchBar, episodeGridSheet,
-//     commentsSheet, coinSheet
+//     closeTopbarSearch, topbarSearchBar, episodeGridSheet, commentsSheet
+//   coins.js: closeCoinSheet, closeUnlockPrompt and their backdrops
 //   auth.js / profile.js / shared-utils.js / watch.js: the modal/drawer
 //     close functions and backdrops used in NAV_OVERLAYS below.
 
@@ -96,11 +96,12 @@ function navBack(){
 // overlay's own real close function.
 const NAV_OVERLAYS = [
   { isOpen: () => authModalBackdrop.classList.contains('open'),                              close: () => closeAuthModal() },
+  { isOpen: () => unlockModalBackdrop.classList.contains('open'),                            close: () => closeUnlockPrompt() },
+  { isOpen: () => coinSheetBackdrop.classList.contains('open'),                              close: () => closeCoinSheet() },
   { isOpen: () => usernameModalBackdrop.classList.contains('open'),                          close: () => closeUsernameModal() },
   { isOpen: () => !!shareSheetBackdrop && shareSheetBackdrop.classList.contains('open'),     close: () => closeShareFallback() },
   { isOpen: () => episodeGridSheet.classList.contains('open'),                               close: () => closeEpisodeGrid() },
   { isOpen: () => commentsSheet.classList.contains('open'),                                  close: () => closeCommentsSheet() },
-  { isOpen: () => coinSheet.classList.contains('open'),                                      close: () => closeSheet() },
   { isOpen: () => watchCommentsBackdrop.classList.contains('open'),                          close: () => closeWatchComments() },
   { isOpen: () => topbarSearchBar.classList.contains('open'),                                close: () => closeTopbarSearch() }
 ];

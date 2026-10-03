@@ -122,9 +122,14 @@ function showWatchLoadFailure(ep, resumeSeconds){
 // real, direct, synchronous currentTime assignment once the real video
 // is actually ready (loadedmetadata), no polling needed.
 async function watchPlayEpisode(ep, resumeSeconds){
-  if(!ep || !ep.bunny_video_id) return;
+  if(!ep) return;
+  // A locked episode never tries to play — the signing function would
+  // refuse it anyway. Show the unlock panel for it instead.
+  if(!watchEpisodeUnlocked(ep)){ watchShowLockedEpisode(ep); return; }
+  if(!ep.bunny_video_id) return;
   saveCurrentWatchProgress();
   if(watchPlaybackCtl) watchPlaybackCtl.destroy();
+  watchLockedEpisodeId = null;
 
   const episodeId = ep.id;
   watchActiveEpisodeId = episodeId;
@@ -226,14 +231,62 @@ function escapeWatchHtml(s){
   return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-// Real free_episode_count from the series row (see feed-data.js) — an
-// episode past it is locked, exactly like the mobile poster grid's VIP
-// tab lock icon. Missing/null (a legacy row) falls back to 0 rather than
-// guessing, so nothing gets treated as unlocked that isn't really known
-// to be.
+// Real free_episode_count from the series row (see feed-data.js).
+// Missing/null (a legacy row) falls back to 0 rather than guessing, so
+// nothing gets treated as unlocked that isn't really known to be.
 function watchFreeCount(){
   return (watchSlide && typeof watchSlide.freeEpisodeCount === 'number') ? watchSlide.freeEpisodeCount : 0;
 }
+
+// The one real lock rule (isEpisodeUnlocked, coins.js) — free episode
+// count, Free Mode, subscription, or a real unlock — the same rule the
+// mobile feed uses and the video signing function enforces.
+function watchEpisodeUnlocked(ep){
+  return isEpisodeUnlocked(watchFreeCount(), ep);
+}
+
+// The player area for a locked episode: what it is, and the way to
+// unlock it (the same unlock prompt as everywhere else, coins.js).
+let watchLockedEpisodeId = null;
+function watchShowLockedEpisode(ep){
+  saveCurrentWatchProgress();
+  if(watchPlaybackCtl) watchPlaybackCtl.destroy();
+  watchPlaybackCtl = null;
+  watchVideoEl = null;
+  watchActiveEpisodeId = ep.id;
+  watchLockedEpisodeId = ep.id;
+  watchPlayerBox.classList.remove('has-video', 'paused');
+  watchScrubDuration.textContent = '';
+  watchPlayerHost.innerHTML =
+    '<div class="watch-locked">' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 018 0v3"/></svg>' +
+      '<div class="watch-locked-title">Episode ' + ep.episode_number + ' is locked</div>' +
+      '<button type="button" class="watch-locked-btn" id="watchUnlockBtn">Unlock · 1 Nava Coin</button>' +
+    '</div>';
+  document.getElementById('watchUnlockBtn').addEventListener('click', () => watchPromptUnlock(ep));
+  watchBreadcrumbEl.innerHTML = 'Home / ' + escapeWatchHtml(watchSlide.title) + ' / <span>Episode ' + ep.episode_number + '</span>';
+  watchTitleEl.textContent = ep.title ? ('Ep ' + ep.episode_number + ': ' + ep.title) : ('Episode ' + ep.episode_number);
+  renderWatchEpisodes();
+}
+
+function watchPromptUnlock(ep){
+  const slide = watchSlide;
+  openUnlockPrompt(ep, () => {
+    if(watchSlide !== slide) return; // left this series meanwhile
+    watchPlayEpisode(ep);
+  });
+}
+
+// Unlocks/subscription changed (coins.js): repaint the grid's lock
+// icons, and if the locked panel's episode is now watchable, play it.
+document.addEventListener('narrava:coins-changed', () => {
+  if(!watchSlide || !watchEpisodes.length) return;
+  if(watchLockedEpisodeId && watchActiveEpisodeId === watchLockedEpisodeId){
+    const ep = watchEpisodes.find(e => e.id === watchLockedEpisodeId);
+    if(ep && watchEpisodeUnlocked(ep) && !watchScreen.classList.contains('screen-hidden')){ watchPlayEpisode(ep); return; }
+  }
+  renderWatchEpisodes();
+});
 
 function watchEpCardHtml(ep, locked){
   const isActive = ep.id === watchActiveEpisodeId;
@@ -244,7 +297,7 @@ function watchEpCardHtml(ep, locked){
     ? '<svg class="watch-ep-card-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 018 0v3"/></svg>'
     : '';
   return '<button type="button" class="watch-ep-card' + (isActive ? ' active' : '') + (locked ? ' locked' : '') +
-    '" data-ep-id="' + ep.id + '"' + (locked ? ' disabled' : '') + '>' +
+    '" data-ep-id="' + ep.id + '"' + (locked ? ' aria-label="Episode ' + ep.episode_number + ', locked"' : '') + '>' +
     lockBadge + ep.episode_number +
   '</button>';
 }
@@ -280,20 +333,21 @@ function renderWatchRanges(){
 function renderWatchEpisodes(){
   renderWatchRanges();
 
-  const freeCount = watchFreeCount();
-  // Free Mode (app_settings, see app.js's appSettings) overrides this
-  // series' own real free_episode_count the exact same way the mobile
-  // feed's isEpisodeLocked does — nothing locked, full stop, the real
-  // per-series count itself untouched either way.
-  const freeModeOn = appSettings.free_mode_enabled;
   const start = watchActiveRange * WATCH_RANGE_SIZE;
   const visible = watchEpisodes.slice(start, start + WATCH_RANGE_SIZE);
 
   watchEpisodeGrid.innerHTML = visible
-    .map(ep => watchEpCardHtml(ep, !freeModeOn && ep.episode_number > freeCount))
+    .map(ep => watchEpCardHtml(ep, !watchEpisodeUnlocked(ep)))
     .join('');
-  watchEpisodeGrid.querySelectorAll('.watch-ep-card:not(.locked)').forEach(btn => {
-    btn.addEventListener('click', () => watchPlayEpisode(watchEpisodes.find(e => e.id === btn.dataset.epId)));
+  // A locked card opens the unlock prompt (coins.js) and, once the
+  // server says it's unlocked, plays it.
+  watchEpisodeGrid.querySelectorAll('.watch-ep-card').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const ep = watchEpisodes.find(e => e.id === btn.dataset.epId);
+      if(!ep) return;
+      if(btn.classList.contains('locked')) watchPromptUnlock(ep);
+      else watchPlayEpisode(ep);
+    });
   });
 }
 
@@ -315,6 +369,7 @@ async function openWatchScreen(slideIndex, resume){
 
   watchSlide = slide;
   watchActiveEpisodeId = null;
+  watchLockedEpisodeId = null;
   watchVideoEl = null;
   watchPlaybackCtl = null;
   watchActiveRange = 0;

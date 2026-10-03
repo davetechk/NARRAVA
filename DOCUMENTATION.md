@@ -31,9 +31,10 @@ Working: browsing and search, watching episodes (mobile swipe feed and desktop w
 resuming where you left off, likes, saves, threaded comments, usernames, email sign-up and
 log-in, anonymous accounts, the installable app, and the full admin panel described below.
 
-**Not built:** payments, and everything that hangs off them. The coin balance shown in the
-app is not a real economy. See [Not built yet](#not-built-yet) for exactly what exists and what
-doesn't. Nothing else in this document should be read as implying otherwise.
+Nava Coins are real too: the balance, episode locks, unlocking with 1 coin, buying coin packs
+through Paystack, and the 5-coin welcome bonus. See
+[Nava Coins](#nava-coins-balance-locks-unlocking-buying). The server decides all of it; the app only
+displays it. See [Not built yet](#not-built-yet) for what still doesn't exist.
 
 ## How the pieces fit
 
@@ -53,6 +54,9 @@ Browser (static files in narrava/)          Supabase                       Bunny
 - **`narrava/js/`**: all the logic. There is no build step, no bundler, no `package.json`, no
   modules. Every file is a plain script that defines global functions, and `index.html` loads
   them in a specific order (see [Gotchas](#things-that-are-easy-to-get-wrong)).
+- **`narrava/js/coins.js`**: Nava Coins: the real balance, the lock rule, the unlock prompt, the
+  Get Coins sheet with Paystack, and the welcome bonus. Loaded after `feed-data.js` and before
+  `app.js`. See [Nava Coins](#nava-coins-balance-locks-unlocking-buying).
 - **`narrava/css/`**: `styles.css` (the app, and also used by admin) and `admin.css` (admin only).
   Brand color lives in three CSS custom properties defined once, in `styles.css`'s `:root`, and
   reused by `admin.css` rather than redefined: `--leaf: #1ED760` (Spotify green, the main brand
@@ -224,12 +228,12 @@ screen too, reached from Profile (Profile stays the highlighted tab while it's o
     `APP_VERSION`, and "© 2026 Narrava Entertainment".
   - **`APP_VERSION`** is a single constant at the top of `shared-utils.js` (currently `'1.0.0'`).
     It is the only place the version lives. **Bump it on every release.**
-- **Profile** (`profile.js`): log in / sign out, username, install-app button, wallet balance
-  (see below), History and Help & Feedback (above), and an Admin Panel link that only appears if
+- **Profile** (`profile.js`): log in / sign out, username, install-app button, My Wallet (the
+  real Nava Coins balance; it and Top Up open the Get Coins sheet, see Nava Coins below), History and Help & Feedback (above), and an Admin Panel link that only appears if
   you're an admin. The Membership banner, Earn Rewards, Gifts, the Download row, and all four
   feature tiles (Originals, Daily Coins, Download, HD Quality — each a real `<button>` reset to
   look exactly like the old `<div>` tiles) show the same "Coming soon" toast, as does tapping a
-  VIP poster on Home. Top Up and Language keep their own toasts.
+  VIP poster on Home. Language keeps its own toast.
 - **Watch page (desktop only)** (`watch.js`): video, breadcrumb, like/save/share/comments, and
   a numbered episode grid.
 
@@ -274,7 +278,7 @@ it with `localStorage.removeItem('narrava_devtools_ok')`. Without it, the `debug
 debugging the live site impractical. If it ever "does nothing," first check that `protect.js` is
 actually in the script list in `index.html` and deployed (it was once missing entirely).
 
-**Scroll isolation.** The bottom sheets (comments, episode grid, Get Coins) sit inside `#feed`,
+**Scroll isolation.** The bottom sheets (comments, episode grid) sit inside `#feed`,
 which owns the swipe listeners, so touches and wheel scrolls inside a sheet used to bubble up and
 swipe the episode underneath. `app.js` now stops `touchstart/move/end` and `wheel` at each sheet
 and backdrop. Anything new that scrolls inside `#feed` needs the same treatment.
@@ -389,6 +393,86 @@ per episode per day, which is a separate, server-side rule this front end doesn'
 about. Fire and forget: never awaited in a way that could delay playback, and a failure only ever
 reaches the console. Only the episode id is ever sent — never a user id, series id, or a count
 computed in the browser.
+
+## Nava Coins: balance, locks, unlocking, buying
+
+Everything lives in `js/coins.js`. The rule for this code: **the browser only shows what the server
+says and asks the server to act.** It never adds, subtracts or stores coins or unlocks as the source
+of truth, and never sends a price, amount, coin count or user id. The old placeholder economy is
+gone (removed 2026-10-03): the hard-coded `coins = 3`, the 2-coin `coinCost`, the per-slide
+`unlockedEpisodeIds` Set, the NG/CA `regions` price table and the fake "Pay" button that added
+coins after a 900 ms timeout.
+
+**Balance.** `profiles.coin_balance` for the signed-in person (`coinState.balance`). Anonymous
+visitors always show 0. It is shown in the feed's coin chip, Profile → My Wallet, the Get Coins
+sheet and the unlock prompt (`renderCoinBalances()`; elements marked `data-coin-balance` update
+too). Re-read after an unlock (the RPC returns it), after the welcome bonus, after a confirmed
+purchase, whenever the account changes, and whenever the tab comes back to the foreground
+(`visibilitychange`).
+
+**The lock rule** (`isEpisodeUnlocked(freeEpisodeCount, ep)`), used by both players and every
+episode grid. An episode is unlocked if ANY of these is true:
+1. its number is within the series' `free_episode_count`;
+2. Free Mode is on (`app_settings.free_mode_enabled`);
+3. `my_subscription()` returns an active plan;
+4. an `episode_unlocks` row exists for it (the person's own rows).
+
+Otherwise it is locked. There is **no admin exception in the app**, so admins see locks like anyone
+else. (The server's `can_watch_episode` *does* return true for an admin on a locked episode, checked
+2026-10-03, so an admin's locked episode would actually play if requested. The app just never asks.)
+Unlocks and subscription are loaded once per app load (`refreshCoinState()`, in parallel with the
+slides) and again after an unlock, a confirmed purchase, sign up / log in / sign out. Every change
+fires the `narrava:coins-changed` event. `app.js` (`reapplyEpisodeLocks`) and `watch.js` listen and
+re-run the rule, so lock icons and the unlock button always match. A locked episode's video is
+never requested. The real gate is still `bunny-signed-playback-url`.
+
+**Unlocking** (`openUnlockPrompt(ep, onUnlocked)`), reached by tapping a locked cell in the mobile
+jump grid or the desktop episode grid, the feed's "Unlock Ep N · 1 Nava Coin" button, or the desktop
+player's locked panel:
+- Anonymous: the sign-up popup opens with "You need an account to unlock episodes."
+- Signed in: "Unlock this episode for 1 Nava Coin", the balance, Unlock / Cancel. Unlock calls
+  `unlock_episode_with_coin(p_episode_id)` (the button is disabled while it's in flight, so a double
+  tap sends one request), then:
+  - `unlocked` / `already_unlocked` / `free` / `subscribed`: local state is updated from the server's
+    answer, the balance is the one returned, and the episode plays.
+  - `insufficient_coins`: "You need 1 Nava Coin" with a button that opens Get Coins.
+  - anything else, or an error: an honest toast, nothing changes.
+
+**Buying coins** (the Get Coins sheet, `openCoinSheet()`). It opens from the feed's coin chip, the
+desktop "Top Up" button, Profile → Top Up / My Wallet, and the "insufficient coins" prompt. It is a
+body-level popup, so it works from any screen.
+- Packs come from `coin_packs` (active, sorted by `sort_order`) and are shown in the chosen currency,
+  Naira (`price_ngn_kobo / 100`) or US Dollar (`price_usd_cents / 100`). Under Naira: "Naira
+  payments need a Nigerian card or bank account." Packs and the Coin Payments switch
+  (`app_settings.coin_purchases_enabled`) are re-read every time the sheet opens. When the switch is
+  off, the sheet only says "Buying coins isn't available right now".
+- Anonymous visitors can see the packs, but tapping one opens the sign-up popup.
+- Tapping a pack calls the Edge Function `paystack-init` through `supabaseClient.functions.invoke`
+  with **only** `{ kind: 'coin_pack', itemId, currency }`. It returns `{ reference, accessCode }` or an
+  error code: `sign_up_required` opens sign up; `coin_purchases_disabled`, `unknown_pack` and
+  `paystack_unavailable` each get a clear message.
+- Paystack's official inline script (`https://js.paystack.co/v2/inline.js`) is loaded on first use,
+  and the payment opens with `new PaystackPop().resumeTransaction(accessCode, { onSuccess, onCancel,
+  onError })`. **No Paystack key of any kind is in the frontend.**
+- **`onSuccess` is not proof of payment.** Coins are credited only by the server's webhook after
+  Paystack confirms. On `onSuccess` the sheet shows "Confirming your payment…" and polls
+  `purchases.status` for that `paystack_reference` every 2 s for up to 60 s:
+  - `completed`: balance and unlocks are refreshed, then "Coins added".
+  - `refunding` / `refunded` / `refund_failed`: "Naira payments need a Nigerian card. Your payment
+    is being refunded."
+  - `failed`: "The payment didn't go through. No coins were added."
+  - still `pending` after 60 s: "Payment received, your coins will appear shortly." The foreground
+    balance refresh picks the coins up later.
+- `onCancel` resets the sheet quietly. Only one purchase can run at a time, so the packs and
+  currency buttons are disabled while one is in progress. Closing the sheet doesn't stop the
+  confirmation; a "Coins added" toast appears when it lands.
+
+**Welcome bonus.** `claim_welcome_bonus()` is called once per app load for signed-in email
+(non-anonymous) accounts, and right after a successful sign up, account link or log in. It is never
+called for anonymous visitors. The server pays it only once. On `granted`, the balance is refreshed
+and a toast shows "Welcome! You got 5 free Nava Coins"; any other status is silent. A sign-up that
+still needs email confirmation is still anonymous, so the bonus comes on the first load or log in
+after confirming. Existing email accounts get it too, the first time they load this version.
 
 ## Watch progress and Continue Watching
 
@@ -690,14 +774,17 @@ Home Screen web apps use an opaque status bar in some situations; either way `bl
 
 **1. The service worker can keep serving old files after you deploy.** `sw.js` answers requests
 for the app's own files from its cache first and only goes to the network when it has nothing
-cached. The cache name is currently `narrava-shell-v17` and old caches are deleted only when the name
+cached. The cache name is currently `narrava-shell-v28` and old caches are deleted only when the name
 *changes*. So after changing any app file, people who have already visited can keep getting the
 old version. **Bump `CACHE_NAME` in `sw.js` whenever you ship a change.** The service worker's
 scope is the whole `narrava/` folder, so this affects the **admin pages too**, not only the
 consumer app. (Read from the code, not tested against a live deployment.) The `?v=` numbers on
 some script tags in `index.html` are a manual cache-busting habit and don't replace this.
 `sw.js`'s precache list is also hand-maintained; it doesn't include `visit-log.js`, and a new
-script won't be listed unless added.
+script won't be listed unless added (`coins.js` is). **Testing locally with VS Code Live Server:**
+Live Server reloads the page every time a file is saved, and the service worker then caches whatever
+it fetched under the new `?v=` number, which can be a half-edited file. If a change seems to be
+missing, clear the site's caches (DevTools → Application → Clear storage) and reload.
 
 **2. Supabase's API layer can keep serving an old version of a database function.** The API in
 front of Postgres (PostgREST) caches the database's structure. After creating or changing a
@@ -724,15 +811,14 @@ code calls. **If the Supabase project were lost, this repo could not recreate it
 schema and the Edge Function source into the repo (a `supabase/` folder) would fix that and is
 worth doing.
 
-**5. The client-side "locked" state, and what the server actually enforces.** Locked episodes
-are decided in the browser from the series' `free_episode_count` (or overridden by Free Mode),
-and a locked episode's video is never requested. The real gate is `bunny-signed-playback-url`,
-whose source isn't in this repo. **Verified (2026-09-20, anonymous account):** for the 29-episode
-series with 10 free episodes, the function returned a link for episodes 1–10 and *refused*
-episodes 11–29. So the server does enforce `free_episode_count`, and the fake coin unlock (below)
-cannot actually make a locked episode play, since the browser would still be refused a link. Still
-unchecked: whether the function respects Free Mode. The app shows everything unlocked when Free
-Mode is on, but if the function ignores it, locked episodes won't play.
+**5. The client-side "locked" state, and what the server actually enforces.** The lock icons
+come from the browser's copy of the server rule (see
+[Nava Coins](#nava-coins-balance-locks-unlocking-buying)), and a locked episode's video is never
+requested. The real gate is `bunny-signed-playback-url`, whose source isn't in this repo.
+**Verified (2026-09-20, anonymous account):** for the 29-episode series with 10 free episodes, the
+function returned a link for episodes 1–10 and *refused* episodes 11–29. Two known differences
+between the app and the server: admins (the server lets them watch everything, the app shows them
+locks), and Free Mode (not yet checked against the function).
 
 **6. Saving/Library don't work for anonymous visitors** until they sign up (which upgrades the
 same account, so nothing is lost; see Accounts). Logging in to a *different* existing account does
@@ -780,13 +866,23 @@ series_id, position_seconds, updated_at) · `series_likes` · `series_saves` · 
 `ad_unlock_enabled`, `subscriptions_enabled`, `coin_purchases_enabled`) · `page_visits` (user_id,
 visited_at) · `purchases` and `coin_transactions` (see below).
 
+**Coins tables:** `coin_packs` (id, coins, price_ngn_kobo, price_usd_cents, sort_order, active;
+public read) · `episode_unlocks` (user_id, episode_id, created_at; own rows readable) ·
+`purchases` (own rows readable; `paystack_reference`, `item_id`, `currency`, `status` =
+pending / completed / failed / refunding / refunded / refund_failed).
+
+**Coins functions:** `my_subscription`, `unlock_episode_with_coin(p_episode_id)` and
+`claim_welcome_bonus` (both return `{ status, balance }`), and `can_watch_episode(p_episode_id)`
+(not called by the app). Edge Function `paystack-init`, plus a Paystack webhook on the server that
+credits coins. None of their source is in this repo.
+
 **Database functions (RPC):** `get_continue_watching`, `get_series_like_count`,
 `get_series_comments`, `admin_list_users`, `admin_total_users`, `admin_total_revenue`,
 `admin_visit_stats`, `admin_daily_visits`, `record_episode_view`, `record_series_share`,
 `admin_most_watched_series`, `get_series_rankings`, `get_watch_history`,
 `get_series_social_counts`. (`admin_user_stats` also exists and is intentionally unused.)
 
-**Edge Functions:** `bunny-signed-playback-url` (viewers) · `bunny-upload-init`,
+**Edge Functions:** `bunny-signed-playback-url`, `paystack-init` (viewers) · `bunny-upload-init`,
 `bunny-delete-video`, `admin-suspend-user` (admin only).
 
 **Storage:** the `cover-images` bucket (public read, admin write).
@@ -800,19 +896,11 @@ by the browser).
 
 Do not describe any of this as working.
 
-- **Payments.** No payment provider is connected. The Profile "Top Up" row says "Coming soon —
-  Paystack integration is on the way." Nothing charges anyone.
-- **The coin economy.** Two disconnected things exist, and neither is a working economy:
-  - The **Wallet** row on Profile shows the real `profiles.coin_balance` for the signed-in user.
-    Nothing in the app can change that number.
-  - The "Get Coins" sheet, the coin chip on the feed, and the "Unlock Ep N · 2 coins" button run
-    on a **browser-only variable** that starts at 3. "Paying" in the sheet just adds coins to
-    that variable after a fake delay; unlocking spends from it; a page refresh resets it. The
-    price (2 coins) and the NG/CA package prices are hard-coded in `app.js` / `feed-data.js`.
-    Nothing is written to the database.
-- **Revenue.** The Revenue & Analytics page reads `purchases` and `coin_transactions`, but
-  nothing in this repo writes to either, so its numbers are zero. Subscriptions and ad revenue
-  are labelled "Inactive".
+- **Subscriptions as something to buy.** The lock rule honours an active plan from
+  `my_subscription()`, but the app has no way to buy one. Ad unlocks don't exist either.
+- **Revenue.** The Revenue & Analytics page reads `purchases` and `coin_transactions`. Only the
+  server (the Paystack webhook) writes to them; nothing in this repo does. Subscriptions and ad
+  revenue are labelled "Inactive".
 - **Membership, Earn Rewards, Gifts, Download, Language, and the Originals / Daily Coins /
   Download / HD Quality tiles:** only show a toast.
 - **VIP** (posters only show a "Coming soon" toast).

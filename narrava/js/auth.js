@@ -28,9 +28,11 @@ const authModalClose = document.getElementById('authModalClose');
 
 let authMode = 'login'; // 'login' | 'signup'
 
-function openAuthModal(mode){
+// note (optional): a short line shown above the form saying why it
+// opened — e.g. coins.js's "You need an account to unlock episodes."
+function openAuthModal(mode, note){
   authMode = mode === 'signup' ? 'signup' : 'login';
-  renderAuthForm();
+  renderAuthForm(note);
   authModalBackdrop.classList.add('open');
 }
 
@@ -179,6 +181,7 @@ async function handleAuthSubmit(e){
     closeAuthModal();
     renderProfileScreen(); // profile.js: re-check session, re-render the menu logged in
     refreshContinueWatchingMap().then(renderContinueWatchingBar); // app.js/discover.js: this viewer may now have real watch history
+    onCoinAccountChanged(); // coins.js: this account's real balance/unlocks, plus the one-time welcome bonus
   } catch(err){
     console.error('Narrava: auth request failed', err);
     errorEl.textContent = 'Something went wrong. Please try again.';

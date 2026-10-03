@@ -6,13 +6,11 @@
 // anyone is signed in. Signing in happens through the popup in auth.js,
 // opened from inside this screen; it no longer replaces the screen.
 //
-// Two rows are wired to something real: My Wallet (a logged-in user's
-// coin_balance, read straight off their own `profiles` row, covered by
-// the existing select-own RLS policy) and History (its own screen,
-// history.js), and Help & Feedback opens its own screen (help.js). The
+// Real rows: My Wallet (the real Nava Coins balance from coins.js) and
+// Top Up, which both open the real Get Coins sheet (coins.js); History
+// (its own screen, history.js); and Help & Feedback (help.js). The
 // membership banner, Earn Rewards, Gifts, Download (the row) and all four
-// feature tiles show the same "Coming soon" toast; Top Up and Language
-// keep their own toasts.
+// feature tiles show the same "Coming soon" toast; Language keeps its own.
 
 const profilePanel = document.getElementById('profilePanel');
 
@@ -173,14 +171,10 @@ function wireProfileRows(loggedIn){
     renderHistoryScreen();
   });
 
-  document.getElementById('rowTopUp').addEventListener('click', () => {
-    if(!loggedIn){ openAuthModal('login'); return; }
-    showToast('Coming soon — Paystack integration is on the way');
-  });
-
-  document.getElementById('rowWallet').addEventListener('click', () => {
-    if(!loggedIn) openAuthModal('login');
-  });
+  // Both open the real Get Coins sheet (coins.js), which itself sends an
+  // anonymous visitor to sign up when they tap a pack.
+  document.getElementById('rowTopUp').addEventListener('click', () => openCoinSheet());
+  document.getElementById('rowWallet').addEventListener('click', () => openCoinSheet());
 
   const usernameRow = document.getElementById('rowUsername');
   if(usernameRow) usernameRow.addEventListener('click', openUsernameModal);
@@ -206,6 +200,7 @@ function wireProfileRows(loggedIn){
       isAdmin = false;
       currentDisplayName = null;
       renderProfileMenu();
+      onCoinAccountChanged(); // coins.js: back to 0 coins and the plain lock rule
       refreshContinueWatchingMap().then(renderContinueWatchingBar); // app.js/discover.js: nobody's signed in now, so the floating bar must go away too
     });
   }
@@ -244,21 +239,13 @@ async function loadWalletBalance(){
   // to wait on this (coin_balance-only) fetch to resolve it.
   const usernameEl = document.getElementById('usernameValue');
   if(usernameEl) usernameEl.textContent = currentDisplayName || 'Not set';
-  if(!currentSession) return;
+  if(!currentSession || !walletEl) return;
 
-  try {
-    const { data, error } = await supabaseClient
-      .from('profiles')
-      .select('coin_balance')
-      .eq('id', currentSession.user.id)
-      .single();
-
-    if(error) throw error;
-    if(walletEl) walletEl.textContent = data.coin_balance;
-  } catch(err){
-    console.error('Narrava: failed to load wallet balance', err);
-    if(walletEl) walletEl.textContent = '—';
-  }
+  // The real balance lives in coins.js (coinState): show the last value
+  // the server gave straight away, then re-read it (0 for anonymous
+  // visitors, who can't hold coins).
+  renderCoinBalances();
+  await refreshCoinBalance();
 }
 
 // Real write to the one column this is actually allowed to touch —

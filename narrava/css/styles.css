@@ -887,7 +887,7 @@
     display:none;
   }
 
-  /* Get Coins sheet */
+  /* Bottom sheets (comments, episode grid) */
   .sheet-backdrop{
     position:absolute;inset:0;
     background:rgba(4,7,5,0.6);
@@ -936,9 +936,6 @@
     cursor:pointer;font-size:13px;
     display:flex;align-items:center;justify-content:center;
   }
-  .region-toggle{
-    display:flex;gap:8px;margin-bottom:14px;
-  }
   .region-btn{
     flex:1;
     background:rgba(255,255,255,0.05);
@@ -972,67 +969,21 @@
     cursor:pointer;
     color:var(--text);
   }
-  .pkg.active{
-    border-color:var(--gold);
-    background:rgba(232,184,92,0.1);
-    box-shadow:0 0 0 1px rgba(232,184,92,0.3);
-  }
   .pkg-coins{
     display:flex;align-items:center;gap:5px;
     font-weight:800;font-size:14px;margin-bottom:2px;
   }
   .pkg-coins svg{width:15px;height:15px;flex-shrink:0;}
-  .pkg-bonus{
-    font-size:10px;font-weight:800;
+  .pkg-label{
+    font-size:10.5px;font-weight:700;
     color:var(--gold);
     margin-bottom:4px;
   }
+  .pkg:hover:not(:disabled){border-color:var(--gold);}
+  .pkg:disabled,.region-btn:disabled{opacity:0.5;cursor:default;}
   .pkg-price{
     font-size:12px;color:var(--muted);font-weight:600;
   }
-  .methods-label{
-    font-size:11.5px;font-weight:700;color:var(--muted);
-    text-transform:uppercase;letter-spacing:0.5px;
-    margin-bottom:8px;
-  }
-  .methods{
-    display:flex;gap:8px;flex-wrap:wrap;
-    margin-bottom:16px;
-  }
-  .method{
-    background:rgba(255,255,255,0.05);
-    border:1px solid rgba(255,255,255,0.1);
-    color:var(--text);
-    font-family:'Montserrat',sans-serif;
-    font-weight:600;font-size:12px;
-    padding:8px 12px;border-radius:999px;
-    cursor:pointer;
-  }
-  .method.active{
-    border-color:var(--leaf);
-    background:rgba(30,215,96,0.16);
-    color:var(--leaf-light);
-  }
-  .pay-btn{
-    margin-top:auto;
-    background:var(--leaf);
-    color:#0D130E;
-    border:none;
-    font-family:'Montserrat',sans-serif;
-    font-weight:800;
-    font-size:14.5px;
-    padding:13px;
-    border-radius:12px;
-    cursor:pointer;
-  }
-  .pay-btn.processing{opacity:0.7;}
-  .sheet-note{
-    text-align:center;
-    font-size:10.5px;
-    color:var(--muted);
-    margin-top:8px;
-  }
-
   .toast{
     position:absolute;
     top:calc(var(--top-safe) + 50px);left:50%;
@@ -2046,6 +1997,77 @@
     color:var(--muted);
     margin-top:16px;
   }
+  /* Nava Coins (coins.js): the Get Coins sheet and the unlock prompt,
+     both in the .auth-modal-backdrop/.auth-card shell. */
+  .coin-modal{max-width:380px;}
+  .coin-card{max-height:calc(100vh - 60px);overflow-y:auto;}
+  .coin-card .auth-title,.unlock-card .auth-title{font-size:19px;margin-bottom:8px;}
+  .coin-balance-line{
+    font-size:12.5px;color:var(--muted);
+    margin-bottom:14px;
+  }
+  .coin-balance-line b{color:var(--gold);}
+  .coin-currency{
+    display:grid;grid-template-columns:1fr 1fr;
+    gap:6px 8px;margin-bottom:14px;
+  }
+  .coin-currency-note{
+    grid-column:1;
+    font-size:10.5px;line-height:1.35;
+    color:var(--muted);
+  }
+  .coin-sheet-hint{
+    text-align:center;font-size:11px;color:var(--muted);
+  }
+  .coin-sheet-loading{display:flex;justify-content:center;padding:24px 0;}
+  .coin-status{
+    display:flex;align-items:center;justify-content:center;gap:10px;
+    margin-top:14px;
+    font-size:13px;font-weight:700;line-height:1.4;
+    text-align:center;
+    color:var(--text);
+    background:rgba(255,255,255,0.05);
+    border:1px solid rgba(255,255,255,0.1);
+    border-radius:10px;
+    padding:11px 12px;
+  }
+  .coin-spinner{
+    width:16px;height:16px;flex-shrink:0;
+    border:2px solid rgba(255,255,255,0.18);
+    border-top-color:var(--leaf);
+    border-radius:50%;
+    animation:coin-spin 0.8s linear infinite;
+  }
+  @keyframes coin-spin{to{transform:rotate(360deg);}}
+  .coin-status.ok{color:var(--leaf-light);background:rgba(30,215,96,0.12);border-color:rgba(30,215,96,0.4);}
+  .coin-status.warn{color:var(--gold);background:rgba(232,184,92,0.1);border-color:rgba(232,184,92,0.4);}
+  .coin-status.error{color:#F2A0A0;background:rgba(242,160,160,0.1);border-color:rgba(242,160,160,0.35);}
+  .unlock-sub{font-size:13px;color:var(--text);margin:0 0 6px;}
+  .unlock-cancel{
+    width:100%;margin-top:8px;
+    background:none;border:1px solid rgba(255,255,255,0.14);
+    color:var(--text);
+    font-family:'Montserrat',sans-serif;font-weight:700;font-size:13.5px;
+    padding:11px;border-radius:10px;cursor:pointer;
+  }
+  /* Desktop watch page: the player area for a locked episode. */
+  .watch-locked{
+    position:absolute;inset:0;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;
+    color:var(--gold);
+    text-align:center;
+  }
+  .watch-locked svg{width:40px;height:40px;}
+  .watch-locked-title{font-size:16px;font-weight:800;color:var(--text);}
+  .watch-locked-btn{
+    background:rgba(232,184,92,0.14);
+    border:1px solid rgba(232,184,92,0.55);
+    color:var(--gold);
+    font-family:'Montserrat',sans-serif;font-weight:800;font-size:13.5px;
+    padding:11px 18px;border-radius:10px;cursor:pointer;
+  }
+  .watch-locked-btn:hover{background:rgba(232,184,92,0.24);}
+
   .auth-link{
     background:none;
     border:none;
@@ -3106,10 +3128,9 @@
       color:#0D130E;
     }
     .watch-ep-card.locked{
-      cursor:default;
       color:var(--muted);
     }
-    .watch-ep-card.locked:hover{border-color:rgba(255,255,255,0.12);}
+    .watch-ep-card.locked:hover{border-color:var(--gold);}
     /* Small corner badge, not a full-cell replacement — the real site
        keeps the episode number visible on a locked cell too, checked
        directly against a live episode page. */

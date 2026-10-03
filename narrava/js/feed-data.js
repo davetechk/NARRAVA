@@ -1,8 +1,9 @@
 // feed-data.js
 //
 // Reads series + episodes from Supabase (read only) and turns them into
-// the same "slide" shape app.js already knows how to render. No writes,
-// no coin/unlock logic here — that stays fake/frontend-only for now.
+// the same "slide" shape app.js already knows how to render. No writes.
+// Which episodes are locked comes from the one real lock rule,
+// isEpisodeUnlocked (coins.js) — nothing about coins is decided here.
 
 // Generic cover art used when a series has no cover_image_url yet.
 // These are two of the mockup's original placeholder photos (the ones
@@ -20,8 +21,8 @@ const PLACEHOLDER_ART = [
 //
 // For now (no logged-in user / no progress tracking yet), each series
 // is represented by its first episode, and `progress`, `liked`, `saved`
-// are neutral/false. Coin cost and unlock state stay fake/frontend-only,
-// same as before this change — they are NOT derived from the database.
+// are neutral/false. Lock state uses isEpisodeUnlocked (coins.js); app.js
+// re-applies it once the viewer's real unlocks/subscription have loaded.
 async function fetchSlides() {
   try {
     const { data: seriesRows, error: seriesError } = await supabaseClient
@@ -53,17 +54,12 @@ async function fetchSlides() {
         const totalEp = episodes.length;
         const currentEp = firstEpisode.episode_number;
         const freeEpisodeCount = series.free_episode_count || 0;
-        // Real lock check (episode number vs. the series' own real
-        // free_episode_count), same rule the desktop watch page's grid
-        // already uses — computed here too since fetchSlides already has
-        // this series' first episode in hand, so the browsing preview is
-        // honest from the very first render, not just once someone
-        // actually enters the watching state. appSettings (app.js) is
-        // already real by the time this runs — fetchSlides is only ever
-        // called from init(), which already awaited appSettingsReady
-        // first. Free Mode on means nothing is locked, full stop, same
-        // real override isEpisodeLocked (app.js) applies everywhere else.
-        const locked = !appSettings.free_mode_enabled && currentEp > freeEpisodeCount;
+        // The one real lock rule (isEpisodeUnlocked, coins.js): free
+        // episode count, Free Mode, subscription, or a real unlock row.
+        // appSettings (app.js) is already real by the time this runs —
+        // fetchSlides is only ever called from init(), which already
+        // awaited appSettingsReady first.
+        const locked = !isEpisodeUnlocked(freeEpisodeCount, firstEpisode);
 
         return {
           id: series.id,
@@ -89,16 +85,14 @@ async function fetchSlides() {
           episodesLoaded: false,
           // Real lock state for whichever episode is currently active
           // (currentEp/episodeId above) — recomputed by app.js's
-          // setActiveEpisode every time that changes, via the same
-          // freeEpisodeCount rule. lockedEpisode is the real episode row
-          // itself when locked, null otherwise, so the unlock prompt
-          // always has real data to act on.
+          // setActiveEpisode every time that changes (and whenever the
+          // viewer's coins/unlocks change), via isEpisodeUnlocked.
+          // activeEpisode is the real episode row itself; lockedEpisode
+          // is that same row when locked, null otherwise, so the unlock
+          // prompt always has real data to act on.
+          activeEpisode: firstEpisode,
           locked: locked,
           lockedEpisode: locked ? firstEpisode : null,
-          // Fake/session-only coin economy (unchanged from earlier
-          // rounds) — which specific real episode ids have actually been
-          // "paid for" this session.
-          unlockedEpisodeIds: new Set(),
           // Real values (series_likes/series_saves via social.js),
           // loaded lazily once this slide actually becomes current —
           // see app.js's loadFeedSocialState. Zero/false here is just
@@ -111,7 +105,6 @@ async function fetchSlides() {
           saves: 0,
           shares: 0,
           socialLoaded: false,
-          coinCost: 2,
           freeEpisodeCount: freeEpisodeCount,
           art: series.cover_image_url
             ? { type: 'img', src: series.cover_image_url }

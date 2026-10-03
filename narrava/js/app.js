@@ -3,13 +3,10 @@
 // All the interactive behaviour of the mockup: rendering the current
 // slide, swipe/wheel navigation, like/save/comment/unlock buttons, and
 // the "Get Coins" sheet. Like/save/comments are real now (series_likes/
-// series_saves/series_comments via social.js/comments-panel.js). Coin
-// balance and coin cost are still fake/frontend-only, exactly as in the
-// original mockup — but which real episode is locked is not: it's the
-// same free_episode_count rule the desktop watch page's grid already
-// uses, and "unlocked" now means a real episode id has actually been
-// paid for this session (slide.unlockedEpisodeIds), not a single
-// one-episode-ahead flag.
+// series_saves/series_comments via social.js/comments-panel.js). Nava
+// Coins are real too (coins.js): the balance is the server's, which
+// episode is locked is the one server-matching rule isEpisodeUnlocked,
+// and unlocking/buying always goes through the server.
 //
 // Swiping means two different real things depending on state: while
 // just browsing, it moves between series (goTo), exactly as before.
@@ -33,27 +30,9 @@
 // rather than conflating them the way a series-id-only slide could
 // safely assume before real episode navigation existed.
 
-const regions = {
-  NG:{ symbol:'₦', methods:['Card','Bank Transfer','Mobile Money'],
-    packages:[
-      {coins:100, price:'1,000', bonus:null},
-      {coins:550, price:'5,000', bonus:'+10%'},
-      {coins:1200, price:'10,000', bonus:'+20%'},
-      {coins:3000, price:'25,000', bonus:'+35%'}
-    ]},
-  CA:{ symbol:'$', methods:['Card','Apple Pay','Google Pay'],
-    packages:[
-      {coins:100, price:'1.99', bonus:null},
-      {coins:550, price:'9.99', bonus:'+10%'},
-      {coins:1200, price:'19.99', bonus:'+20%'},
-      {coins:3000, price:'49.99', bonus:'+35%'}
-    ]}
-};
-
 let slides = [];
 let slidesLoaded = false; // real fetchSlides() has actually resolved — see render()'s empty-feed branch, which needs this to tell "still loading" apart from "genuinely no series exist"
 let idx = 0;
-let coins = 3;
 
 // Real System Settings (app_settings, admin/system-settings.html) — one
 // real row, publicly readable, admin-only to write (confirmed live).
@@ -599,9 +578,6 @@ function showChromeOnEntry(){
 // already-playing video instead of waiting on it cold.
 const preloadCache = {};
 const preloadHost = document.getElementById('preloadHost');
-let region = 'NG';
-let selectedPkg = 1;
-let selectedMethod = 0;
 
 const bgvideo = document.getElementById('bgvideo');
 const spine = document.getElementById('spine');
@@ -632,12 +608,6 @@ const coinBalance = document.getElementById('coinBalance');
 const feed = document.getElementById('feed');
 const playToggle = document.getElementById('playToggle');
 const coinsChip = document.getElementById('coinsChip');
-const sheetBackdrop = document.getElementById('sheetBackdrop');
-const coinSheet = document.getElementById('coinSheet');
-const sheetClose = document.getElementById('sheetClose');
-const packagesWrap = document.getElementById('packages');
-const methodsWrap = document.getElementById('methods');
-const payBtn = document.getElementById('payBtn');
 const ctaRow = document.querySelector('.ctarow');
 const discoverScreen = document.getElementById('discoverScreen');
 const libraryScreen = document.getElementById('libraryScreen');
@@ -840,19 +810,14 @@ async function refreshContinueWatchingMap(){
 let resolveContinueWatchingReady;
 const continueWatchingReady = new Promise(resolve => { resolveContinueWatchingReady = resolve; });
 
-// Real per-episode lock check — a real episode number past the series'
-// own real free_episode_count is locked, unless its real id has already
-// been fake-unlocked (coins) this session, or Free Mode (app_settings,
-// see loadAppSettings above) is genuinely on — the series' own real
-// free_episode_count is never touched either way, only this decision
-// ignores it while Free Mode is on, exactly as if every episode were
-// within it. Exactly the same rule the desktop watch page's own grid
-// already uses (watch.js's watchFreeCount/watchEpCardHtml) — this is
-// the one real source for it on mobile too, not a second version of
-// the same check.
+// Real per-episode lock check — the one rule in coins.js
+// (isEpisodeUnlocked): unlocked if within the series' own
+// free_episode_count, Free Mode is on, the viewer has an active
+// subscription, or the server has an episode_unlocks row for it. Same
+// rule the desktop watch page's grid uses, and the same one the video
+// signing function enforces on the server.
 function isEpisodeLocked(s, ep){
-  if(appSettings.free_mode_enabled) return false;
-  return ep.episode_number > (s.freeEpisodeCount || 0) && !s.unlockedEpisodeIds.has(ep.id);
+  return !isEpisodeUnlocked(s.freeEpisodeCount, ep);
 }
 
 // Moves slide s to real episode ep as its current position — used by
@@ -864,6 +829,11 @@ function isEpisodeLocked(s, ep){
 // prompt (unlockBtn) reads to know what it's actually prompting for.
 function setActiveEpisode(s, ep){
   const locked = isEpisodeLocked(s, ep);
+  // Same episode, lock state flipped (just unlocked, or signed out): the
+  // art/video already on screen for it is now wrong, so let renderMedia
+  // redo it instead of skipping it as "already rendered".
+  if(s.episodeId === ep.id && s.locked !== locked && renderedMediaEpisodeId === ep.id) renderedMediaEpisodeId = null;
+  s.activeEpisode = ep;
   s.currentEp = ep.episode_number;
   s.episodeId = ep.id;
   s.epBadge = 'EP ' + ep.episode_number + ' · ' + s.totalEp;
@@ -970,11 +940,8 @@ navProfile.addEventListener('click', ()=> { showScreen('profile'); renderProfile
 topbarProfile.addEventListener('click', ()=> { showScreen('profile'); renderProfileScreen(); });
 topbarProfileBtn.addEventListener('click', ()=> { showScreen('profile'); renderProfileScreen(); });
 
-// Top bar "Top Up" pill: leads to the same real Profile screen, where
-// My Wallet already shows a logged-in user's actual coin balance and
-// the Top Up row already has its own honest "coming soon" toast (see
-// profile.js) — not a second, invented top-up flow.
-topbarTopUpBtn.addEventListener('click', ()=> { showScreen('profile'); renderProfileScreen(); });
+// Top bar "Top Up" pill: the real Get Coins sheet (coins.js).
+topbarTopUpBtn.addEventListener('click', ()=> openCoinSheet());
 
 // Top bar search icon: takes over the whole nav row with a full search
 // input and dims the rest of the page behind it — checked directly
@@ -1432,7 +1399,7 @@ function renderEmptyFeed(){
   spine.innerHTML = '';
   pager.innerHTML = '';
   epBadge.textContent = '';
-  coinBalance.textContent = coins;
+  coinBalance.textContent = coinState.balance;
   ctaRow.classList.add('hidden');
 
   // "No series available" is a real, honest statement only once
@@ -1482,7 +1449,7 @@ function render(){
   saveCount.textContent = s.saves;
   shareCount.textContent = s.shares;
   if(!s.socialLoaded) loadFeedSocialState(s);
-  coinBalance.textContent = coins;
+  coinBalance.textContent = coinState.balance;
   buildSpine(s.currentEp, s.totalEp);
 
   // The real unlock prompt — shown whenever the episode actually being
@@ -1490,10 +1457,10 @@ function render(){
   // swiping/the jump grid landed) is genuinely locked, targeting that
   // exact real episode. Nothing to prompt once it isn't, so it just
   // hides rather than switching to some "already unlocked" cosmetic
-  // state (see unlockBtn's own click handler for the actual spend).
+  // state (see unlockBtn's own click handler, which asks the server).
   if(s.locked && s.lockedEpisode){
     unlockBtn.classList.remove('hidden');
-    unlockLabel.textContent = 'Unlock Ep ' + s.lockedEpisode.episode_number + ' · ' + s.coinCost + ' coin' + (s.coinCost===1?'':'s');
+    unlockLabel.textContent = 'Unlock Ep ' + s.lockedEpisode.episode_number + ' · 1 Nava Coin';
   } else {
     unlockBtn.classList.add('hidden');
   }
@@ -1769,8 +1736,7 @@ bookmarkBtn.addEventListener('click', async ()=>{
 });
 
 // Real comments (comments-panel.js/social.js) in this app's existing
-// bottom-sheet shell — same open/close pattern as the Get Coins sheet
-// just above.
+// bottom-sheet shell.
 commentBtn.addEventListener('click', () => {
   if(slides.length === 0) return;
   const s = slides[idx];
@@ -1790,14 +1756,14 @@ commentsSheetBackdrop.addEventListener('click', closeCommentsSheet);
 // touchstart/touchend and wheel listeners that turn a vertical drag or
 // wheel tick into advanceForward/advanceBackward — so, by ordinary event
 // bubbling, a finger drag or wheel scroll *inside* the comment list (or
-// the episode grid, or the coin sheet) also arrived at #feed and swiped
+// the episode grid) also arrived at #feed and swiped
 // the episode underneath. Measured before this: 7 touch drags + 5 wheel
 // ticks inside the open comment sheet fired 12 episode swipes. Stopping
 // these events at the sheet keeps them from ever reaching #feed; the
 // sheet's own native scrolling is untouched (nothing here calls
 // preventDefault, and the listeners are passive). Only touch/wheel are
 // stopped — clicks and everything else still bubble as before.
-[commentsSheet, commentsSheetBackdrop, episodeGridSheet, episodeGridBackdrop, coinSheet, sheetBackdrop].forEach(el => {
+[commentsSheet, commentsSheetBackdrop, episodeGridSheet, episodeGridBackdrop].forEach(el => {
   ['touchstart', 'touchmove', 'touchend', 'wheel'].forEach(evt => {
     el.addEventListener(evt, e => e.stopPropagation(), { passive: true });
   });
@@ -1810,8 +1776,8 @@ commentsSheetBackdrop.addEventListener('click', closeCommentsSheet);
 // while watching specifically so this has somewhere to open from (see
 // styles.css). Tapping any cell — locked or not — closes the sheet and
 // runs it through the exact same goToEpisodeInSlide a swipe would: an
-// unlocked one plays for real, a locked one shows the same real unlock
-// prompt as anywhere else, never a second way of deciding either.
+// unlocked one plays for real; a locked one lands there AND opens the
+// unlock prompt (coins.js), since tapping it is asking to watch it.
 function epgridCellHtml(s, ep){
   const locked = isEpisodeLocked(s, ep);
   const isActive = ep.id === s.episodeId;
@@ -1830,6 +1796,7 @@ function renderEpisodeGrid(s){
       if(!ep) return;
       closeEpisodeGrid();
       goToEpisodeInSlide(s, ep);
+      if(s.locked && s.lockedEpisode === ep) promptUnlockForSlide(s, ep);
     });
   });
 }
@@ -1898,107 +1865,36 @@ document.getElementById('continueBtn').addEventListener('click', ()=>{
   enterMobileWatching(idx, continueWatchingMap.get(s.id));
 });
 
-// The one real unlock mechanism in this app — reused as-is (not
-// reinvented) by a swipe or jump-grid tap landing on a locked episode
-// (see setActiveEpisode/goToEpisodeInSlide): those just leave
-// s.locked/s.lockedEpisode set to the real locked episode, and this
-// button, already showing the matching real prompt (see render()), is
-// what actually spends the (still fake/session-only) coins. Marks that
-// real episode id as unlocked for the rest of this session and plays it
-// immediately — that was the point of tapping unlock.
+// Tapping the unlock prompt on a locked episode (browsing preview, or
+// wherever a swipe/the jump grid landed). The decision and the charge
+// are entirely the server's (openUnlockPrompt, coins.js): this only
+// plays the episode once the server says it's watchable.
+function promptUnlockForSlide(s, ep){
+  openUnlockPrompt(ep, () => {
+    if(slides[idx] !== s || s.episodeId !== ep.id) return; // moved on meanwhile — the lock icons update via narrava:coins-changed
+    goToEpisodeInSlide(s, ep);
+  });
+}
+
 unlockBtn.addEventListener('click', ()=>{
   if(slides.length === 0) return;
   const s = slides[idx];
   if(!s.locked || !s.lockedEpisode) return;
-  const ep = s.lockedEpisode;
-  if(coins < s.coinCost){
-    openSheet(true);
-    return;
-  }
-  coins -= s.coinCost;
-  s.unlockedEpisodeIds.add(ep.id);
-  showToast('Unlocked Ep ' + ep.episode_number + ' ✓');
-  goToEpisodeInSlide(s, ep);
+  promptUnlockForSlide(s, s.lockedEpisode);
 });
 
-// --- Get Coins sheet ---
-function renderSheet(){
-  const r = regions[region];
-  document.querySelectorAll('.region-btn').forEach(b=>b.classList.toggle('active', b.dataset.region===region));
+coinsChip.addEventListener('click', ()=> openCoinSheet());
 
-  packagesWrap.innerHTML = r.packages.map((p,i)=>
-    '<button class="pkg ' + (i===selectedPkg?'active':'') + '" data-i="' + i + '">' +
-      '<div class="pkg-coins">' +
-        '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#E8B85C"/><circle cx="12" cy="12" r="9.3" fill="none" stroke="#C99A3E" stroke-width="1.4"/></svg>' +
-        p.coins +
-      '</div>' +
-      (p.bonus ? '<div class="pkg-bonus">' + p.bonus + ' bonus</div>' : '<div class="pkg-bonus" style="visibility:hidden">spacer</div>') +
-      '<div class="pkg-price">' + r.symbol + p.price + '</div>' +
-    '</button>'
-  ).join('');
-
-  methodsWrap.innerHTML = r.methods.map((m,i)=>
-    '<button class="method ' + (i===selectedMethod?'active':'') + '" data-i="' + i + '">' + m + '</button>'
-  ).join('');
-
-  Array.from(packagesWrap.children).forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      selectedPkg = parseInt(btn.dataset.i);
-      renderSheet();
-    });
-  });
-  Array.from(methodsWrap.children).forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      selectedMethod = parseInt(btn.dataset.i);
-      renderSheet();
-    });
-  });
-
-  const pkg = r.packages[selectedPkg];
-  payBtn.textContent = 'Pay ' + r.symbol + pkg.price;
-  payBtn.disabled = false;
-  payBtn.classList.remove('processing');
+// The viewer's unlocks/subscription/balance changed (loaded, unlocked,
+// bought, signed in or out — see coins.js): re-run the lock rule for
+// every slide's current episode and repaint, so lock icons and the
+// unlock prompt always agree with the server.
+function reapplyEpisodeLocks(){
+  slides.forEach(s => { if(s.activeEpisode) setActiveEpisode(s, s.activeEpisode); });
+  if(slides.length) render();
+  if(episodeGridSheet.classList.contains('open') && slides[idx] && slides[idx].episodesLoaded) renderEpisodeGrid(slides[idx]);
 }
-
-function openSheet(insufficient){
-  renderSheet();
-  sheetBackdrop.classList.add('open');
-  coinSheet.classList.add('open');
-  if(insufficient){
-    showToast('Not enough coins — top up below');
-  }
-}
-function closeSheet(){
-  sheetBackdrop.classList.remove('open');
-  coinSheet.classList.remove('open');
-}
-
-coinsChip.addEventListener('click', ()=>openSheet(false));
-sheetClose.addEventListener('click', closeSheet);
-sheetBackdrop.addEventListener('click', closeSheet);
-
-document.querySelectorAll('.region-btn').forEach(btn=>{
-  btn.addEventListener('click', ()=>{
-    region = btn.dataset.region;
-    selectedPkg = 1;
-    selectedMethod = 0;
-    renderSheet();
-  });
-});
-
-payBtn.addEventListener('click', ()=>{
-  payBtn.disabled = true;
-  payBtn.classList.add('processing');
-  payBtn.textContent = 'Processing…';
-  setTimeout(()=>{
-    const r = regions[region];
-    const pkg = r.packages[selectedPkg];
-    coins += pkg.coins;
-    closeSheet();
-    render();
-    showToast('+' + pkg.coins + ' coins added ✓');
-  }, 900);
-});
+document.addEventListener('narrava:coins-changed', reapplyEpisodeLocks);
 
 // Resolved once `slides` has been populated. discover.js awaits this
 // before its first render, so the poster grid never renders empty just
@@ -2024,17 +1920,25 @@ async function init(){
   // not) for the rest of init and everything after it.
   await bootstrapAnonymousSession();
 
+  // Real Nava Coins state (coins.js) — balance, unlocks, subscription —
+  // loaded alongside the slides so locks are right from the first render.
+  const coinStateReady = refreshCoinState();
+
   // Real visit logging (visit-log.js) — once per real page load of the
   // actual consumer app, now that a real account genuinely exists to
   // attribute it to. Fire-and-forget: invisible to the viewer, so it
   // never delays real content on a slow connection.
   logPageVisit();
 
-  const [fetchedSlides] = await Promise.all([fetchSlides(), refreshContinueWatchingMap()]);
+  const [fetchedSlides] = await Promise.all([fetchSlides(), refreshContinueWatchingMap(), coinStateReady]);
   slides = fetchedSlides;
   slidesLoaded = true;
   pager.innerHTML = slides.map((_,i)=>'<div class="pdot ' + (i===0?'active':'') + '" data-i="' + i + '"></div>').join('');
-  render();
+  reapplyEpisodeLocks(); // fetchSlides may have finished before the viewer's unlocks did (also renders)
+
+  // Welcome bonus (coins.js): signed-in email accounts only, once per
+  // load — the server only ever pays it once. Silent unless granted.
+  claimWelcomeBonusIfEligible();
   resolveSlidesReady();
   resolveContinueWatchingReady();
 

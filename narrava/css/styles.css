@@ -2050,6 +2050,27 @@
     font-family:'Montserrat',sans-serif;font-weight:700;font-size:13.5px;
     padding:11px;border-radius:10px;cursor:pointer;
   }
+  /* Watch-ads section of the unlock prompt (ads.js). */
+  .unlock-ads{margin-top:14px;}
+  .unlock-ads-or{
+    display:flex;align-items:center;gap:10px;
+    font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;
+    color:var(--muted);margin-bottom:12px;
+  }
+  .unlock-ads-or::before,.unlock-ads-or::after{content:'';flex:1;height:1px;background:rgba(255,255,255,0.12);}
+  .unlock-ads-goal{font-size:13.5px;font-weight:700;color:var(--text);margin-bottom:4px;}
+  .unlock-ads-progress{font-size:12.5px;color:var(--muted);margin-bottom:10px;}
+  .unlock-ads-note{font-size:13px;line-height:1.45;color:var(--gold);}
+  .unlock-ads-btn{
+    width:100%;
+    display:flex;align-items:center;justify-content:center;gap:8px;
+    background:rgba(232,184,92,0.12);border:1px solid rgba(232,184,92,0.5);
+    color:var(--gold);
+    font-family:'Montserrat',sans-serif;font-weight:800;font-size:14px;
+    padding:12px;border-radius:10px;cursor:pointer;
+  }
+  .unlock-ads-btn:disabled{opacity:0.6;cursor:default;}
+  .unlock-ads .coin-status{margin-top:10px;}
   /* Desktop watch page: the player area for a locked episode. */
   .watch-locked{
     position:absolute;inset:0;

@@ -58,6 +58,9 @@ Browser (static files in narrava/)          Supabase                       Bunny
 - **`narrava/js/coins.js`**: Nava Coins: the real balance, the lock rule, the unlock prompt, the
   Get Coins sheet, the welcome bonus, the subscription state (`my_subscription`), and the one shared
   Paystack purchase flow (`startPaystackPurchase`) used for coins and subscriptions.
+  **`narrava/js/ads.js`**: watch ads to unlock episodes (Google rewarded ads), the ads section of
+  the unlock prompt, and the one ad unit constant `NARRAVA_REWARDED_AD_UNIT` (see
+  [Watch ads to unlock](#watch-ads-to-unlock-google-rewarded-ads)). Loaded right after `coins.js`.
   **`narrava/js/membership.js`**: the Membership screen (see
   [Membership and VIP](#membership-and-vip)). Loaded after `feed-data.js` and before
   `app.js`. See [Nava Coins](#nava-coins-balance-locks-unlocking-buying).
@@ -437,12 +440,17 @@ never requested. The real gate is still `bunny-signed-playback-url`.
 jump grid or the desktop episode grid, the feed's "Unlock Ep N · 1 Nava Coin" button, or the desktop
 player's locked panel:
 - Anonymous: the sign-up popup opens with "You need an account to unlock episodes."
+- Signed in with **0 coins**: `my_ad_status()` is asked first (a short loader shows meanwhile). If
+  the server says `ads_enabled` and `eligible`, the prompt opens straight on "You need 1 Nava Coin"
+  with Get Nava Coins **and** the ads section ([below](#watch-ads-to-unlock-google-rewarded-ads)).
+  Otherwise it's the usual prompt.
 - Signed in: "Unlock this episode for 1 Nava Coin", the balance, Unlock / Cancel. Unlock calls
   `unlock_episode_with_coin(p_episode_id)` (the button is disabled while it's in flight, so a double
   tap sends one request), then:
   - `unlocked` / `already_unlocked` / `free` / `subscribed`: local state is updated from the server's
     answer, the balance is the one returned, and the episode plays.
-  - `insufficient_coins`: "You need 1 Nava Coin" with a button that opens Get Coins.
+  - `insufficient_coins`: "You need 1 Nava Coin" with a button that opens Get Coins (plus the ads
+    section, if the server allows ads for this person).
   - anything else, or an error: an honest toast, nothing changes.
 
 **Buying coins** (the Get Coins sheet, `openCoinSheet()`). It opens from the feed's coin chip, the
@@ -480,6 +488,90 @@ called for anonymous visitors. The server pays it only once. On `granted`, the b
 and a toast shows "Welcome! You got 5 free Nava Coins"; any other status is silent. A sign-up that
 still needs email confirmation is still anonymous, so the bonus comes on the first load or log in
 after confirming. Existing email accounts get it too, the first time they load this version.
+
+## Watch ads to unlock (Google rewarded ads)
+
+`js/ads.js`, shown inside the unlock prompt from `coins.js`. Same rule as coins: **the browser
+never counts ads or earned episodes.** Every number on screen is the server's answer, shown as-is.
+
+**The server (not in this repo, not changed by this work):**
+- `app_settings.ad_unlock_enabled`: the Ad Unlock switch in System Settings.
+- The ladder, per **Lagos calendar day** (resets at midnight Lagos time): 2 ads earn 3 episodes, then
+  4 more ads earn 3 more, then 6, 8 and 10 more. 30 ads (15 episodes) is the daily maximum.
+- `my_ad_status()` returns one object `{ status, ads_enabled, eligible, ads_today,
+  episodes_earned_today, episodes_available, next_step_at, ads_needed_for_next,
+  daily_limit_reached }` (checked live 2026-10-05).
+- `record_ad_view()` records one completed ad. It accepts at most 30 a day, at least 20 seconds
+  apart, and only for real email accounts with 0 coins and no subscription. It returns `status` =
+  `recorded` / `too_soon` / `daily_limit` / `has_coins` / `subscribed` / `ads_disabled` /
+  `sign_up_required` / `not_signed_in`, plus the fresh ad status.
+- `unlock_episode_with_ad(p_episode_id)` spends one earned unlock. Returns `unlocked` /
+  `already_unlocked` / `free` / `subscribed` / `no_ad_unlocks` / `ads_disabled` / `sign_up_required` /
+  `not_signed_in` / `not_found` / `no_profile`, plus the fresh ad status. It writes an
+  `episode_unlocks` row with `unlocked_via = 'ad'`, which stays forever like a coin unlock, so the
+  app's lock rule and `can_watch_episode` already treat it as unlocked.
+
+**Who sees the ads section:** a signed-in real account with 0 coins, no active subscription, and
+`my_ad_status` saying `ads_enabled` and `eligible`. People with coins, subscribers, anonymous
+visitors (they get the sign-up popup) and everyone when Ad Unlock is off see the prompt exactly as
+before. `my_ad_status` isn't even called for people with coins or a subscription.
+
+**What the section shows** (under "Get Nava Coins", after an "or watch ads" divider):
+- `episodes_available > 0`: **Unlock with ads (X left today)** calls `unlock_episode_with_ad` and, on
+  success, plays the episode exactly like a coin unlock (the same `onEpisodeUnlocked` in `coins.js`).
+- otherwise, limit not reached: "Watch N more ads to unlock 3 episodes" (N = `ads_needed_for_next`),
+  "Ads watched today: X", and a **Watch ad** button. After a recorded ad the status is re-read from
+  the server; once episodes are available the unlock button appears.
+- `daily_limit_reached`: "You've used today's ad unlocks. Come back tomorrow, or get Nava Coins."
+- Messages: `too_soon` -> "Please wait a few seconds before the next ad."; `no_ad_unlocks` -> "No ad
+  unlocks left..."; no fill -> "No ad available right now, please try again later."; closed early ->
+  "The ad was closed before the end, so it didn't count."; rewarded not supported -> "Ads can't be
+  shown on this device or browser..."; gpt.js blocked (ad blocker) -> its own message. If the server
+  says the person is no longer eligible (e.g. `has_coins`), the section disappears and the message
+  becomes a toast.
+- Every button is disabled while anything is in flight (`adState.phase`), so double taps send one
+  request, and only one ad can load or show at a time.
+
+**The Google side (`runRewardedAd()` in `ads.js`):**
+- **The ad unit is one constant at the top of `js/ads.js`:**
+  `NARRAVA_REWARDED_AD_UNIT = '/22639388115/rewarded_web_example'`. That is **Google's public test
+  unit** (it serves a Google "Linear VPAID" test video). **Once Narrava's own Google Ad Manager
+  account is approved, replace that one line** with Narrava's real rewarded unit path
+  (`'/<network code>/<ad unit code>'`), then bump `ads.js`'s `?v=` in `index.html` and `CACHE_NAME`
+  in `sw.js` as usual. Nothing else changes.
+- `https://securepubads.g.doubleclick.net/tag/js/gpt.js` is loaded **only when someone taps Watch
+  ad**, never on page load, and never on the admin pages.
+- `googletag.defineOutOfPageSlot(unit, googletag.enums.OutOfPageFormat.REWARDED)`. A `null` slot
+  means GPT says this page/browser doesn't support rewarded, and the person is told so.
+- `rewardedSlotReady` -> `makeRewardedVisible()` straight away (the tap on Watch ad is the opt-in).
+- `rewardedSlotGranted` -> `record_ad_view()`. **This is the only place it is ever called.** The UI
+  then re-reads `my_ad_status`.
+- `rewardedSlotClosed`, `slotRenderEnded` with `isEmpty`, or nothing within 20 s -> the slot is
+  destroyed (`googletag.destroySlots`) and its listeners removed, so the next request starts clean.
+  Closing the unlock prompt while an ad is still *loading* drops it.
+- GPT adds a `#goog_rewarded` history entry while an ad shows (so Back closes the ad) and leaves it
+  in the URL afterwards. `nav.js` ignores entries it didn't create and `app.js`'s deep-link reader
+  ignores that fragment. The only visible effect: the first Back after an ad closes the open prompt.
+- The episode underneath keeps playing (muted or not, as it was) while the ad shows; it isn't paused.
+
+**Where it works (tested 2026-10-05):** Google's test rewarded ad filled and played in desktop
+Chrome on `localhost` (Live Server). The reward fired after the countdown, `record_ad_view` returned
+`recorded`, and closing early (Google's own "Skip video? You will lose your reward") recorded
+nothing. Google's docs say rewarded is only requested on mobile-optimized pages; `index.html` has
+the needed `width=device-width, initial-scale=1` viewport. Not yet tried on a real phone, in
+Safari/iOS, or in the installed PWA. Real (non-test) units also depend on Ad Manager approval, fill
+rate and consent.
+
+**The honest limit.** On the web, "the ad was watched" is reported **by the browser** (GPT's
+`rewardedSlotGranted` event firing in the page). There is no server-to-server reward callback for
+web rewarded ads like the mobile SDKs have, so a determined person could call `record_ad_view` from
+the console without watching anything. That's why the server caps it: 30 a day, 20 seconds apart,
+real 0-coin accounts only, at most 15 episodes a day. The cap is the protection, not the browser.
+
+**Before ads go live with a real ad unit:** the privacy policy must name **Google** as an
+advertising partner (cookies/identifiers used for ads, personalisation and measurement), and where
+the law requires it, consent must be collected before ads are requested. The privacy policy files
+were deliberately not changed by this work.
 
 ## Membership and VIP
 
@@ -740,7 +832,8 @@ Details worth knowing:
     Payments* (`coin_purchases_enabled`): three more switches on the same row, saved through the
     same `updateSetting()` path. Coin Payments gates the Get Coins sheet and Subscription Payments
     gates the Membership screen's buttons; the server's `paystack-init` enforces both as well. Ad
-    Unlock doesn't do anything yet.
+    Unlock turns on watch-ads-to-unlock (see
+    [Watch ads to unlock](#watch-ads-to-unlock-google-rewarded-ads)); the server enforces it.
   - *VIP Section* (`vip_section_enabled`, off by default): shows or hides the Home VIP tab. Helper
     text: "Shows the VIP tab in the app. Perks for yearly members will be added once agreed." It's
     built exactly like the other switches and saved through the same `updateSetting()`. All seven
@@ -839,14 +932,14 @@ Home Screen web apps use an opaque status bar in some situations; either way `bl
 
 **1. The service worker can keep serving old files after you deploy.** `sw.js` answers requests
 for the app's own files from its cache first and only goes to the network when it has nothing
-cached. The cache name is currently `narrava-shell-v29` and old caches are deleted only when the name
+cached. The cache name is currently `narrava-shell-v30` and old caches are deleted only when the name
 *changes*. So after changing any app file, people who have already visited can keep getting the
 old version. **Bump `CACHE_NAME` in `sw.js` whenever you ship a change.** The service worker's
 scope is the whole `narrava/` folder, so this affects the **admin pages too**, not only the
 consumer app. (Read from the code, not tested against a live deployment.) The `?v=` numbers on
 some script tags in `index.html` are a manual cache-busting habit and don't replace this.
 `sw.js`'s precache list is also hand-maintained; it doesn't include `visit-log.js`, and a new
-script won't be listed unless added (`coins.js` is). **Testing locally with VS Code Live Server:**
+script won't be listed unless added (`coins.js` and `ads.js` are). **Testing locally with VS Code Live Server:**
 Live Server reloads the page every time a file is saved, and the service worker then caches whatever
 it fetched under the new `?v=` number, which can be a half-edited file. If a change seems to be
 missing, clear the site's caches (DevTools → Application → Clear storage) and reload.
@@ -935,14 +1028,16 @@ price_usd_cents, sort_order, active; public read) · `subscriptions` (own rows; 
 visited_at) · `purchases` and `coin_transactions` (see below).
 
 **Coins tables:** `coin_packs` (id, coins, price_ngn_kobo, price_usd_cents, sort_order, active;
-public read) · `episode_unlocks` (user_id, episode_id, created_at; own rows readable) ·
+public read) · `episode_unlocks` (user_id, episode_id, created_at, unlocked_via `coin_spend` / `ad`,
+coin_transaction_id; own rows readable) ·
 `purchases` (own rows readable; `paystack_reference`, `item_id`, `currency`, `status` =
 pending / completed / failed / refunding / refunded / refund_failed).
 
 **Coins functions:** `my_subscription` (plan_id, plan_name, ends_at, is_vip, or no rows),
 `unlock_episode_with_coin(p_episode_id)` and
 `claim_welcome_bonus` (both return `{ status, balance }`), and `can_watch_episode(p_episode_id)`
-(not called by the app). Edge Function `paystack-init` (`kind` `coin_pack` or `subscription`), plus
+(not called by the app). **Ad functions:** `my_ad_status`, `record_ad_view`,
+`unlock_episode_with_ad(p_episode_id)` (see [Watch ads to unlock](#watch-ads-to-unlock-google-rewarded-ads)). Edge Function `paystack-init` (`kind` `coin_pack` or `subscription`), plus
 a Paystack webhook on the server that credits coins and grants subscription days. None of their source is in this repo.
 
 **Database functions (RPC):** `get_continue_watching`, `get_series_like_count`,
@@ -965,7 +1060,9 @@ by the browser).
 
 Do not describe any of this as working.
 
-- **Ad unlocks** don't exist.
+- **Real ads.** Watch-ads-to-unlock works end to end, but only with Google's public **test** ad
+  unit until Narrava's Ad Manager account is approved (swap `NARRAVA_REWARDED_AD_UNIT` in
+  `js/ads.js`). The privacy policy doesn't name Google yet.
 - **VIP perks.** VIP (yearly members) has a tab, a card and a badge, but no perks yet; none are
   listed until they're agreed.
 - **Revenue.** The Revenue & Analytics page reads `purchases` and `coin_transactions`. Only the

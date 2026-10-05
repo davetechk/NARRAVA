@@ -28,6 +28,8 @@
 //               granted or extended here.
 //   - welcome:  rpc claim_welcome_bonus(), safe to call any number of
 //               times (the server only ever pays once).
+//   - ads:      for a 0-coin account the server allows (my_ad_status), the
+//               unlock prompt also gets ads.js's "watch ads" section.
 //
 // Other files read coinState / isEpisodeUnlocked and listen for the
 // 'narrava:coins-changed' event (app.js, watch.js, profile.js) to
@@ -221,9 +223,11 @@ const unlockModalClose = document.getElementById('unlockModalClose');
 
 let unlockTarget = null;   // { ep, onUnlocked }
 let unlockInFlight = false;
+let unlockMode = null;     // 'checking' | 'confirm' | 'insufficient'
 
 function closeUnlockPrompt(){
   unlockModalBackdrop.classList.remove('open');
+  cancelPendingAd(); // ads.js
   if(!unlockInFlight) unlockTarget = null;
 }
 unlockModalClose.addEventListener('click', closeUnlockPrompt);
@@ -238,15 +242,33 @@ function openUnlockPrompt(ep, onUnlocked){
     openAuthModal('signup', 'You need an account to unlock episodes.');
     return;
   }
-  unlockTarget = { ep, onUnlocked };
-  renderUnlockPrompt('confirm');
+  const target = { ep, onUnlocked };
+  unlockTarget = target;
   unlockModalBackdrop.classList.add('open');
+  if(coinState.balance !== 0 || hasActiveSubscription()){
+    renderUnlockPrompt('confirm');
+    return;
+  }
+  // 0 coins: ask the server whether this person can watch ads (ads.js)
+  // before choosing the prompt. Not eligible → the usual prompt.
+  renderUnlockPrompt('checking');
+  prepareAdsForPrompt().then(() => {
+    if(unlockTarget !== target) return; // closed or replaced meanwhile
+    renderUnlockPrompt(adsSectionVisible() ? 'insufficient' : 'confirm');
+  });
 }
 
 function renderUnlockPrompt(mode){
   const ep = unlockTarget && unlockTarget.ep;
   if(!ep) return;
+  unlockMode = mode;
   const balanceHtml = '<div class="coin-balance-line">Your balance: <b data-coin-balance>' + coinCountLabel(coinState.balance) + '</b></div>';
+
+  if(mode === 'checking'){
+    unlockModalBody.innerHTML =
+      '<div class="auth-card unlock-card"><div class="coin-sheet-loading">' + narravaLoaderHtml('pulse') + '</div></div>';
+    return;
+  }
 
   if(mode === 'insufficient'){
     unlockModalBody.innerHTML =
@@ -255,9 +277,12 @@ function renderUnlockPrompt(mode){
         '<p class="unlock-sub">Episode ' + ep.episode_number + ' costs 1 Nava Coin to unlock.</p>' +
         balanceHtml +
         '<button type="button" class="auth-submit" id="unlockGetCoinsBtn">Get Nava Coins</button>' +
+        adsSectionHtml() + // ads.js — empty unless the server says this person can watch ads
         '<button type="button" class="unlock-cancel" id="unlockCancelBtn">Cancel</button>' +
       '</div>';
     document.getElementById('unlockGetCoinsBtn').addEventListener('click', () => { closeUnlockPrompt(); openCoinSheet(); });
+    const target = unlockTarget;
+    wireAdsSection(unlockModalBody, { ep, onUnlockSuccess: status => onEpisodeUnlocked(target, status) });
   } else {
     unlockModalBody.innerHTML =
       '<div class="auth-card unlock-card">' +
@@ -271,6 +296,13 @@ function renderUnlockPrompt(mode){
   }
   document.getElementById('unlockCancelBtn').addEventListener('click', closeUnlockPrompt);
 }
+
+// ads.js's status or progress changed: repaint the open prompt's ads section.
+document.addEventListener('narrava:ads-changed', () => {
+  if(unlockMode === 'insufficient' && unlockTarget && unlockModalBackdrop.classList.contains('open')){
+    renderUnlockPrompt('insufficient');
+  }
+});
 
 const UNLOCK_ERROR_MESSAGES = {
   not_signed_in: 'Please sign in to unlock episodes',
@@ -302,28 +334,37 @@ async function confirmUnlock(){
   }
 
   if(status === 'unlocked' || status === 'already_unlocked' || status === 'free' || status === 'subscribed'){
-    // The server's answer, recorded as-is; refreshEntitlements below
-    // reloads the subscription itself for 'subscribed'.
-    if(status === 'unlocked' || status === 'already_unlocked') coinState.unlockedEpisodeIds.add(target.ep.id);
-    else coinState.serverPlayableIds.add(target.ep.id);
-    unlockTarget = null;
-    unlockModalBackdrop.classList.remove('open');
-    if(status === 'unlocked') showToast('Episode ' + target.ep.episode_number + ' unlocked');
-    // Play first, then tell every grid to repaint its lock icons.
-    if(typeof target.onUnlocked === 'function') target.onUnlocked();
-    notifyCoinsChanged();
-    refreshEntitlements(); // resync with the server in the background
+    onEpisodeUnlocked(target, status);
     return;
   }
 
   if(status === 'insufficient_coins'){
-    renderUnlockPrompt('insufficient');
+    // The server says 0 coins after all: offer ads too, if it allows them.
+    await prepareAdsForPrompt();
+    if(unlockTarget === target) renderUnlockPrompt('insufficient');
     return;
   }
 
   unlockTarget = null;
   unlockModalBackdrop.classList.remove('open');
   showToast(UNLOCK_ERROR_MESSAGES[status] || 'Couldn’t unlock the episode — please try again');
+}
+
+// The server said the episode is watchable — after a coin unlock or an ad
+// unlock alike. Its answer is recorded as-is; refreshEntitlements below
+// reloads the subscription itself for 'subscribed'.
+function onEpisodeUnlocked(target, status){
+  if(status === 'unlocked' || status === 'already_unlocked') coinState.unlockedEpisodeIds.add(target.ep.id);
+  else coinState.serverPlayableIds.add(target.ep.id);
+  if(unlockTarget === target){
+    unlockTarget = null;
+    unlockModalBackdrop.classList.remove('open');
+  }
+  if(status === 'unlocked') showToast('Episode ' + target.ep.episode_number + ' unlocked');
+  // Play first, then tell every grid to repaint its lock icons.
+  if(typeof target.onUnlocked === 'function') target.onUnlocked();
+  notifyCoinsChanged();
+  refreshEntitlements(); // resync with the server in the background
 }
 
 // ---------- shared Paystack purchase flow ----------

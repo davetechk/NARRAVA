@@ -76,8 +76,11 @@ function renderProfileMenu(){
   // by checkIsAdmin() before this ever runs, straight off the same real
   // profiles row the username itself was added to, so there's no separate
   // fetch or flash of the email first.
+  // The gold VIP badge sits beside (not inside) the name element, which
+  // the username editor rewrites. Only ever on this person's own profile.
   const identityHtml = isRealAccount
-    ? '<div class="profile-id"><div class="profile-email" id="profileIdentityValue">' + escapeHtml(currentDisplayName || currentSession.user.email) + '</div></div>'
+    ? '<div class="profile-id"><div class="profile-email" id="profileIdentityValue">' + escapeHtml(currentDisplayName || currentSession.user.email) + '</div>' +
+        '<span class="vip-badge" id="profileVipBadge"' + (isVipMember() ? '' : ' hidden') + '>VIP</span></div>'
     : '<button type="button" class="profile-id profile-login-row" id="profileLoginRow">' +
         '<span>Log in</span>' + PROFILE_ICONS.chevron +
       '</button>';
@@ -160,8 +163,10 @@ function wireProfileRows(loggedIn){
   const loginRow = document.getElementById('profileLoginRow');
   if(loginRow) loginRow.addEventListener('click', () => openAuthModal('login'));
 
+  document.getElementById('membershipBanner').addEventListener('click', () => openMembershipScreen());
+
   // Not built yet — every one of these says so the same way.
-  ['membershipBanner', 'rowRewards', 'rowGifts', 'rowDownload',
+  ['rowRewards', 'rowGifts', 'rowDownload',
    'featureOriginals', 'featureDailyCoins', 'featureDownload', 'featureHdQuality'].forEach(id => {
     document.getElementById(id).addEventListener('click', () => showToast('Coming soon'));
   });
@@ -304,6 +309,13 @@ usernameForm.addEventListener('submit', async (e) => {
     usernameSubmitBtn.disabled = false;
     usernameSubmitBtn.textContent = 'Save';
   }
+});
+
+// The subscription changed (loaded, bought, expired): show or hide the
+// VIP badge without re-rendering the whole menu.
+document.addEventListener('narrava:coins-changed', () => {
+  const badge = document.getElementById('profileVipBadge');
+  if(badge) badge.hidden = !isVipMember();
 });
 
 // Entry point, called from app.js each time the Profile tab is opened.

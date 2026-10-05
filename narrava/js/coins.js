@@ -16,10 +16,16 @@
 //               enforces on the server. No admin exception here.
 //   - unlock:   rpc unlock_episode_with_coin(p_episode_id); the balance
 //               shown afterwards is the one the server returns.
-//   - buying:   Edge Function paystack-init (kind/itemId/currency only),
-//               then Paystack's own inline popup. Coins are credited only
-//               by the server's webhook — onSuccess is never trusted; the
-//               purchases row is polled until the server says completed.
+//   - buying:   startPaystackPurchase — the ONE purchase flow, shared by
+//               coin packs (Get Coins sheet, below) and subscriptions
+//               (membership.js): Edge Function paystack-init (kind/itemId/
+//               currency only), then Paystack's own inline popup. Coins and
+//               subscription days are granted only by the server's webhook
+//               — onSuccess is never trusted; the purchases row is polled
+//               until the server says completed.
+//   - subscription: my_subscription() (plan_id, plan_name, ends_at,
+//               is_vip), held as-is in coinState.subscription and never
+//               granted or extended here.
 //   - welcome:  rpc claim_welcome_bonus(), safe to call any number of
 //               times (the server only ever pays once).
 //
@@ -37,8 +43,19 @@ const coinState = {
   balance: 0,                 // last value the server reported
   unlockedEpisodeIds: new Set(), // episode_unlocks rows for this person
   serverPlayableIds: new Set(),  // episodes the unlock RPC itself answered "free" for this session (e.g. Free Mode switched on after load)
-  subscribed: false           // my_subscription() returned an active plan
+  subscription: null          // my_subscription()'s row (plan_id, plan_name, ends_at, is_vip), or null
 };
+
+// Active = the server returned a plan whose ends_at hasn't passed yet. The
+// ends_at check only makes an expiry show without waiting for the next
+// refresh; the server's own answer is still what's displayed.
+function hasActiveSubscription(){
+  const sub = coinState.subscription;
+  return !!(sub && sub.plan_id && (!sub.ends_at || Date.parse(sub.ends_at) > Date.now()));
+}
+function isVipMember(){
+  return hasActiveSubscription() && !!coinState.subscription.is_vip;
+}
 
 // ---------- loading ----------
 
@@ -83,7 +100,8 @@ async function refreshCoinBalance(){
 async function refreshEntitlements(){
   if(!coinState.userId){
     coinState.unlockedEpisodeIds = new Set();
-    coinState.subscribed = false;
+    coinState.subscription = null;
+    scheduleSubscriptionExpiry();
     notifyCoinsChanged();
     return;
   }
@@ -94,8 +112,24 @@ async function refreshEntitlements(){
   if(unlocks.error) console.error('Narrava: failed to load unlocked episodes', unlocks.error);
   else coinState.unlockedEpisodeIds = new Set((unlocks.data || []).map(r => r.episode_id));
   if(sub.error) console.error('Narrava: failed to load subscription', sub.error);
-  else coinState.subscribed = !!(firstRow(sub.data) && firstRow(sub.data).plan_id);
+  else {
+    const row = firstRow(sub.data);
+    coinState.subscription = (row && row.plan_id) ? row : null;
+  }
+  scheduleSubscriptionExpiry();
   notifyCoinsChanged();
+}
+
+// When an active subscription's ends_at arrives while the app is open,
+// re-ask the server, so episodes lock again without a reload. (Timers
+// can't wait longer than ~24 days; a later end is caught by the next
+// load/foreground refresh instead.)
+let subscriptionExpiryTimer = null;
+function scheduleSubscriptionExpiry(){
+  if(subscriptionExpiryTimer){ clearTimeout(subscriptionExpiryTimer); subscriptionExpiryTimer = null; }
+  if(!hasActiveSubscription() || !coinState.subscription.ends_at) return;
+  const ms = Date.parse(coinState.subscription.ends_at) - Date.now() + 1000;
+  if(ms > 0 && ms < 2147000000) subscriptionExpiryTimer = setTimeout(refreshEntitlements, ms);
 }
 
 // Full reload: who is signed in, their balance, unlocks and subscription.
@@ -121,7 +155,7 @@ function isEpisodeUnlocked(freeEpisodeCount, ep){
   if(!ep) return false;
   if(ep.episode_number <= (freeEpisodeCount || 0)) return true;
   if(typeof appSettings !== 'undefined' && appSettings.free_mode_enabled) return true;
-  if(coinState.subscribed) return true;
+  if(hasActiveSubscription()) return true;
   return coinState.unlockedEpisodeIds.has(ep.id) || coinState.serverPlayableIds.has(ep.id);
 }
 
@@ -140,9 +174,13 @@ function renderCoinBalances(){
 }
 
 // Back in the foreground (switched apps, came back from a payment page):
-// the server may have credited coins meanwhile.
+// the server may have credited coins or days meanwhile, or a
+// subscription may have ended.
 document.addEventListener('visibilitychange', () => {
-  if(!document.hidden && coinState.userId) refreshCoinBalance();
+  if(!document.hidden && coinState.userId){
+    refreshCoinBalance();
+    refreshEntitlements();
+  }
 });
 
 // ---------- welcome bonus ----------
@@ -264,8 +302,9 @@ async function confirmUnlock(){
   }
 
   if(status === 'unlocked' || status === 'already_unlocked' || status === 'free' || status === 'subscribed'){
+    // The server's answer, recorded as-is; refreshEntitlements below
+    // reloads the subscription itself for 'subscribed'.
     if(status === 'unlocked' || status === 'already_unlocked') coinState.unlockedEpisodeIds.add(target.ep.id);
-    else if(status === 'subscribed') coinState.subscribed = true;
     else coinState.serverPlayableIds.add(target.ep.id);
     unlockTarget = null;
     unlockModalBackdrop.classList.remove('open');
@@ -287,7 +326,234 @@ async function confirmUnlock(){
   showToast(UNLOCK_ERROR_MESSAGES[status] || 'Couldn’t unlock the episode — please try again');
 }
 
-// ---------- Get Coins sheet (Paystack) ----------
+// ---------- shared Paystack purchase flow ----------
+//
+// One flow for every purchase kind. paystack-init gets ONLY
+// { kind, itemId, currency }; the server prices it. Surfaces (the Get
+// Coins sheet, the Membership screen) re-render on
+// 'narrava:purchase-changed' and read `purchase` to show its status.
+
+const PURCHASE_KINDS = {
+  coin_pack: {
+    signUpNote: 'You need an account to buy Nava Coins.',
+    completedMessage: 'Coins added'
+  },
+  subscription: {
+    signUpNote: 'You need an account to subscribe.',
+    completedMessage: 'You’re subscribed. Enjoy unlimited watching!'
+  }
+};
+
+const PAYSTACK_INIT_ERRORS = {
+  coin_purchases_disabled: 'Buying coins isn’t available right now',
+  subscriptions_disabled: 'Subscriptions aren’t available yet.',
+  unknown_pack: 'That coin pack isn’t available anymore.',
+  unknown_plan: 'That plan isn’t available anymore.',
+  paystack_unavailable: 'Payments are unavailable right now. Please try again later.'
+};
+
+// The one Naira / US Dollar choice, shared by Get Coins and Membership.
+let paymentCurrency = 'NGN';
+
+// null | { kind, phase:'starting'|'paying'|'confirming', reference } |
+//        { kind, phase:'done', tone:'ok'|'warn'|'error', message, code }
+let purchase = null;
+
+function purchaseInProgress(){
+  return !!purchase && purchase.phase !== 'done';
+}
+
+function setPurchase(state){
+  purchase = state;
+  document.dispatchEvent(new CustomEvent('narrava:purchase-changed'));
+}
+
+// Clears a finished result (not one in progress) — e.g. when a surface
+// is reopened, so an old message doesn't linger.
+function clearFinishedPurchase(){
+  if(purchase && purchase.phase === 'done') setPurchase(null);
+}
+
+// Status markup for a surface: only for its own kind of purchase.
+function purchaseStatusHtml(kind){
+  if(!purchase || purchase.kind !== kind) return '';
+  if(purchase.phase === 'starting') return '<div class="coin-status"><span class="coin-spinner"></span><span>Starting payment…</span></div>';
+  if(purchase.phase === 'paying') return '<div class="coin-status"><span>Complete the payment in the Paystack window.</span></div>';
+  if(purchase.phase === 'confirming') return '<div class="coin-status"><span class="coin-spinner"></span><span>Confirming your payment…</span></div>';
+  return '<div class="coin-status ' + purchase.tone + '">' + escapeHtml(purchase.message) + '</div>';
+}
+
+// The Naira / US Dollar toggle with the naira note, as used by both
+// surfaces. Wire it with wireCurrencyToggle(container, rerender).
+function currencyToggleHtml(){
+  const busy = purchaseInProgress();
+  return '<div class="coin-currency">' +
+      '<button type="button" class="region-btn' + (paymentCurrency === 'NGN' ? ' active' : '') + '" data-currency="NGN"' + (busy ? ' disabled' : '') + '>🇳🇬 Naira · ₦</button>' +
+      '<button type="button" class="region-btn' + (paymentCurrency === 'USD' ? ' active' : '') + '" data-currency="USD"' + (busy ? ' disabled' : '') + '>🇺🇸 US Dollar · $</button>' +
+      '<div class="coin-currency-note">Naira payments need a Nigerian card or bank account.</div>' +
+    '</div>';
+}
+function wireCurrencyToggle(container, rerender){
+  container.querySelectorAll('[data-currency]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if(purchaseInProgress()) return;
+      paymentCurrency = btn.dataset.currency;
+      clearFinishedPurchase();
+      rerender();
+    });
+  });
+}
+
+// Price display from the server's own kobo/cents columns.
+function formatPrice(row, currency){
+  if(currency === 'USD'){
+    const dollars = row.price_usd_cents / 100;
+    return '$' + (Number.isInteger(dollars) ? dollars.toLocaleString('en-US') : dollars.toFixed(2));
+  }
+  const naira = row.price_ngn_kobo / 100;
+  return '₦' + (Number.isInteger(naira) ? naira.toLocaleString('en-US') : naira.toFixed(2));
+}
+
+let paystackScriptPromise = null;
+function loadPaystackScript(){
+  if(window.PaystackPop) return Promise.resolve();
+  if(paystackScriptPromise) return paystackScriptPromise;
+  paystackScriptPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = PAYSTACK_INLINE_SRC;
+    script.async = true;
+    script.onload = () => window.PaystackPop ? resolve() : reject(new Error('PaystackPop missing after load'));
+    script.onerror = () => reject(new Error('Paystack script failed to load'));
+    document.head.appendChild(script);
+  }).catch(err => { paystackScriptPromise = null; throw err; });
+  return paystackScriptPromise;
+}
+
+// paystack-init's error body, whatever the transport put it in.
+async function paystackInitErrorCode(error, data){
+  if(data && (data.error || data.code)) return data.error || data.code;
+  try {
+    if(error && error.context && typeof error.context.json === 'function'){
+      const body = await error.context.json();
+      return (body && (body.error || body.code)) || null;
+    }
+  } catch(_e){ /* not JSON */ }
+  return null;
+}
+
+// kind: 'coin_pack' | 'subscription'. itemId: the server's own pack/plan
+// id. Returns immediately if another purchase is already running.
+async function startPaystackPurchase(kind, itemId){
+  if(purchaseInProgress()) return; // one payment at a time
+  const cfg = PURCHASE_KINDS[kind];
+  if(!cfg || !itemId) return;
+
+  if(!coinState.isRealAccount){
+    closeCoinSheet();
+    openAuthModal('signup', cfg.signUpNote);
+    return;
+  }
+
+  const currency = paymentCurrency;
+  setPurchase({ kind, phase: 'starting' });
+
+  let reference = null, accessCode = null, code = null;
+  try {
+    const { data, error } = await supabaseClient.functions.invoke('paystack-init', {
+      body: { kind, itemId, currency }
+    });
+    if(error || !data || !data.reference || !data.accessCode){
+      code = await paystackInitErrorCode(error, data);
+    } else {
+      reference = data.reference;
+      accessCode = data.accessCode;
+    }
+  } catch(err){
+    console.error('Narrava: paystack-init failed', err);
+  }
+
+  if(!accessCode){
+    if(code === 'sign_up_required'){
+      setPurchase(null);
+      closeCoinSheet();
+      openAuthModal('signup', cfg.signUpNote);
+      return;
+    }
+    setPurchase({ kind, phase: 'done', tone: 'error', code, message: PAYSTACK_INIT_ERRORS[code] || 'Couldn’t start the payment. Please try again.' });
+    return;
+  }
+
+  try {
+    await loadPaystackScript();
+  } catch(err){
+    console.error('Narrava: could not load Paystack', err);
+    setPurchase({ kind, phase: 'done', tone: 'error', message: 'Couldn’t open the payment window. Check your connection and try again.' });
+    return;
+  }
+
+  setPurchase({ kind, phase: 'paying', reference });
+  try {
+    const popup = new PaystackPop();
+    popup.resumeTransaction(accessCode, {
+      // Not proof of payment — only the server's webhook grants anything.
+      onSuccess: () => confirmPurchase(kind, reference),
+      onCancel: () => { if(purchase && purchase.reference === reference) setPurchase(null); },
+      onError: (err) => {
+        console.error('Narrava: Paystack popup error', err);
+        if(purchase && purchase.reference === reference){
+          setPurchase({ kind, phase: 'done', tone: 'error', message: 'The payment window ran into a problem. You weren’t charged — please try again.' });
+        }
+      }
+    });
+  } catch(err){
+    console.error('Narrava: Paystack popup failed to open', err);
+    setPurchase({ kind, phase: 'done', tone: 'error', message: 'Couldn’t open the payment window. Please try again.' });
+  }
+}
+
+// Polls the purchases row the webhook updates — every 2s for up to 60s.
+async function confirmPurchase(kind, reference){
+  const cfg = PURCHASE_KINDS[kind];
+  setPurchase({ kind, phase: 'confirming', reference });
+  const startedAt = Date.now();
+
+  while(Date.now() - startedAt < PURCHASE_POLL_LIMIT_MS){
+    let status = null;
+    try {
+      const { data, error } = await supabaseClient
+        .from('purchases')
+        .select('status')
+        .eq('paystack_reference', reference)
+        .maybeSingle();
+      if(error) throw error;
+      status = data ? data.status : null;
+    } catch(err){
+      console.error('Narrava: purchase status check failed (will retry)', err);
+    }
+
+    if(status === 'completed'){
+      // Balance, unlocks and my_subscription — every lock re-checks via
+      // narrava:coins-changed.
+      await Promise.all([refreshCoinBalance(), refreshEntitlements()]);
+      setPurchase({ kind, phase: 'done', tone: 'ok', message: cfg.completedMessage });
+      showToast(cfg.completedMessage);
+      return;
+    }
+    if(status === 'refunding' || status === 'refunded' || status === 'refund_failed'){
+      setPurchase({ kind, phase: 'done', tone: 'warn', message: 'Naira payments need a Nigerian card. Your payment is being refunded.' });
+      return;
+    }
+    if(status === 'failed'){
+      setPurchase({ kind, phase: 'done', tone: 'error', message: kind === 'subscription' ? 'The payment didn’t go through. Your subscription wasn’t changed.' : 'The payment didn’t go through. No coins were added.' });
+      return;
+    }
+    await new Promise(r => setTimeout(r, PURCHASE_POLL_MS));
+  }
+
+  setPurchase({ kind, phase: 'done', tone: 'warn', message: kind === 'subscription' ? 'Payment received, your subscription will start shortly.' : 'Payment received, your coins will appear shortly.' });
+}
+
+// ---------- Get Coins sheet ----------
 
 const coinSheetBackdrop = document.getElementById('coinSheetBackdrop');
 const coinSheetBody = document.getElementById('coinSheetBody');
@@ -297,18 +563,9 @@ let coinPacks = [];
 let coinPurchasesEnabled = false;
 let coinSheetLoading = false;
 let coinSheetLoadFailed = false;
-let coinCurrency = 'NGN';
-// Purchase lifecycle shown in the sheet:
-//   null | {phase:'starting'|'paying'|'confirming'} |
-//   {phase:'done', tone:'ok'|'warn'|'error', message}
-let purchase = null;
-
-function purchaseInProgress(){
-  return !!purchase && purchase.phase !== 'done';
-}
 
 function openCoinSheet(){
-  if(!purchaseInProgress()) purchase = null;
+  clearFinishedPurchase();
   coinSheetBackdrop.classList.add('open');
   renderCoinSheet();
   loadCoinSheetData();
@@ -343,15 +600,6 @@ async function loadCoinSheetData(){
   if(coinState.userId) refreshCoinBalance();
 }
 
-function formatPackPrice(pack, currency){
-  if(currency === 'USD'){
-    const dollars = pack.price_usd_cents / 100;
-    return '$' + (Number.isInteger(dollars) ? dollars.toLocaleString('en-US') : dollars.toFixed(2));
-  }
-  const naira = pack.price_ngn_kobo / 100;
-  return '₦' + (Number.isInteger(naira) ? naira.toLocaleString('en-US') : naira.toFixed(2));
-}
-
 const COIN_ICON_SVG = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#E8B85C"/><circle cx="12" cy="12" r="9.3" fill="none" stroke="#C99A3E" stroke-width="1.4"/><text x="12" y="16" font-size="10.5" text-anchor="middle" fill="#4a2f0d" font-family="Montserrat" font-weight="800">N</text></svg>';
 
 function renderCoinSheet(){
@@ -369,188 +617,32 @@ function renderCoinSheet(){
     html += '<div class="coin-status warn">Buying coins isn’t available right now</div>';
   } else {
     html +=
-      '<div class="coin-currency">' +
-        '<button type="button" class="region-btn' + (coinCurrency === 'NGN' ? ' active' : '') + '" data-currency="NGN"' + (busy ? ' disabled' : '') + '>🇳🇬 Naira · ₦</button>' +
-        '<button type="button" class="region-btn' + (coinCurrency === 'USD' ? ' active' : '') + '" data-currency="USD"' + (busy ? ' disabled' : '') + '>🇺🇸 US Dollar · $</button>' +
-        '<div class="coin-currency-note">Naira payments need a Nigerian card or bank account.</div>' +
-      '</div>' +
+      currencyToggleHtml() +
       '<div class="packages">' +
         coinPacks.map(p =>
           '<button type="button" class="pkg" data-pack-id="' + escapeHtml(p.id) + '"' + (busy ? ' disabled' : '') + '>' +
             '<div class="pkg-coins">' + COIN_ICON_SVG + p.coins + '</div>' +
             '<div class="pkg-label">Nava Coins</div>' +
-            '<div class="pkg-price">' + formatPackPrice(p, coinCurrency) + '</div>' +
+            '<div class="pkg-price">' + formatPrice(p, paymentCurrency) + '</div>' +
           '</button>'
         ).join('') +
       '</div>' +
       '<div class="coin-sheet-hint">Tap a pack to pay securely with Paystack.</div>';
   }
 
-  if(purchase){
-    if(purchase.phase === 'starting') html += '<div class="coin-status"><span class="coin-spinner"></span><span>Starting payment…</span></div>';
-    else if(purchase.phase === 'paying') html += '<div class="coin-status"><span>Complete the payment in the Paystack window.</span></div>';
-    else if(purchase.phase === 'confirming') html += '<div class="coin-status"><span class="coin-spinner"></span><span>Confirming your payment…</span></div>';
-    else html += '<div class="coin-status ' + purchase.tone + '">' + escapeHtml(purchase.message) + '</div>';
-  }
-
-  html += '</div>';
+  html += purchaseStatusHtml('coin_pack') + '</div>';
   coinSheetBody.innerHTML = html;
 
-  coinSheetBody.querySelectorAll('[data-currency]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      if(purchaseInProgress()) return;
-      coinCurrency = btn.dataset.currency;
-      if(purchase && purchase.phase === 'done') purchase = null;
-      renderCoinSheet();
-    });
-  });
+  wireCurrencyToggle(coinSheetBody, renderCoinSheet);
   coinSheetBody.querySelectorAll('[data-pack-id]').forEach(btn => {
-    btn.addEventListener('click', () => buyCoinPack(btn.dataset.packId));
+    btn.addEventListener('click', () => startPaystackPurchase('coin_pack', btn.dataset.packId));
   });
 }
 
-function setPurchase(state){
-  purchase = state;
+document.addEventListener('narrava:purchase-changed', () => {
+  if(purchase && purchase.kind === 'coin_pack' && purchase.phase === 'done'){
+    if(purchase.code === 'coin_purchases_disabled') coinPurchasesEnabled = false;
+    if(purchase.code === 'unknown_pack' && coinSheetBackdrop.classList.contains('open')) loadCoinSheetData();
+  }
   renderCoinSheet();
-}
-
-let paystackScriptPromise = null;
-function loadPaystackScript(){
-  if(window.PaystackPop) return Promise.resolve();
-  if(paystackScriptPromise) return paystackScriptPromise;
-  paystackScriptPromise = new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = PAYSTACK_INLINE_SRC;
-    script.async = true;
-    script.onload = () => window.PaystackPop ? resolve() : reject(new Error('PaystackPop missing after load'));
-    script.onerror = () => reject(new Error('Paystack script failed to load'));
-    document.head.appendChild(script);
-  }).catch(err => { paystackScriptPromise = null; throw err; });
-  return paystackScriptPromise;
-}
-
-// paystack-init's error body, whatever the transport put it in.
-async function paystackInitErrorCode(error, data){
-  if(data && (data.error || data.code)) return data.error || data.code;
-  try {
-    if(error && error.context && typeof error.context.json === 'function'){
-      const body = await error.context.json();
-      return (body && (body.error || body.code)) || null;
-    }
-  } catch(_e){ /* not JSON */ }
-  return null;
-}
-
-const PAYSTACK_INIT_ERRORS = {
-  coin_purchases_disabled: 'Buying coins isn’t available right now',
-  unknown_pack: 'That coin pack isn’t available anymore.',
-  paystack_unavailable: 'Payments are unavailable right now. Please try again later.'
-};
-
-async function buyCoinPack(packId){
-  if(purchaseInProgress()) return; // one purchase at a time
-  const pack = coinPacks.find(p => p.id === packId);
-  if(!pack) return;
-
-  if(!coinState.isRealAccount){
-    closeCoinSheet();
-    openAuthModal('signup', 'You need an account to buy Nava Coins.');
-    return;
-  }
-
-  setPurchase({ phase: 'starting' });
-
-  let reference = null, accessCode = null, code = null;
-  try {
-    const { data, error } = await supabaseClient.functions.invoke('paystack-init', {
-      body: { kind: 'coin_pack', itemId: pack.id, currency: coinCurrency }
-    });
-    if(error || !data || !data.reference || !data.accessCode){
-      code = await paystackInitErrorCode(error, data);
-    } else {
-      reference = data.reference;
-      accessCode = data.accessCode;
-    }
-  } catch(err){
-    console.error('Narrava: paystack-init failed', err);
-  }
-
-  if(!accessCode){
-    if(code === 'sign_up_required'){
-      setPurchase(null);
-      closeCoinSheet();
-      openAuthModal('signup', 'You need an account to buy Nava Coins.');
-      return;
-    }
-    if(code === 'coin_purchases_disabled') coinPurchasesEnabled = false;
-    if(code === 'unknown_pack') loadCoinSheetData();
-    setPurchase({ phase: 'done', tone: 'error', message: PAYSTACK_INIT_ERRORS[code] || 'Couldn’t start the payment. Please try again.' });
-    return;
-  }
-
-  try {
-    await loadPaystackScript();
-  } catch(err){
-    console.error('Narrava: could not load Paystack', err);
-    setPurchase({ phase: 'done', tone: 'error', message: 'Couldn’t open the payment window. Check your connection and try again.' });
-    return;
-  }
-
-  setPurchase({ phase: 'paying', reference });
-  try {
-    const popup = new PaystackPop();
-    popup.resumeTransaction(accessCode, {
-      // Not proof of payment — only the server's webhook credits coins.
-      onSuccess: () => confirmPurchase(reference),
-      onCancel: () => { if(purchase && purchase.reference === reference) setPurchase(null); },
-      onError: (err) => {
-        console.error('Narrava: Paystack popup error', err);
-        if(purchase && purchase.reference === reference){
-          setPurchase({ phase: 'done', tone: 'error', message: 'The payment window ran into a problem. You weren’t charged — please try again.' });
-        }
-      }
-    });
-  } catch(err){
-    console.error('Narrava: Paystack popup failed to open', err);
-    setPurchase({ phase: 'done', tone: 'error', message: 'Couldn’t open the payment window. Please try again.' });
-  }
-}
-
-// Polls the purchases row the webhook updates — every 2s for up to 60s.
-async function confirmPurchase(reference){
-  setPurchase({ phase: 'confirming', reference });
-  const startedAt = Date.now();
-
-  while(Date.now() - startedAt < PURCHASE_POLL_LIMIT_MS){
-    let status = null;
-    try {
-      const { data, error } = await supabaseClient
-        .from('purchases')
-        .select('status')
-        .eq('paystack_reference', reference)
-        .maybeSingle();
-      if(error) throw error;
-      status = data ? data.status : null;
-    } catch(err){
-      console.error('Narrava: purchase status check failed (will retry)', err);
-    }
-
-    if(status === 'completed'){
-      await Promise.all([refreshCoinBalance(), refreshEntitlements()]);
-      setPurchase({ phase: 'done', tone: 'ok', message: 'Coins added' });
-      if(!coinSheetBackdrop.classList.contains('open')) showToast('Coins added');
-      return;
-    }
-    if(status === 'refunding' || status === 'refunded' || status === 'refund_failed'){
-      setPurchase({ phase: 'done', tone: 'warn', message: 'Naira payments need a Nigerian card. Your payment is being refunded.' });
-      return;
-    }
-    if(status === 'failed'){
-      setPurchase({ phase: 'done', tone: 'error', message: 'The payment didn’t go through. No coins were added.' });
-      return;
-    }
-    await new Promise(r => setTimeout(r, PURCHASE_POLL_MS));
-  }
-
-  setPurchase({ phase: 'done', tone: 'warn', message: 'Payment received, your coins will appear shortly.' });
-}
+});

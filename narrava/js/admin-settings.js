@@ -1,6 +1,6 @@
 // admin-settings.js — admin/system-settings.html only.
 //
-// Three real controls, all reading from and writing to the one real
+// Seven real controls, all reading from and writing to the one real
 // app_settings row (id = true, the table's own real singleton primary
 // key) — confirmed live before this was built: publicly readable
 // (the real public app needs to check maintenance/free mode itself —
@@ -13,8 +13,12 @@ const APP_SETTINGS_ID = true;
 
 let settings = {
   free_mode_enabled: false, maintenance_mode_enabled: false, featured_series_count: 5,
-  ad_unlock_enabled: false, subscriptions_enabled: false, coin_purchases_enabled: false
+  ad_unlock_enabled: false, subscriptions_enabled: false, coin_purchases_enabled: false,
+  vip_section_enabled: false
 };
+
+// Every column this page reads back after a load or a save.
+const SETTINGS_COLUMNS = 'free_mode_enabled, maintenance_mode_enabled, featured_series_count, ad_unlock_enabled, subscriptions_enabled, coin_purchases_enabled, vip_section_enabled';
 
 function settingsRowsHtml(){
   return (
@@ -62,6 +66,13 @@ function settingsRowsHtml(){
         '<div class="admin-row-sub">Lets viewers buy coins to unlock episodes. Takes effect once this feature launches.</div>' +
       '</div>' +
       '<button type="button" class="admin-switch' + (settings.coin_purchases_enabled ? ' on' : '') + '" id="coinPurchasesSwitch" aria-label="Toggle coin payments"></button>' +
+    '</div>' +
+    '<div class="admin-settings-row">' +
+      '<div class="admin-settings-row-text">' +
+        '<div class="admin-row-title">VIP Section</div>' +
+        '<div class="admin-row-sub">Shows the VIP tab in the app. Perks for yearly members will be added once agreed.</div>' +
+      '</div>' +
+      '<button type="button" class="admin-switch' + (settings.vip_section_enabled ? ' on' : '') + '" id="vipSectionSwitch" aria-label="Toggle VIP section"></button>' +
     '</div>'
   );
 }
@@ -82,7 +93,7 @@ async function updateSetting(patch){
       .from('app_settings')
       .update(patch)
       .eq('id', APP_SETTINGS_ID)
-      .select('free_mode_enabled, maintenance_mode_enabled, featured_series_count, ad_unlock_enabled, subscriptions_enabled, coin_purchases_enabled')
+      .select(SETTINGS_COLUMNS)
       .single();
     if(error) throw error;
     if(!data) throw new Error('This account isn’t allowed to change settings.');
@@ -173,6 +184,18 @@ function wireSettings(){
       btn.disabled = false;
     }
   });
+
+  document.getElementById('vipSectionSwitch').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    const ok = await updateSetting({ vip_section_enabled: !settings.vip_section_enabled });
+    if(ok){
+      renderSettings();
+      showToast('VIP Section is now ' + (settings.vip_section_enabled ? 'ON' : 'off') + ' ✓');
+    } else {
+      btn.disabled = false;
+    }
+  });
 }
 
 (async () => {
@@ -181,7 +204,7 @@ function wireSettings(){
   try {
     const { data, error } = await supabaseClient
       .from('app_settings')
-      .select('free_mode_enabled, maintenance_mode_enabled, featured_series_count, ad_unlock_enabled, subscriptions_enabled, coin_purchases_enabled')
+      .select(SETTINGS_COLUMNS)
       .eq('id', APP_SETTINGS_ID)
       .single();
     if(error) throw error;

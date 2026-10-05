@@ -188,6 +188,8 @@ function renderDiscoverBody(){
     }
   }
 
+  if(activeTab === 'vip') html += vipCardHtml();
+
   const rankingsHtml = (activeTab === 'rankings') ? renderRankingsBody() : null;
   if(rankingsHtml !== null){
     html += rankingsHtml;
@@ -199,6 +201,9 @@ function renderDiscoverBody(){
   }
 
   discoverBody.innerHTML = html;
+
+  const vipGetYearly = document.getElementById('vipGetYearlyBtn');
+  if(vipGetYearly) vipGetYearly.addEventListener('click', () => openMembershipScreen());
 
   discoverBody.querySelectorAll('.poster-card:not(.skeleton-block)').forEach(card => {
     card.addEventListener('click', () => {
@@ -523,6 +528,42 @@ function renderHero(){
   startHeroAutoplay();
 }
 
+// ================= VIP tab =================
+//
+// Shown only while app_settings.vip_section_enabled is on (System
+// Settings → VIP Section). VIP means an active yearly plan:
+// my_subscription()'s own is_vip (isVipMember, coins.js). The card says
+// only that — no perks are listed until they're agreed. The posters
+// below it keep their "Coming soon" toast.
+const VIP_CROWN_SVG = '<svg viewBox="0 0 24 24" fill="#E8B85C"><path d="M3 8l4.5 4L12 5l4.5 7L21 8l-2 11H5L3 8z"/></svg>';
+
+function vipCardHtml(){
+  if(isVipMember()){
+    return '<div class="vip-card">' + VIP_CROWN_SVG +
+        '<div class="vip-card-text"><div class="vip-card-title">You’re a VIP member <span class="vip-badge">VIP</span></div></div>' +
+      '</div>';
+  }
+  return '<div class="vip-card">' + VIP_CROWN_SVG +
+      '<div class="vip-card-text"><div class="vip-card-title">VIP is for yearly members</div></div>' +
+      '<button type="button" class="vip-card-btn" id="vipGetYearlyBtn">Get yearly</button>' +
+    '</div>';
+}
+
+function applyVipSectionSetting(){
+  const on = !!appSettings.vip_section_enabled;
+  const vipTab = discoverTabs.querySelector('[data-tab="vip"]');
+  if(vipTab) vipTab.hidden = !on;
+  if(!on && activeTab === 'vip'){
+    activeTab = 'popular';
+    Array.from(discoverTabs.children).forEach(b => b.classList.toggle('active', b.dataset.tab === activeTab));
+  }
+}
+
+// VIP status loads/changes after Home first renders — repaint the card.
+document.addEventListener('narrava:coins-changed', () => {
+  if(activeTab === 'vip') renderDiscoverBody();
+});
+
 discoverTabs.addEventListener('click', e => {
   const btn = e.target.closest('.dtab');
   if(!btn) return;
@@ -698,6 +739,7 @@ async function initDiscover(){
   // a page that no longer exists.
   await appSettingsReady;
   if(appSettings.maintenance_mode_enabled) return;
+  applyVipSectionSetting();
 
   // Real loading state for Home's own real first wait — genres, the
   // genre links, and `slides` itself (app.js) are all real reads still

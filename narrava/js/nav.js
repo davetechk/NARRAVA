@@ -156,6 +156,7 @@ async function navApply(target){
       else if(target.screen === 'library') renderLibraryScreen();
       else if(target.screen === 'profile') renderProfileScreen();
       else if(target.screen === 'history') renderHistoryScreen();
+      else if(target.screen === 'membership') renderMembershipScreen();
     }
   } finally {
     navApplying = false;

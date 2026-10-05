@@ -32,7 +32,8 @@ resuming where you left off, likes, saves, threaded comments, usernames, email s
 log-in, anonymous accounts, the installable app, and the full admin panel described below.
 
 Nava Coins are real too: the balance, episode locks, unlocking with 1 coin, buying coin packs
-through Paystack, and the 5-coin welcome bonus. See
+through Paystack, and the 5-coin welcome bonus. So are subscriptions (weekly / monthly / yearly
+through Paystack, see [Membership and VIP](#membership-and-vip)) and the VIP tab for yearly members. See
 [Nava Coins](#nava-coins-balance-locks-unlocking-buying). The server decides all of it; the app only
 displays it. See [Not built yet](#not-built-yet) for what still doesn't exist.
 
@@ -55,7 +56,10 @@ Browser (static files in narrava/)          Supabase                       Bunny
   modules. Every file is a plain script that defines global functions, and `index.html` loads
   them in a specific order (see [Gotchas](#things-that-are-easy-to-get-wrong)).
 - **`narrava/js/coins.js`**: Nava Coins: the real balance, the lock rule, the unlock prompt, the
-  Get Coins sheet with Paystack, and the welcome bonus. Loaded after `feed-data.js` and before
+  Get Coins sheet, the welcome bonus, the subscription state (`my_subscription`), and the one shared
+  Paystack purchase flow (`startPaystackPurchase`) used for coins and subscriptions.
+  **`narrava/js/membership.js`**: the Membership screen (see
+  [Membership and VIP](#membership-and-vip)). Loaded after `feed-data.js` and before
   `app.js`. See [Nava Coins](#nava-coins-balance-locks-unlocking-buying).
 - **`narrava/css/`**: `styles.css` (the app, and also used by admin) and `admin.css` (admin only).
   Brand color lives in three CSS custom properties defined once, in `styles.css`'s `:root`, and
@@ -142,7 +146,8 @@ screen too, reached from Profile (Profile stays the highlighted tab while it's o
 
 - **Home** (`discover.js`): on mobile, a search box, tabs, and a poster grid. Popular is just
   the order the database returns; New sorts by creation date; Categories filters by genre; VIP
-  is a placeholder (tapping a VIP poster shows the "Coming soon" toast). On desktop: a rotating
+  only appears while the admin VIP Section switch is on, and shows a VIP card above posters that
+  still say "Coming soon" (see [Membership and VIP](#membership-and-vip)). On desktop: a rotating
   banner of featured series plus horizontal shelves (New Release, Top, then one per genre that
   has series).
   - **Rankings (mobile tab) and Top (desktop shelf)** are the same real view ranking, from the
@@ -229,11 +234,13 @@ screen too, reached from Profile (Profile stays the highlighted tab while it's o
   - **`APP_VERSION`** is a single constant at the top of `shared-utils.js` (currently `'1.0.0'`).
     It is the only place the version lives. **Bump it on every release.**
 - **Profile** (`profile.js`): log in / sign out, username, install-app button, My Wallet (the
-  real Nava Coins balance; it and Top Up open the Get Coins sheet, see Nava Coins below), History and Help & Feedback (above), and an Admin Panel link that only appears if
-  you're an admin. The Membership banner, Earn Rewards, Gifts, the Download row, and all four
-  feature tiles (Originals, Daily Coins, Download, HD Quality — each a real `<button>` reset to
-  look exactly like the old `<div>` tiles) show the same "Coming soon" toast, as does tapping a
-  VIP poster on Home. Language keeps its own toast.
+  real Nava Coins balance; it and Top Up open the Get Coins sheet, see Nava Coins below), the
+  Narrava Membership banner (opens the Membership screen), a gold VIP badge beside your own name
+  when you're a yearly member, History and Help & Feedback (above), and an Admin Panel link that
+  only appears if you're an admin. Earn Rewards, Gifts, the Download row, and all four feature tiles
+  (Originals, Daily Coins, Download, HD Quality — each a real `<button>` reset to look exactly like
+  the old `<div>` tiles) show the same "Coming soon" toast, as does tapping a VIP poster on Home.
+  Language keeps its own toast.
 - **Watch page (desktop only)** (`watch.js`): video, breadcrumb, like/save/share/comments, and
   a numbered episode grid.
 
@@ -474,6 +481,60 @@ and a toast shows "Welcome! You got 5 free Nava Coins"; any other status is sile
 still needs email confirmation is still anonymous, so the bonus comes on the first load or log in
 after confirming. Existing email accounts get it too, the first time they load this version.
 
+## Membership and VIP
+
+**Membership screen** (`membership.js`, `#membershipScreen`). Opened from Profile's "Narrava
+Membership" banner or the VIP tab's "Get yearly". It's built like History and Help & Feedback (same
+`.library` shell, header and back arrow), Profile stays the highlighted tab, and Back returns to
+where it was opened from. Everything on it comes from the server and is re-read each time it opens:
+the plans (`subscription_plans`, active, sorted by `sort_order`), the Subscription Payments switch
+(`app_settings.subscriptions_enabled`) and the person's own `my_subscription()`.
+- **Not subscribed:** each plan shows its name, "N days of unlimited watching" (the plan's own
+  `days`, which already include bonus days), and the price in the chosen currency, plus a
+  Subscribe button. It uses the same Naira / US Dollar toggle and naira note as Get Coins (one
+  shared choice). Yearly carries a small "Includes VIP" label.
+- **Subscribed:** the plan name, "Unlimited watching until 12 Nov 2026" (`ends_at`, in History's
+  date style via `formatShortDate`), and what's included: "Every episode unlocked", plus "VIP" when
+  `is_vip`. Below it is the same plan list with **Extend** buttons and the line "Extra days are added
+  after your current end date."
+- **Switch off:** the plans and prices still show, with no Subscribe/Extend buttons and the line
+  "Subscriptions aren't available yet." Anyone already subscribed still sees their own status.
+- **Anonymous:** the plans show, and Subscribe opens the sign-up popup with "You need an account to
+  subscribe."
+
+**Subscription payments.** These use the **same** purchase flow as coin packs,
+`startPaystackPurchase(kind, itemId)` in `coins.js`. There is one copy, used by both the Get Coins
+sheet and the Membership screen; only one payment can run at a time, and every buy/extend button is
+disabled while one does. The browser sends only `{ kind: 'subscription', itemId: 'weekly' | 'monthly'
+| 'yearly', currency }`, never a price, days or a user id. Extra `paystack-init` errors:
+`subscriptions_disabled` ("Subscriptions aren't available yet.") and `unknown_plan`. As with coins,
+`onSuccess` isn't trusted: "Confirming your payment…" polls the purchases row every 2 s for up to
+60 s. On `completed`, the balance, unlocks and `my_subscription()` are refreshed (so every lock
+re-checks), the screen re-renders as subscribed, and it shows "You're subscribed. Enjoy unlimited
+watching!". Refunds, failures and the 60 s timeout ("Payment received, your subscription will start
+shortly.") get the same honest messages as coins. Surfaces re-render on the
+`narrava:purchase-changed` event.
+
+**Stacking renewals.** The server's webhook grants the days. Buying again while subscribed adds the
+new days **after the current `ends_at`**, so renewing early never wastes days. The app never grants,
+extends or stores a subscription itself; it only shows what `my_subscription()` returns.
+
+**Staying current.** `my_subscription()` is re-read on app load, on any account change, after a
+purchase, and whenever the tab comes back to the foreground. `hasActiveSubscription()` also treats a
+returned plan whose `ends_at` has passed as inactive, and a timer re-asks the server at `ends_at` (if
+it's within ~24 days). So an expired subscription locks episodes again without a reload.
+
+**VIP.** VIP means an active **yearly** plan: `my_subscription().is_vip` (`isVipMember()`). The app
+never works it out from the plan itself.
+- The Home **VIP tab** shows only while `app_settings.vip_section_enabled` is on (read at startup with
+  the other settings). Off means the tab is hidden; the desktop shelves never had one. When shown,
+  a gold card sits above the existing posters, which keep their "Coming soon" toast. A VIP sees
+  "You're a VIP member" with a crown and the VIP badge; everyone else sees "VIP is for yearly
+  members" with a "Get yearly" button that opens Membership. **No VIP perks are listed anywhere**,
+  because none have been agreed yet.
+- **VIP badge:** a small gold "VIP" next to the person's own name on their own Profile, only while
+  `is_vip`. It's never shown on comments or anywhere else.
+
 ## Watch progress and Continue Watching
 
 While something plays, the position is saved to `watch_progress` (one row per user + episode,
@@ -576,7 +637,7 @@ there.
 | **Analytics** | Visits today and last 7 days, unique visitors, a daily chart. |
 | **Revenue & Analytics** | Exists, but every number is honestly zero right now. See [Not built yet](#not-built-yet). |
 | **Most Watched** | Every series ranked by real views, from `admin_most_watched_series` (already ranked server-side — never re-sorted here). Rank, cover + title, status badge, views, likes, comments, saves, shares. |
-| **System Settings** | Free Mode, Maintenance Mode, Featured Series Count, Ad Unlock, Subscription Payments, Coin Payments (below). |
+| **System Settings** | Free Mode, Maintenance Mode, Featured Series Count, Ad Unlock, Subscription Payments, Coin Payments, VIP Section (below). |
 
 **On a phone (≤860px wide)**, every page above is fully usable, with nothing removed. Details worth
 knowing before you change admin UI:
@@ -677,10 +738,14 @@ Details worth knowing:
     random series if none are featured).
   - *Ad Unlock* (`ad_unlock_enabled`), *Subscription Payments* (`subscriptions_enabled`), *Coin
     Payments* (`coin_purchases_enabled`): three more switches on the same row, saved through the
-    same `updateSetting()` path. These three don't do anything yet — the consumer app doesn't
-    read them at all, since the payment features they'll gate ([Not built
-    yet](#not-built-yet)) don't exist yet either. They exist now purely so the eventual features
-    can launch behind a real, pre-built switch instead of shipping wide open.
+    same `updateSetting()` path. Coin Payments gates the Get Coins sheet and Subscription Payments
+    gates the Membership screen's buttons; the server's `paystack-init` enforces both as well. Ad
+    Unlock doesn't do anything yet.
+  - *VIP Section* (`vip_section_enabled`, off by default): shows or hides the Home VIP tab. Helper
+    text: "Shows the VIP tab in the app. Perks for yearly members will be added once agreed." It's
+    built exactly like the other switches and saved through the same `updateSetting()`. All seven
+    settings are read and written as one column list (`SETTINGS_COLUMNS` in `admin-settings.js`), so
+    a new setting is added there once.
   - If the settings can't be loaded, the app quietly uses safe defaults (nothing overridden).
 
 ## Privacy policy page
@@ -774,7 +839,7 @@ Home Screen web apps use an opaque status bar in some situations; either way `bl
 
 **1. The service worker can keep serving old files after you deploy.** `sw.js` answers requests
 for the app's own files from its cache first and only goes to the network when it has nothing
-cached. The cache name is currently `narrava-shell-v28` and old caches are deleted only when the name
+cached. The cache name is currently `narrava-shell-v29` and old caches are deleted only when the name
 *changes*. So after changing any app file, people who have already visited can keep getting the
 old version. **Bump `CACHE_NAME` in `sw.js` whenever you ship a change.** The service worker's
 scope is the whole `narrava/` folder, so this affects the **admin pages too**, not only the
@@ -863,7 +928,10 @@ bunny_video_id, duration_seconds, created_at) · `genres` · `series_genres` · 
 display_name, is_admin, coin_balance) · `watch_progress` (user_id + episode_id unique;
 series_id, position_seconds, updated_at) · `series_likes` · `series_saves` · `series_comments`
 (with `parent_comment_id`) · `comment_likes` · `app_settings` (single row, `id = true`, including
-`ad_unlock_enabled`, `subscriptions_enabled`, `coin_purchases_enabled`) · `page_visits` (user_id,
+`ad_unlock_enabled`, `subscriptions_enabled`, `coin_purchases_enabled`, `vip_section_enabled`) ·
+`subscription_plans` (id weekly/monthly/yearly, name, days incl. bonus days, price_ngn_kobo,
+price_usd_cents, sort_order, active; public read) · `subscriptions` (own rows; starts_at, ends_at) ·
+`page_visits` (user_id,
 visited_at) · `purchases` and `coin_transactions` (see below).
 
 **Coins tables:** `coin_packs` (id, coins, price_ngn_kobo, price_usd_cents, sort_order, active;
@@ -871,10 +939,11 @@ public read) · `episode_unlocks` (user_id, episode_id, created_at; own rows rea
 `purchases` (own rows readable; `paystack_reference`, `item_id`, `currency`, `status` =
 pending / completed / failed / refunding / refunded / refund_failed).
 
-**Coins functions:** `my_subscription`, `unlock_episode_with_coin(p_episode_id)` and
+**Coins functions:** `my_subscription` (plan_id, plan_name, ends_at, is_vip, or no rows),
+`unlock_episode_with_coin(p_episode_id)` and
 `claim_welcome_bonus` (both return `{ status, balance }`), and `can_watch_episode(p_episode_id)`
-(not called by the app). Edge Function `paystack-init`, plus a Paystack webhook on the server that
-credits coins. None of their source is in this repo.
+(not called by the app). Edge Function `paystack-init` (`kind` `coin_pack` or `subscription`), plus
+a Paystack webhook on the server that credits coins and grants subscription days. None of their source is in this repo.
 
 **Database functions (RPC):** `get_continue_watching`, `get_series_like_count`,
 `get_series_comments`, `admin_list_users`, `admin_total_users`, `admin_total_revenue`,
@@ -896,14 +965,15 @@ by the browser).
 
 Do not describe any of this as working.
 
-- **Subscriptions as something to buy.** The lock rule honours an active plan from
-  `my_subscription()`, but the app has no way to buy one. Ad unlocks don't exist either.
+- **Ad unlocks** don't exist.
+- **VIP perks.** VIP (yearly members) has a tab, a card and a badge, but no perks yet; none are
+  listed until they're agreed.
 - **Revenue.** The Revenue & Analytics page reads `purchases` and `coin_transactions`. Only the
   server (the Paystack webhook) writes to them; nothing in this repo does. Subscriptions and ad
   revenue are labelled "Inactive".
-- **Membership, Earn Rewards, Gifts, Download, Language, and the Originals / Daily Coins /
+- **Earn Rewards, Gifts, Download, Language, and the Originals / Daily Coins /
   Download / HD Quality tiles:** only show a toast.
-- **VIP** (posters only show a "Coming soon" toast).
+- **VIP posters** only show a "Coming soon" toast.
 - **Download as a feature** — there's no download button on the like/comment/save/share row.
 - **Stored episode durations.** `episodes.duration_seconds` is never written; the length shown on
   the scrub bar is read live from the video once it loads, not from the database.

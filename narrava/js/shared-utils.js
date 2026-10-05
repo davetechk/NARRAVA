@@ -75,6 +75,14 @@ function formatWatchedDate(iso){
   const days = Math.round((startOfDay(new Date()) - startOfDay(d)) / 86400000);
   if(days === 0) return 'Today';
   if(days === 1) return 'Yesterday';
+  return formatShortDate(iso);
+}
+
+// "12 Nov 2026" — History's date style, also used for a subscription's
+// end date (membership.js), where "Today"/"Yesterday" wouldn't fit.
+function formatShortDate(iso){
+  const d = new Date(iso);
+  if(isNaN(d.getTime())) return '';
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   return d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
 }

@@ -47,7 +47,7 @@ let idx = 0;
 // one real appSettingsReady promise before doing anything — the same
 // real pattern slidesReady/continueWatchingReady already use for
 // exactly this "don't act before the real data is in" reason.
-let appSettings = { free_mode_enabled: false, maintenance_mode_enabled: false, featured_series_count: 5 };
+let appSettings = { free_mode_enabled: false, maintenance_mode_enabled: false, featured_series_count: 5, subscriptions_enabled: false, vip_section_enabled: false };
 let resolveAppSettingsReady;
 const appSettingsReady = new Promise(resolve => { resolveAppSettingsReady = resolve; });
 
@@ -55,7 +55,7 @@ async function loadAppSettings(){
   try {
     const { data, error } = await supabaseClient
       .from('app_settings')
-      .select('free_mode_enabled, maintenance_mode_enabled, featured_series_count')
+      .select('free_mode_enabled, maintenance_mode_enabled, featured_series_count, subscriptions_enabled, vip_section_enabled')
       .eq('id', true)
       .single();
     if(error) throw error;
@@ -613,6 +613,7 @@ const discoverScreen = document.getElementById('discoverScreen');
 const libraryScreen = document.getElementById('libraryScreen');
 const historyScreen = document.getElementById('historyScreen');
 const helpScreen = document.getElementById('helpScreen');
+const membershipScreen = document.getElementById('membershipScreen');
 const profileScreen = document.getElementById('profileScreen');
 const watchScreen = document.getElementById('watchScreen');
 const navHome = document.getElementById('navHome');
@@ -743,10 +744,11 @@ function showScreen(name){
   profileScreen.classList.toggle('screen-hidden', name !== 'profile');
   historyScreen.classList.toggle('screen-hidden', name !== 'history');
   helpScreen.classList.toggle('screen-hidden', name !== 'help');
+  membershipScreen.classList.toggle('screen-hidden', name !== 'membership');
   watchScreen.classList.toggle('screen-hidden', name !== 'watch');
-  // History and Help & Feedback are reached from Profile, so Profile
-  // stays the highlighted tab.
-  const profileTabActive = name === 'profile' || name === 'history' || name === 'help';
+  // History, Help & Feedback and Membership are reached from Profile, so
+  // Profile stays the highlighted tab.
+  const profileTabActive = name === 'profile' || name === 'history' || name === 'help' || name === 'membership';
   navHome.classList.toggle('active', name === 'discover');
   navForYou.classList.toggle('active', name === 'feed');
   navLibrary.classList.toggle('active', name === 'library');

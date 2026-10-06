@@ -550,9 +550,15 @@ before. `my_ad_status` isn't even called for people with coins or a subscription
   destroyed (`googletag.destroySlots`) and its listeners removed, so the next request starts clean.
   Closing the unlock prompt while an ad is still *loading* drops it.
 - GPT adds a `#goog_rewarded` history entry while an ad shows (so Back closes the ad) and leaves it
-  in the URL afterwards. `nav.js` ignores entries it didn't create and `app.js`'s deep-link reader
-  ignores that fragment. The only visible effect: the first Back after an ad closes the open prompt.
-- The episode underneath keeps playing (muted or not, as it was) while the ad shows; it isn't paused.
+  in the URL afterwards. When the ad closes, `clearRewardedHash()` removes the fragment from that
+  same entry with `history.replaceState` (its state kept as-is, no new entry, the app's own `nav.js`
+  entries untouched). GPT's entry itself stays in the history, so the first Back after an ad
+  still lands on the previous Narrava entry and closes the open prompt.
+- When the ad becomes visible, the episode behind it is paused (`pauseEpisodesForAd()`, which calls
+  `pauseCurrentFeedEpisode()` in `app.js` and `pauseCurrentWatchEpisode()` in `watch.js`, each
+  pausing exactly like a tap: paused state shown, progress saved). After the ad it **stays paused
+  at the same spot**; the person resumes it. (An episode that's still *loading* when the ad appears
+  can start once it loads; not handled.)
 
 **Where it works (tested 2026-10-05):** Google's test rewarded ad filled and played in desktop
 Chrome on `localhost` (Live Server). The reward fired after the countdown, `record_ad_view` returned
@@ -727,7 +733,7 @@ there.
 | **Genres** | Add, rename, delete. |
 | **User Management** | Lists real accounts (not anonymous ones); suspend / unsuspend. |
 | **Analytics** | Visits today and last 7 days, unique visitors, a daily chart. |
-| **Revenue & Analytics** | Exists, but every number is honestly zero right now. See [Not built yet](#not-built-yet). |
+| **Revenue & Analytics** | Real figures from `admin_revenue_overview(p_days)` only: a period choice, Overview / Coins / Subscriptions / Ads tabs, two alert cards, and the last 50 purchases (below). |
 | **Most Watched** | Every series ranked by real views, from `admin_most_watched_series` (already ranked server-side — never re-sorted here). Rank, cover + title, status badge, views, likes, comments, saves, shares. |
 | **System Settings** | Free Mode, Maintenance Mode, Featured Series Count, Ad Unlock, Subscription Payments, Coin Payments, VIP Section (below). |
 
@@ -791,6 +797,60 @@ Details worth knowing:
   (`visit-log.js`, called once from `init()`). Admin pages never log a visit. "Unique visitors" is
   unique *accounts*, and since anonymous accounts are created per browser, clearing site data
   makes someone a new visitor.
+- **Revenue & Analytics** (`admin/revenue-analytics.html`, `js/admin-revenue.js`, rebuilt
+  2026-10-05). **Every figure comes from one database function, `admin_revenue_overview(p_days)`,**
+  which refuses non-admins. The page only displays its answer. It never reads `purchases`,
+  `coin_transactions` or any other table for money, never estimates, and never shows an example
+  number. The only arithmetic is adding rows of the **same** currency together (coin-pack naira +
+  subscription naira) and dividing kobo/cents by 100 for display. (`coin_packs` is read only to
+  label a purchase "50 coins"; no figure depends on it.)
+  - **The currency rule: naira and dollars are always shown separately.** Never converted, never
+    added together, each in its own card. `amount_minor` is kobo for NGN and cents for USD:
+    ₦ = kobo / 100 with thousands separators (₦20,000, or ₦20,000.50 when there are kobo),
+    $ = cents / 100 always with two decimals ($5.00). An unexpected currency is shown raw in its
+    own card, never merged.
+  - **Period:** Today, 7 days, 30 days, All time re-call the function with `p_days` 1 / 7 / 30 /
+    3650. Checked live 2026-10-05: the function treats a missing `p_days` as 30, 0 as 1, and caps
+    it at 3650. Money uses `totals_period`, except **All time, which uses `totals_all_time`**.
+    The ads `*_period` figures always follow `p_days`, so under All time they're captioned
+    "All time (last 3,650 days)". Captions say "Last 1 day" rather than "Today", because the code
+    can't tell whether the server's day is the Lagos calendar day or the last 24 hours.
+  - **What doesn't follow the period:** `coins` (bought / welcome / spent) came back identical for
+    every `p_days` (bought 210 even for 1 day, when the coin packs were bought two days earlier),
+    so they're shown as all-time figures. `active_subscribers` is "right now".
+  - **Overview:** revenue per currency (coins + subscriptions), number of purchases, active
+    subscribers in total, ad views (views_today under Today, views_period otherwise), and two alert
+    cards that appear **only when above 0**:
+    - **Needs review** (`needs_review`): failed purchases a person has to look at, typically a
+      payment whose amount or currency didn't match what was expected. Text: "A payment didn't
+      match what was expected. Check Paystack before refunding or crediting manually." Don't credit
+      coins or days by hand until Paystack confirms what was actually paid.
+    - **Refunds that failed** (`refunds.refund_failed`): the server tried to refund (e.g. a
+      foreign card on a naira payment) and Paystack's refund didn't go through. Text: "Refund
+      manually in Paystack."
+  - **Coins:** coin-pack revenue per currency, number of coin-pack purchases, coins bought /
+    welcome coins given / coins spent.
+  - **Subscriptions:** subscription revenue per currency, purchases, and active subscribers per
+    plan. Weekly, Monthly and Yearly are always listed (0 when none); an unexpected plan id is
+    listed too.
+  - **Ads:** ad views today, ad views in the period, people who watched ads, episodes unlocked
+    with ads, and the line "Ad earnings are reported in your Google Ad Manager account, not here."
+  - **Recent purchases** (below the tabs, independent of the period): the function's last 50
+    purchases, any status. Date (Lagos time), email, what ("50 coins" from `coin_packs`, or the
+    plan name), amount in its own currency, and a status badge: completed green, pending grey,
+    failed red, refunded / refund_failed / refunding orange. `failure_reason` shows as small text
+    under the badge. The table scrolls inside its own box (560px tall on desktop, 70% of the screen
+    on a phone, where rows stack as cards like every admin table).
+  - **Loading and errors:** stat-card and table skeletons while loading. A failure, or no answer
+    within 20 s, shows "Couldn't load revenue figures" with a Try again button, so it never sticks
+    on the skeleton. Switching period while a request is in flight only renders the latest one.
+  - **Removed in the rebuild:** the old `admin_total_revenue` call and lifetime "Total Revenue"
+    card, the direct reads of `purchases` (an `amount` column, every row counted regardless of
+    status) and `coin_transactions`, the 7-week bar chart, the Revenue Sources legend, the
+    "Inactive" Subscriptions and Ad Revenue cards, the "Top Performing Series" table (coin spend
+    guessed per series through `reference_id`), and their CSS (`.admin-bar-chart`,
+    `.admin-legend-*`). The Dashboard's own "Total Revenue" card still uses `admin_total_revenue`
+    and wasn't changed.
 - **System Settings** is one row in `app_settings`, readable by everyone and writable only by
   admins. The consumer app reads it once at startup:
   - *Free Mode*: nothing is treated as locked. Per-series free-episode counts aren't changed;
@@ -932,7 +992,7 @@ Home Screen web apps use an opaque status bar in some situations; either way `bl
 
 **1. The service worker can keep serving old files after you deploy.** `sw.js` answers requests
 for the app's own files from its cache first and only goes to the network when it has nothing
-cached. The cache name is currently `narrava-shell-v30` and old caches are deleted only when the name
+cached. The cache name is currently `narrava-shell-v31` and old caches are deleted only when the name
 *changes*. So after changing any app file, people who have already visited can keep getting the
 old version. **Bump `CACHE_NAME` in `sw.js` whenever you ship a change.** The service worker's
 scope is the whole `narrava/` folder, so this affects the **admin pages too**, not only the
@@ -1041,7 +1101,8 @@ pending / completed / failed / refunding / refunded / refund_failed).
 a Paystack webhook on the server that credits coins and grants subscription days. None of their source is in this repo.
 
 **Database functions (RPC):** `get_continue_watching`, `get_series_like_count`,
-`get_series_comments`, `admin_list_users`, `admin_total_users`, `admin_total_revenue`,
+`get_series_comments`, `admin_list_users`, `admin_total_users`, `admin_total_revenue` (Dashboard
+only), `admin_revenue_overview(p_days)` (Revenue page; see [The admin panel](#the-admin-panel)),
 `admin_visit_stats`, `admin_daily_visits`, `record_episode_view`, `record_series_share`,
 `admin_most_watched_series`, `get_series_rankings`, `get_watch_history`,
 `get_series_social_counts`. (`admin_user_stats` also exists and is intentionally unused.)
@@ -1065,9 +1126,8 @@ Do not describe any of this as working.
   `js/ads.js`). The privacy policy doesn't name Google yet.
 - **VIP perks.** VIP (yearly members) has a tab, a card and a badge, but no perks yet; none are
   listed until they're agreed.
-- **Revenue.** The Revenue & Analytics page reads `purchases` and `coin_transactions`. Only the
-  server (the Paystack webhook) writes to them; nothing in this repo does. Subscriptions and ad
-  revenue are labelled "Inactive".
+- **Ad earnings.** The Revenue page counts ad views and ad unlocks, but not money from ads; that
+  lives in Google Ad Manager.
 - **Earn Rewards, Gifts, Download, Language, and the Originals / Daily Coins /
   Download / HD Quality tiles:** only show a toast.
 - **VIP posters** only show a "Coming soon" toast.

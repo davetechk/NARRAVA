@@ -109,6 +109,13 @@ function saveCurrentWatchProgress(){
 // refresh/crash never loses more than a few seconds of real progress.
 setInterval(saveCurrentWatchProgress, 15000);
 
+// Pauses the Watch page's episode as a tap would (its 'pause' listener
+// saves progress and shows the paused state) and leaves it paused. Used by
+// ads.js while a rewarded ad is showing.
+function pauseCurrentWatchEpisode(){
+  if(watchVideoEl && !watchVideoEl.paused) watchVideoEl.pause();
+}
+
 // The honest failure state in watchPlayerHost — real retry button wired
 // to genuinely redo the whole load (watchPlayEpisode again, from
 // scratch, same ep/resumeSeconds — not just re-showing a spinner over

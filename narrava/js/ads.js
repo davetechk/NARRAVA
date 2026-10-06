@@ -120,6 +120,7 @@ function runRewardedAd(){
         listeners.forEach(([type, fn]) => googletag.pubads().removeEventListener(type, fn));
         if(slot) googletag.destroySlots([slot]); // the next request starts clean
       } catch(err){ console.error('Narrava: could not clean up the ad slot', err); }
+      clearRewardedHash();
       Promise.resolve(recordPromise).then(record => resolve({ outcome, record: record || null }));
     }
     activeAd = { cancel: () => finish('cancelled') };
@@ -150,6 +151,9 @@ function runRewardedAd(){
         clearTimeout(timer);
         adState.phase = 'showing';
         notifyAdsChanged();
+        // The episode behind the ad stops, so the two are never heard at
+        // once. It stays paused after the ad; the person resumes it.
+        pauseEpisodesForAd();
         // The person already opted in by tapping "Watch ad".
         event.makeRewardedVisible();
       });
@@ -168,6 +172,19 @@ function runRewardedAd(){
 
     timer = setTimeout(() => finish('no_fill'), AD_LOAD_TIMEOUT_MS);
   });
+}
+
+// Mobile feed (app.js) and desktop Watch page (watch.js).
+function pauseEpisodesForAd(){
+  if(typeof pauseCurrentFeedEpisode === 'function') pauseCurrentFeedEpisode();
+  if(typeof pauseCurrentWatchEpisode === 'function') pauseCurrentWatchEpisode();
+}
+
+// GPT leaves "#goog_rewarded" in the URL after an ad. Drop it from the
+// current entry in place (no new history entry, its state kept as-is).
+function clearRewardedHash(){
+  if(location.hash !== '#goog_rewarded') return;
+  history.replaceState(history.state, '', location.pathname + location.search);
 }
 
 // Never called except from rewardedSlotGranted.

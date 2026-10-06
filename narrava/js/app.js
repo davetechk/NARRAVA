@@ -1390,6 +1390,16 @@ function saveCurrentFeedProgress(){
 // upserts for something the user isn't actively pausing/leaving anyway.
 setInterval(saveCurrentFeedProgress, 15000);
 
+// Pauses the feed's episode exactly as a tap on it would (paused state,
+// progress saved) and leaves it paused for the viewer to resume. Used by
+// ads.js while a rewarded ad is showing.
+function pauseCurrentFeedEpisode(){
+  if(!currentVideoEl || currentVideoEl.paused) return;
+  feed.classList.add('paused');
+  currentVideoEl.pause();
+  saveCurrentFeedProgress();
+}
+
 function renderEmptyFeed(){
   destroyActivePlayback();
   bgvideo.innerHTML = '';

@@ -727,7 +727,7 @@ there.
 
 | Page | What it does |
 |---|---|
-| **Dashboard** | Stat cards; create a series (title, description, free-episode count defaulting to 10, cover image); quick feature toggle; single-episode upload. |
+| **Dashboard** | Stat cards (Total Revenue: all-time naira and dollars from `admin_revenue_overview`, linking to Revenue & Analytics); create a series (title, description, free-episode count defaulting to 10, cover image); quick feature toggle; single-episode upload. |
 | **Series List** | Search; publish/draft toggle; feature toggle; edit (title, description, cover, free-episode count, genres); delete. A warning badge marks series with no episodes, since those never appear in the app. |
 | **Episodes** | Search; edit number/title; delete; **batch upload** with a queue, auto-numbered episodes and per-file progress. |
 | **Genres** | Add, rename, delete. |
@@ -808,19 +808,22 @@ Details worth knowing:
     added together, each in its own card. `amount_minor` is kobo for NGN and cents for USD:
     ₦ = kobo / 100 with thousands separators (₦20,000, or ₦20,000.50 when there are kobo),
     $ = cents / 100 always with two decimals ($5.00). An unexpected currency is shown raw in its
-    own card, never merged.
-  - **Period:** Today, 7 days, 30 days, All time re-call the function with `p_days` 1 / 7 / 30 /
-    3650. Checked live 2026-10-05: the function treats a missing `p_days` as 30, 0 as 1, and caps
+    own card, never merged. The formatter, `formatMinorAmount`, lives in `admin-shared.js` so the
+    Dashboard's revenue card uses the same one.
+  - **Period:** 24 hours, 7 days, 30 days, All time re-call the function with `p_days` 1 / 7 / 30 /
+    3650. Periods are **rolling windows**: `totals_period` and every ads `*_period` figure cover the
+    last `p_days` × 24 hours, not calendar days, so the first button is "24 hours" (captioned
+    "Last 24 hours"), never "Today". Checked live 2026-10-05: the function treats a missing `p_days` as 30, 0 as 1, and caps
     it at 3650. Money uses `totals_period`, except **All time, which uses `totals_all_time`**.
     The ads `*_period` figures always follow `p_days`, so under All time they're captioned
-    "All time (last 3,650 days)". Captions say "Last 1 day" rather than "Today", because the code
-    can't tell whether the server's day is the Lagos calendar day or the last 24 hours.
-  - **What doesn't follow the period:** `coins` (bought / welcome / spent) came back identical for
-    every `p_days` (bought 210 even for 1 day, when the coin packs were bought two days earlier),
-    so they're shown as all-time figures. `active_subscribers` is "right now".
+    "All time (last 3,650 days)". The one calendar-day figure is `ads.views_today`, which resets at
+    midnight Lagos time; it's captioned "Today (Lagos time)" and shown only on the Ads tab.
+  - **What doesn't follow the period:** `coins` (bought / welcome / spent), `refunds` and
+    `needs_review` are all-time whatever `p_days` is; the coin cards and both alert cards say
+    "All time · not affected by the period". `active_subscribers` is "right now".
   - **Overview:** revenue per currency (coins + subscriptions), number of purchases, active
-    subscribers in total, ad views (views_today under Today, views_period otherwise), and two alert
-    cards that appear **only when above 0**:
+    subscribers in total, ad views (`views_period`, captioned like the money), and two all-time
+    alert cards that appear **only when above 0**:
     - **Needs review** (`needs_review`): failed purchases a person has to look at, typically a
       payment whose amount or currency didn't match what was expected. Text: "A payment didn't
       match what was expected. Check Paystack before refunding or crediting manually." Don't credit
@@ -849,8 +852,14 @@ Details worth knowing:
     status) and `coin_transactions`, the 7-week bar chart, the Revenue Sources legend, the
     "Inactive" Subscriptions and Ad Revenue cards, the "Top Performing Series" table (coin spend
     guessed per series through `reference_id`), and their CSS (`.admin-bar-chart`,
-    `.admin-legend-*`). The Dashboard's own "Total Revenue" card still uses `admin_total_revenue`
-    and wasn't changed.
+    `.admin-legend-*`).
+  - **Dashboard "Total Revenue" card** (`admin-dashboard.js`, 2026-10-06): calls
+    `admin_revenue_overview` (`p_days` 1; only `totals_all_time` is used, which ignores it) and adds
+    up the same coin-pack + subscription rows (`REVENUE_PURCHASE_TYPES`, `admin-shared.js`) as the
+    Revenue page's All time Overview, so the two always agree. It shows two values, all-time naira
+    and all-time dollars, formatted by `formatMinorAmount`, and the whole card links to
+    `revenue-analytics.html`. The Dashboard no longer calls `admin_total_revenue` (the database
+    function still exists; nothing in the app uses it now).
 - **System Settings** is one row in `app_settings`, readable by everyone and writable only by
   admins. The consumer app reads it once at startup:
   - *Free Mode*: nothing is treated as locked. Per-series free-episode counts aren't changed;
@@ -992,7 +1001,7 @@ Home Screen web apps use an opaque status bar in some situations; either way `bl
 
 **1. The service worker can keep serving old files after you deploy.** `sw.js` answers requests
 for the app's own files from its cache first and only goes to the network when it has nothing
-cached. The cache name is currently `narrava-shell-v31` and old caches are deleted only when the name
+cached. The cache name is currently `narrava-shell-v32` and old caches are deleted only when the name
 *changes*. So after changing any app file, people who have already visited can keep getting the
 old version. **Bump `CACHE_NAME` in `sw.js` whenever you ship a change.** The service worker's
 scope is the whole `narrava/` folder, so this affects the **admin pages too**, not only the
@@ -1101,8 +1110,8 @@ pending / completed / failed / refunding / refunded / refund_failed).
 a Paystack webhook on the server that credits coins and grants subscription days. None of their source is in this repo.
 
 **Database functions (RPC):** `get_continue_watching`, `get_series_like_count`,
-`get_series_comments`, `admin_list_users`, `admin_total_users`, `admin_total_revenue` (Dashboard
-only), `admin_revenue_overview(p_days)` (Revenue page; see [The admin panel](#the-admin-panel)),
+`get_series_comments`, `admin_list_users`, `admin_total_users`, `admin_total_revenue` (no longer
+called), `admin_revenue_overview(p_days)` (Revenue page; see [The admin panel](#the-admin-panel)),
 `admin_visit_stats`, `admin_daily_visits`, `record_episode_view`, `record_series_share`,
 `admin_most_watched_series`, `get_series_rankings`, `get_watch_history`,
 `get_series_social_counts`. (`admin_user_stats` also exists and is intentionally unused.)

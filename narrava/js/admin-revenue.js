@@ -9,13 +9,15 @@
 //   - kobo / 100 and cents / 100 for display.
 // Naira and dollars are never converted and never added together.
 
+// Periods are rolling windows: p_days × 24 hours back from now, not
+// calendar days (so "24 hours" is not "today").
 // Checked live (2026-10-05): the function treats a missing p_days as 30,
 // 0 as 1, and caps it at 3650. So "All time" sends 3650: its money comes
 // from totals_all_time (truly all time), while its *_period ad figures
 // cover the last 3650 days, which the captions say.
 const REVENUE_ALL_TIME_DAYS = 3650;
 const REVENUE_PERIODS = [
-  { key: 'today', label: 'Today', days: 1 },
+  { key: '24h', label: '24 hours', days: 1 },
   { key: '7', label: '7 days', days: 7 },
   { key: '30', label: '30 days', days: 30 },
   { key: 'all', label: 'All time', days: REVENUE_ALL_TIME_DAYS }
@@ -46,20 +48,6 @@ const rev = {
 };
 
 // ---------- formatting (no other maths) ----------
-
-// ₦20,000 / ₦20,000.50 · $5.00
-function formatMinorAmount(minor, currency){
-  const n = Number(minor) || 0;
-  if(currency === 'USD'){
-    return '$' + (n / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  }
-  if(currency === 'NGN'){
-    const whole = n % 100 === 0;
-    return '₦' + (n / 100).toLocaleString('en-US', { minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: 2 });
-  }
-  // A currency this page doesn't know: shown raw rather than guessed at.
-  return escapeHtml(String(currency || '?')) + ' ' + n.toLocaleString('en-US') + ' (minor units)';
-}
 
 function formatCount(n){
   return Number(n || 0).toLocaleString('en-US');
@@ -132,14 +120,15 @@ function currencyCardsHtml(label, byCurrency){
 function alertCardHtml(title, count, text){
   return '<div class="rev-alert" role="alert"><div class="rev-alert-icon">' + REV_ICONS.alert + '</div>' +
     '<div><div class="rev-alert-title">' + title + ' <span class="rev-alert-count">' + formatCount(count) + '</span></div>' +
-    '<div class="rev-alert-text">' + text + '</div></div></div>';
+    '<div class="rev-alert-text">' + text + '</div>' +
+    '<div class="rev-alert-scope">' + ALL_TIME_CAPTION + '</div></div></div>';
 }
 
 // ---------- tabs ----------
 
 function overviewHtml(){
   const d = rev.data;
-  const all = totalsByCurrency(['coin_pack', 'subscription']);
+  const all = totalsByCurrency(REVENUE_PURCHASE_TYPES);
   const purchases = purchaseCount(all);
   const subscribers = (d.active_subscribers || []).reduce((sum, r) => sum + (Number(r.subscribers) || 0), 0);
   const ads = d.ads || {};
@@ -149,14 +138,13 @@ function overviewHtml(){
   let html = '';
   if(needsReview > 0) html += alertCardHtml('Needs review', needsReview, 'A payment didn’t match what was expected. Check Paystack before refunding or crediting manually.');
   if(refundFailed > 0) html += alertCardHtml('Refunds that failed', refundFailed, 'Refund manually in Paystack.');
-
   html += '<div class="admin-stats-row cols-3">' +
     currencyCardsHtml('Revenue', all) +
     statCardHtml(REV_ICONS.cart, 'Purchases', formatCount(purchases), moneyCaption() + ' · coins and subscriptions') +
   '</div>' +
   '<div class="admin-stats-row cols-2">' +
     statCardHtml(REV_ICONS.star, 'Active subscribers', formatCount(subscribers), 'Right now, all plans', 'orange') +
-    statCardHtml(REV_ICONS.play, 'Ad views', formatCount(rev.period.key === 'today' ? ads.views_today : ads.views_period), periodAdsCaption()) +
+    statCardHtml(REV_ICONS.play, 'Ad views', formatCount(ads.views_period), periodCaption()) +
   '</div>';
   return html;
 }
@@ -169,9 +157,9 @@ function coinsHtml(){
       statCardHtml(REV_ICONS.cart, 'Coin pack purchases', formatCount(purchaseCount(packs)), moneyCaption()) +
     '</div>' +
     '<div class="admin-stats-row cols-3">' +
-      statCardHtml(REV_ICONS.coin, 'Coins bought', formatCount(coins.bought), COINS_CAPTION) +
-      statCardHtml(REV_ICONS.gift, 'Welcome coins given', formatCount(coins.welcome), COINS_CAPTION, 'orange') +
-      statCardHtml(REV_ICONS.unlock, 'Coins spent', formatCount(coins.spent), COINS_CAPTION) +
+      statCardHtml(REV_ICONS.coin, 'Coins bought', formatCount(coins.bought), ALL_TIME_CAPTION) +
+      statCardHtml(REV_ICONS.gift, 'Welcome coins given', formatCount(coins.welcome), ALL_TIME_CAPTION, 'orange') +
+      statCardHtml(REV_ICONS.unlock, 'Coins spent', formatCount(coins.spent), ALL_TIME_CAPTION) +
     '</div>';
 }
 
@@ -201,7 +189,7 @@ function subscriptionsHtml(){
 function adsHtml(){
   const ads = rev.data.ads || {};
   return '<div class="admin-stats-row cols-4">' +
-      statCardHtml(REV_ICONS.play, 'Ad views today', formatCount(ads.views_today), 'Today') +
+      statCardHtml(REV_ICONS.play, 'Ad views today', formatCount(ads.views_today), 'Today (Lagos time)') +
       statCardHtml(REV_ICONS.play, 'Ad views', formatCount(ads.views_period), periodCaption()) +
       statCardHtml(REV_ICONS.people, 'People who watched ads', formatCount(ads.viewers_period), periodCaption(), 'orange') +
       statCardHtml(REV_ICONS.unlock, 'Episodes unlocked with ads', formatCount(ads.unlocks_period), periodCaption()) +
@@ -209,11 +197,12 @@ function adsHtml(){
     '<div class="admin-helper-text rev-ads-note">Ad earnings are reported in your Google Ad Manager account, not here.</div>';
 }
 
-// Money totals: the period the server says it used, or all time.
+// Money totals: the period the server says it used, or all time. Periods
+// are rolling (p_days × 24 hours), so 1 day reads "Last 24 hours".
 function moneyCaption(){
   if(rev.period.key === 'all') return 'All time';
   const days = Number(rev.data && rev.data.period_days) || rev.period.days;
-  return 'Last ' + formatCount(days) + ' day' + (days === 1 ? '' : 's');
+  return days === 1 ? 'Last 24 hours' : 'Last ' + formatCount(days) + ' days';
 }
 // The ads *_period figures always follow p_days, even for "All time".
 function periodCaption(){
@@ -221,12 +210,9 @@ function periodCaption(){
   const days = Number(rev.data && rev.data.period_days) || rev.period.days;
   return 'All time (last ' + formatCount(days) + ' days)';
 }
-function periodAdsCaption(){
-  return rev.period.key === 'today' ? 'Today' : periodCaption();
-}
-// coins { bought, welcome, spent } come back the same for every p_days:
-// they're all-time figures (checked live 2026-10-05).
-const COINS_CAPTION = 'All time · not affected by the period';
+// coins { bought, welcome, spent }, refunds and needs_review come back the
+// same for every p_days: they're all-time figures.
+const ALL_TIME_CAPTION = 'All time · not affected by the period';
 
 // ---------- recent purchases ----------
 

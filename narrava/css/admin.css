@@ -216,6 +216,11 @@ body.admin-page{
   font-size:21px;line-height:1;color:var(--text);margin-bottom:4px;
 }
 .admin-stat-body .admin-stat-caption{font-size:11px;color:var(--muted);}
+/* A stat card that opens another page (Dashboard "Total Revenue"). */
+a.admin-stat-card{text-decoration:none;color:inherit;transition:border-color .15s;}
+a.admin-stat-card:hover, a.admin-stat-card:focus-visible{border-color:var(--leaf);}
+.admin-stat-body .admin-stat-value + .admin-stat-value{margin-top:6px;}
+.admin-stat-link-cue{color:var(--leaf);font-weight:700;}
 
 /* ---------- Panels ---------- */
 
@@ -494,6 +499,7 @@ table.admin-table tbody tr:hover{background:rgba(255,255,255,0.02);}
   background:#d98a3d;color:#0D130E;font-size:12px;
 }
 .rev-alert-text{font-size:12.5px;color:var(--text);line-height:1.45;}
+.rev-alert-scope{font-size:11px;color:var(--muted);margin-top:4px;}
 .rev-alert + .admin-stats-row{margin-top:16px;}
 .rev-plan-list{display:flex;flex-direction:column;}
 .rev-plan-row{

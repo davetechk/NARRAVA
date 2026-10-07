@@ -22,19 +22,40 @@ document.getElementById('adminCoverFile').addEventListener('change', () => {
   document.getElementById('adminCoverFileBtn').textContent = file ? ('✓ ' + file.name) : 'Choose Image';
 });
 
-function statsRowHtml(totalUsers, totalRevenue){
+// All-time revenue per currency from admin_revenue_overview's
+// totals_all_time (the same rows the Revenue page's "All time" Overview
+// adds up). Naira and dollars stay separate: never converted or combined.
+function allTimeRevenueByCurrency(overview){
+  const out = { NGN: 0, USD: 0 };
+  ((overview && overview.totals_all_time) || []).forEach(r => {
+    if(REVENUE_PURCHASE_TYPES.indexOf(r.type) === -1 || !(r.currency in out)) return;
+    out[r.currency] += Number(r.amount_minor) || 0;
+  });
+  return out;
+}
+
+function revenueCardHtml(revenue){
+  const values = revenue
+    ? '<div class="admin-stat-value">' + formatMinorAmount(revenue.NGN, 'NGN') + '</div>' +
+      '<div class="admin-stat-value">' + formatMinorAmount(revenue.USD, 'USD') + '</div>'
+    : '<div class="admin-stat-value">—</div>';
+  return '<a class="admin-stat-card rev-money-card" href="revenue-analytics.html" aria-label="Total revenue, all time. Open Revenue &amp; Analytics">' +
+    '<div class="admin-stat-icon">' + ADMIN_ICONS.revenue + '</div><div class="admin-stat-body"><div class="admin-stat-label">Total Revenue</div>' + values +
+    '<div class="admin-stat-caption">All time · <span class="admin-stat-link-cue">View revenue →</span></div></div></a>';
+}
+
+function statsRowHtml(totalUsers, revenue){
   const totalSeries = dashSeries.length;
   const totalGenres = dashGenres.length;
   const featuredNow = dashSeries.filter(s => !!s.featured_at).length;
   const usersDisplay = (totalUsers === null || totalUsers === undefined) ? '—' : totalUsers;
-  const revenueDisplay = (totalRevenue === null || totalRevenue === undefined) ? '—' : formatNaira(totalRevenue);
 
   return '<div class="admin-stats-row">' +
     '<div class="admin-stat-card"><div class="admin-stat-icon">' + ADMIN_ICONS.dashboard + '</div><div class="admin-stat-body"><div class="admin-stat-label">Total Series</div><div class="admin-stat-value">' + totalSeries + '</div><div class="admin-stat-caption">Live on Narrava</div></div></div>' +
     '<div class="admin-stat-card"><div class="admin-stat-icon">' + ADMIN_ICONS.content + '</div><div class="admin-stat-body"><div class="admin-stat-label">Total Genres</div><div class="admin-stat-value">' + totalGenres + '</div><div class="admin-stat-caption">Content categories</div></div></div>' +
     '<div class="admin-stat-card"><div class="admin-stat-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 2.5l2.9 6 6.6.9-4.8 4.6 1.1 6.6L12 17.6l-5.8 3 1.1-6.6-4.8-4.6 6.6-.9 2.9-6z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></div><div class="admin-stat-body"><div class="admin-stat-label">Featured Now</div><div class="admin-stat-value">' + featuredNow + '</div><div class="admin-stat-caption">Discover carousel</div></div></div>' +
     '<div class="admin-stat-card"><div class="admin-stat-icon">' + ADMIN_ICONS.users + '</div><div class="admin-stat-body"><div class="admin-stat-label">Registered Users</div><div class="admin-stat-value">' + usersDisplay + '</div><div class="admin-stat-caption">Signed-up accounts</div></div></div>' +
-    '<div class="admin-stat-card"><div class="admin-stat-icon">' + ADMIN_ICONS.revenue + '</div><div class="admin-stat-body"><div class="admin-stat-label">Total Revenue</div><div class="admin-stat-value">' + revenueDisplay + '</div><div class="admin-stat-caption">Lifetime</div></div></div>' +
+    revenueCardHtml(revenue) +
   '</div>';
 }
 
@@ -237,18 +258,19 @@ document.getElementById('adminDashboardSearch').addEventListener('input', (e) =>
     const [core, usersResult, revenueResult] = await Promise.all([
       loadCoreAdminData(),
       supabaseClient.rpc('admin_total_users'),
-      supabaseClient.rpc('admin_total_revenue')
+      // Any p_days works: only totals_all_time is used, which ignores it.
+      supabaseClient.rpc('admin_revenue_overview', { p_days: 1 })
     ]);
     dashSeries = core.series;
     dashGenres = core.genres;
     dashSeriesGenres = core.seriesGenres;
 
     const totalUsers = usersResult.error ? null : usersResult.data;
-    const totalRevenue = revenueResult.error ? null : revenueResult.data;
+    const revenue = (revenueResult.error || !revenueResult.data) ? null : allTimeRevenueByCurrency(revenueResult.data);
     if(usersResult.error) console.error('Narrava: admin_total_users failed', usersResult.error);
-    if(revenueResult.error) console.error('Narrava: admin_total_revenue failed', revenueResult.error);
+    if(revenueResult.error) console.error('Narrava: admin_revenue_overview failed', revenueResult.error);
 
-    document.getElementById('adminStatsRow').innerHTML = statsRowHtml(totalUsers, totalRevenue);
+    document.getElementById('adminStatsRow').innerHTML = statsRowHtml(totalUsers, revenue);
     renderSeriesPreview();
     populateUploadSeriesSelect();
   } catch(err){

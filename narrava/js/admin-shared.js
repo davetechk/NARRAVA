@@ -42,9 +42,26 @@ const ADMIN_NAV_ITEMS = [
   { page: 'system-settings', label: 'System Settings', href: 'system-settings.html', icon: ADMIN_ICONS.settings }
 ];
 
-function formatNaira(amount){
-  return '₦' + Number(amount || 0).toLocaleString('en-NG');
+// Money from admin_revenue_overview, which is in minor units (kobo / cents).
+// Used by the Revenue page and the Dashboard's revenue card, so both show
+// the same figure the same way. Naira and dollars are never converted.
+// ₦20,000 / ₦20,000.50 · $5.00
+function formatMinorAmount(minor, currency){
+  const n = Number(minor) || 0;
+  if(currency === 'USD'){
+    return '$' + (n / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  if(currency === 'NGN'){
+    const whole = n % 100 === 0;
+    return '₦' + (n / 100).toLocaleString('en-US', { minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: 2 });
+  }
+  // A currency this page doesn't know: shown raw rather than guessed at.
+  return escapeHtml(String(currency || '?')) + ' ' + n.toLocaleString('en-US') + ' (minor units)';
 }
+
+// The purchase types counted as revenue (Revenue page Overview and the
+// Dashboard card), so the two always add up the same rows.
+const REVENUE_PURCHASE_TYPES = ['coin_pack', 'subscription'];
 
 function adminInitialsFromEmail(email){
   const local = String(email || '').split('@')[0];

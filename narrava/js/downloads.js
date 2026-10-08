@@ -39,6 +39,17 @@
 //     stored in either place; the saved playlists are checked for that
 //     before the record is written.
 //
+// Downloads belong to the account that made them, not to the browser.
+// Each record carries ownerId (the signed-in account's user id) and its
+// files sit under offline/<ownerId>/<episodeId>/. Everything that reads
+// downloads — playback, the unlocked rule (coins.js), the Downloads
+// screen, the buttons, the offline start — sees only the current
+// account's (downloadedRecords). Who that is comes from the session
+// supabase-js has stored on this device, never the network, so it works
+// offline; nobody signed in, or a guest (anonymous) session, has none.
+// Another account's downloads stay on the device, hidden, until it signs
+// in again. Records from before this rule (no owner) are deleted.
+//
 // One download at a time; others queue. A failure (or a refusal) deletes
 // that episode's partial files and shows the honest reason. Files left
 // by a download that was interrupted (tab closed mid-way) have no record,
@@ -54,22 +65,82 @@ const DOWNLOAD_SPACE_MARGIN_BYTES = 20 * 1024 * 1024;
 const DOWNLOAD_LINK_TIMEOUT_MS = 20000;
 const DOWNLOAD_FILE_TIMEOUT_MS = 45000; // one segment, playlist or cover, body included
 
-const downloadedRecords = new Map(); // episodeId -> IndexedDB record (finished downloads only)
-const downloadJobs = new Map();      // episodeId -> { info, status: 'queued'|'downloading'|'failed', percent, error }
-const downloadQueue = [];            // episodeIds waiting their turn
+const allDownloadRecords = new Map(); // ownerId/episodeId -> IndexedDB record: every finished download on this device, any account
+const downloadedRecords = new Map();  // episodeId -> record: the signed-in account's own finished downloads only
+const downloadJobs = new Map();       // episodeId -> { info, ownerId, status: 'queued'|'downloading'|'failed', percent, error }
+const downloadQueue = [];             // episodeIds waiting their turn
 let activeDownloadId = null;
+let downloadOwnerId = null; // the signed-in, non-anonymous account's user id, or null
 
 class DownloadError extends Error {}
 
 // ---------- local URLs ----------
 
-// offline/<episodeId>/ next to index.html (inside the service worker's scope).
-function offlineBaseUrl(episodeId){
-  return new URL('offline/' + encodeURIComponent(episodeId) + '/', document.baseURI).href;
+// offline/<ownerId>/<episodeId>/ next to index.html (inside the service
+// worker's scope).
+function offlineBaseUrl(ownerId, episodeId){
+  return new URL('offline/' + encodeURIComponent(ownerId) + '/' + encodeURIComponent(episodeId) + '/', document.baseURI).href;
 }
 function offlineCoverUrl(record){
-  return record && record.hasCover ? offlineBaseUrl(record.episodeId) + 'cover' : '';
+  return record && record.hasCover ? offlineBaseUrl(record.ownerId, record.episodeId) + 'cover' : '';
 }
+function downloadRecordKey(ownerId, episodeId){
+  return ownerId + '/' + episodeId;
+}
+
+// ---------- whose downloads ----------
+
+// The user in the session supabase-js keeps in local storage, read
+// directly: getSession() first tries to refresh an expired access token
+// over the network, and offline that ends with no session at all.
+function storedSessionUser(){
+  try {
+    const key = supabaseClient.auth.storageKey || ('sb-' + new URL(SUPABASE_URL).hostname.split('.')[0] + '-auth-token');
+    const raw = localStorage.getItem(key);
+    const session = raw ? JSON.parse(raw) : null;
+    return (session && session.access_token && session.user) || null;
+  } catch(_err){
+    return null;
+  }
+}
+function downloadOwnerIdFor(user){
+  return (user && user.id && !user.is_anonymous) ? user.id : null;
+}
+
+// The current account's own records, picked from every record on the device.
+function rebuildOwnDownloads(){
+  downloadedRecords.clear();
+  if(!downloadOwnerId) return;
+  allDownloadRecords.forEach(r => { if(r.ownerId === downloadOwnerId) downloadedRecords.set(r.episodeId, r); });
+}
+
+function ownDownloadJobs(){
+  return [...downloadJobs.entries()].filter(([, job]) => downloadOwnerId && job.ownerId === downloadOwnerId);
+}
+
+// Signed in, out, or as someone else: show only that account's downloads.
+// Queued or failed downloads of the previous account are dropped; one
+// still running stops at its next step (assertDownloadOwner).
+function setDownloadOwner(ownerId){
+  if(ownerId === downloadOwnerId) return;
+  downloadOwnerId = ownerId;
+  rebuildOwnDownloads();
+  [...downloadJobs.entries()].forEach(([id, job]) => {
+    if(job.ownerId !== ownerId && id !== activeDownloadId) downloadJobs.delete(id);
+  });
+  for(let i = downloadQueue.length - 1; i >= 0; i--){
+    if(!downloadJobs.has(downloadQueue[i])) downloadQueue.splice(i, 1);
+  }
+  notifyDownloadsChanged();
+}
+
+// Sign in, sign out, account upgrade: supabase-js reports these locally.
+// INITIAL_SESSION is skipped: offline it can report no session (see
+// storedSessionUser); the stored session is read at load instead.
+supabaseClient.auth.onAuthStateChange((event, session) => {
+  if(event === 'INITIAL_SESSION') return;
+  setDownloadOwner(event === 'SIGNED_OUT' ? null : downloadOwnerIdFor(session && session.user));
+});
 
 // ---------- IndexedDB ----------
 
@@ -77,9 +148,21 @@ let downloadsDbPromise = null;
 function openDownloadsDb(){
   if(!downloadsDbPromise){
     downloadsDbPromise = new Promise((resolve, reject) => {
-      const req = indexedDB.open(DOWNLOADS_DB_NAME, 1);
-      req.onupgradeneeded = () => { req.result.createObjectStore(DOWNLOADS_STORE, { keyPath: 'episodeId' }); };
-      req.onsuccess = () => resolve(req.result);
+      const req = indexedDB.open(DOWNLOADS_DB_NAME, 2);
+      // Version 2 keys records by account and episode. Version 1 records
+      // had no owner: recreating the store deletes them, and their files
+      // (no record any more) are deleted by reconcileDownloadFiles.
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if(db.objectStoreNames.contains(DOWNLOADS_STORE)) db.deleteObjectStore(DOWNLOADS_STORE);
+        db.createObjectStore(DOWNLOADS_STORE, { keyPath: ['ownerId', 'episodeId'] });
+      };
+      req.onsuccess = () => {
+        // Another tab needs a newer version (an app update): let it have
+        // the database; this tab reopens it on its next read or write.
+        req.result.onversionchange = () => { req.result.close(); downloadsDbPromise = null; };
+        resolve(req.result);
+      };
       req.onerror = () => reject(req.error);
     });
     downloadsDbPromise.catch(() => { downloadsDbPromise = null; });
@@ -107,10 +190,12 @@ function downloadsDbRun(mode, makeRequest){
 const downloadsReady = loadDownloadRecords();
 
 async function loadDownloadRecords(){
+  downloadOwnerId = downloadOwnerIdFor(storedSessionUser());
   try {
     const rows = await downloadsDbRun('readonly', store => store.getAll());
-    downloadedRecords.clear();
-    (rows || []).forEach(r => downloadedRecords.set(r.episodeId, r));
+    allDownloadRecords.clear();
+    (rows || []).forEach(r => { if(r.ownerId) allDownloadRecords.set(downloadRecordKey(r.ownerId, r.episodeId), r); });
+    rebuildOwnDownloads();
     await reconcileDownloadFiles();
   } catch(err){
     console.error('Narrava: failed to read downloads', err);
@@ -123,9 +208,11 @@ async function loadDownloadRecords(){
   notifyDownloadsChanged();
 }
 
-// Deletes files with no finished record (an interrupted download), and
-// records whose playlist is gone (the browser cleared the cache but not
-// IndexedDB) — so the list only ever shows what can really play.
+// Deletes files with no finished record (an interrupted download, or one
+// saved before records had an owner), and records whose playlist is gone
+// (the browser cleared the cache but not IndexedDB) — so the list only
+// ever shows what can really play. Covers every account on the device:
+// other accounts' complete downloads are kept.
 async function reconcileDownloadFiles(){
   if(!('caches' in window)) return;
   const cache = await caches.open(DOWNLOADS_CACHE);
@@ -134,16 +221,20 @@ async function reconcileDownloadFiles(){
   const withFiles = new Set();
   await Promise.all(keys.map(req => {
     if(!req.url.startsWith(root)) return null;
-    const episodeId = decodeURIComponent(req.url.slice(root.length).split('/')[0]);
-    withFiles.add(episodeId);
-    if(downloadedRecords.has(episodeId) || downloadJobs.has(episodeId)) return null;
+    const parts = req.url.slice(root.length).split('/');
+    const ownerId = decodeURIComponent(parts[0]);
+    const episodeId = decodeURIComponent(parts[1] || '');
+    const key = downloadRecordKey(ownerId, episodeId);
+    withFiles.add(key);
+    const job = downloadJobs.get(episodeId);
+    if(allDownloadRecords.has(key) || (job && job.ownerId === ownerId)) return null;
     return cache.delete(req);
   }));
-  for(const [episodeId] of downloadedRecords){
-    const playlist = withFiles.has(episodeId) && await cache.match(offlineBaseUrl(episodeId) + 'master.m3u8');
+  for(const [key, record] of allDownloadRecords){
+    const playlist = withFiles.has(key) && await cache.match(offlineBaseUrl(record.ownerId, record.episodeId) + 'master.m3u8');
     if(!playlist){
-      console.warn('Narrava: a downloaded episode’s files are gone; removing it from Downloads', episodeId);
-      await removeDownload(episodeId, { quiet: true });
+      console.warn('Narrava: a downloaded episode’s files are gone; removing it from Downloads', record.episodeId);
+      await deleteDownloadRecord(record);
     }
   }
 }
@@ -158,14 +249,16 @@ function isEpisodeDownloaded(episodeId){
   return downloadedRecords.has(episodeId);
 }
 
-// The local master playlist for a downloaded episode, or null (not
-// downloaded, files missing, or no service worker controlling this page
-// yet — only the service worker can answer offline/… URLs).
+// The local master playlist for an episode the signed-in account
+// downloaded, or null (not downloaded by this account, files missing, or
+// no service worker controlling this page yet — only the service worker
+// can answer offline/… URLs).
 async function localPlaybackUrl(episodeId){
   await downloadsReady;
-  if(!downloadedRecords.has(episodeId)) return null;
+  const record = downloadedRecords.get(episodeId);
+  if(!record) return null;
   if(!('serviceWorker' in navigator) || !navigator.serviceWorker.controller) return null;
-  const url = offlineBaseUrl(episodeId) + 'master.m3u8';
+  const url = offlineBaseUrl(record.ownerId, episodeId) + 'master.m3u8';
   try {
     const cache = await caches.open(DOWNLOADS_CACHE);
     if(!(await cache.match(url))) return null;
@@ -283,6 +376,7 @@ async function requestDownloadLink(episodeId){
 // A fresh link (purpose 'download' again — the server decides again) if
 // Bunny starts refusing because the 30-minute link ran out mid-download.
 async function refreshDownloadAuth(job){
+  assertDownloadOwner(job);
   const fresh = await requestDownloadLink(job.info.episodeId);
   job.authQuery = new URL(fresh.playbackUrl).search;
 }
@@ -451,22 +545,31 @@ async function checkDownloadSpace(estimatedBytes){
   }
 }
 
-async function deleteDownloadFiles(episodeId){
+async function deleteDownloadFiles(ownerId, episodeId){
   if(!('caches' in window)) return;
   const cache = await caches.open(DOWNLOADS_CACHE);
-  const prefix = offlineBaseUrl(episodeId);
+  const prefix = offlineBaseUrl(ownerId, episodeId);
   const keys = await cache.keys();
   await Promise.all(keys.filter(req => req.url.startsWith(prefix)).map(req => cache.delete(req)));
 }
 
+// A download is for the account that started it. If someone else signs
+// in (or nobody is signed in any more), it stops at its next step and its
+// files are deleted.
+function assertDownloadOwner(job){
+  if(job.ownerId !== downloadOwnerId) throw new DownloadError('The account changed, so this download stopped.');
+}
+
 async function runDownload(job){
   const info = job.info;
-  const base = offlineBaseUrl(info.episodeId);
+  if(!job.ownerId) throw new DownloadError('Sign in to download episodes.');
+  const base = offlineBaseUrl(job.ownerId, info.episodeId);
   try {
     if(!('caches' in window) || !window.indexedDB) throw new DownloadError('This browser can’t keep downloads.');
     const cache = await caches.open(DOWNLOADS_CACHE);
-    await deleteDownloadFiles(info.episodeId); // leftovers from an earlier failed attempt
+    await deleteDownloadFiles(job.ownerId, info.episodeId); // leftovers from an earlier failed attempt
     await requestPersistentStorage();
+    assertDownloadOwner(job);
 
     const signed = await requestDownloadLink(info.episodeId);
     job.authQuery = new URL(signed.playbackUrl).search;
@@ -502,6 +605,7 @@ async function runDownload(job){
     let next = 0;
     const worker = async () => {
       while(next < entries.length){
+        assertDownloadOwner(job);
         const [remote, local] = entries[next++];
         const blob = await fetchFromBunny(job, new URL(remote, mediaUrl).href, 'blob');
         sizeBytes += blob.size;
@@ -542,7 +646,9 @@ async function runDownload(job){
     sizeBytes += localMedia.length + (localMaster ? localMaster.length : 0);
 
     // Last: the record that makes it a finished download.
+    assertDownloadOwner(job);
     const record = {
+      ownerId: job.ownerId,
       episodeId: info.episodeId,
       seriesId: info.seriesId,
       seriesTitle: info.seriesTitle,
@@ -558,9 +664,10 @@ async function runDownload(job){
       downloadedAt: new Date().toISOString()
     };
     await downloadsDbRun('readwrite', store => store.put(record));
-    downloadedRecords.set(record.episodeId, record);
+    allDownloadRecords.set(downloadRecordKey(record.ownerId, record.episodeId), record);
+    if(record.ownerId === downloadOwnerId) downloadedRecords.set(record.episodeId, record);
   } catch(err){
-    try { await deleteDownloadFiles(info.episodeId); } catch(cleanupErr){ console.error('Narrava: failed to clean up a failed download', cleanupErr); }
+    try { await deleteDownloadFiles(job.ownerId, info.episodeId); } catch(cleanupErr){ console.error('Narrava: failed to clean up a failed download', cleanupErr); }
     throw err;
   }
 }
@@ -569,12 +676,14 @@ async function runDownload(job){
 
 // info: { episodeId, seriesId, seriesTitle, seriesEpisodeCount,
 // freeEpisodeCount, episodeNumber, episodeTitle, bunnyVideoId,
-// durationSeconds, coverImageUrl } — ids and display details only.
+// durationSeconds, coverImageUrl } — ids and display details only. The
+// download is for the account signed in now (a guest's fails with "Sign
+// in to download episodes.").
 function startEpisodeDownload(info){
   if(!info || !info.episodeId || downloadedRecords.has(info.episodeId)) return;
   const existing = downloadJobs.get(info.episodeId);
-  if(existing && existing.status !== 'failed') return;
-  downloadJobs.set(info.episodeId, { info, status: 'queued', percent: 0, error: null });
+  if(existing && existing.ownerId === downloadOwnerId && existing.status !== 'failed') return;
+  downloadJobs.set(info.episodeId, { info, ownerId: downloadOwnerId, status: 'queued', percent: 0, error: null });
   downloadQueue.push(info.episodeId);
   notifyDownloadsChanged();
   if(activeDownloadId) showToast('Added to downloads — it starts after the current one');
@@ -593,34 +702,48 @@ async function pumpDownloadQueue(){
   notifyDownloadsChanged();
   try {
     await runDownload(job);
-    downloadJobs.delete(episodeId);
-    showToast('Episode ' + job.info.episodeNumber + ' downloaded');
+    if(downloadJobs.get(episodeId) === job) downloadJobs.delete(episodeId);
+    if(job.ownerId === downloadOwnerId) showToast('Episode ' + job.info.episodeNumber + ' downloaded');
   } catch(err){
     console.error('Narrava: download failed', err);
-    job.status = 'failed';
-    job.error = (err instanceof DownloadError) ? err.message : 'Something went wrong while saving the episode. Please try again.';
-    showToast('Download failed: ' + job.error);
+    if(job.ownerId && job.ownerId !== downloadOwnerId){
+      // Stopped because the account changed: not for whoever is signed in now.
+      if(downloadJobs.get(episodeId) === job) downloadJobs.delete(episodeId);
+    } else {
+      job.status = 'failed';
+      job.error = (err instanceof DownloadError) ? err.message : 'Something went wrong while saving the episode. Please try again.';
+      showToast('Download failed: ' + job.error);
+    }
   }
   activeDownloadId = null;
   notifyDownloadsChanged();
   pumpDownloadQueue();
 }
 
-async function removeDownload(episodeId, opts){
+// Any account's download: its record, then its files.
+async function deleteDownloadRecord(record){
   try {
-    await downloadsDbRun('readwrite', store => store.delete(episodeId));
+    await downloadsDbRun('readwrite', store => store.delete([record.ownerId, record.episodeId]));
   } catch(err){
     console.error('Narrava: failed to delete a download record', err);
   }
-  downloadedRecords.delete(episodeId);
-  try { await deleteDownloadFiles(episodeId); } catch(err){ console.error('Narrava: failed to delete download files', err); }
+  allDownloadRecords.delete(downloadRecordKey(record.ownerId, record.episodeId));
+  if(downloadedRecords.get(record.episodeId) === record) downloadedRecords.delete(record.episodeId);
+  try { await deleteDownloadFiles(record.ownerId, record.episodeId); } catch(err){ console.error('Narrava: failed to delete download files', err); }
+}
+
+// One of the signed-in account's downloads.
+async function removeDownload(episodeId, opts){
+  const record = downloadedRecords.get(episodeId);
+  if(record) await deleteDownloadRecord(record);
   if(!(opts && opts.quiet)) notifyDownloadsChanged();
 }
 
-// Finished downloads only — one still in progress carries on.
+// The signed-in account's finished downloads only — other accounts' stay
+// on the device, and one still in progress carries on.
 async function removeAllDownloads(){
   for(const episodeId of [...downloadedRecords.keys()]) await removeDownload(episodeId, { quiet: true });
-  [...downloadJobs.entries()].forEach(([id, job]) => { if(job.status === 'failed') downloadJobs.delete(id); });
+  ownDownloadJobs().forEach(([id, job]) => { if(job.status === 'failed') downloadJobs.delete(id); });
   notifyDownloadsChanged();
 }
 
@@ -645,7 +768,7 @@ const DOWNLOAD_ICONS = {
 function downloadStateFor(episodeId){
   if(downloadedRecords.has(episodeId)) return { state: 'downloaded' };
   const job = downloadJobs.get(episodeId);
-  if(job) return { state: job.status, percent: job.percent, error: job.error };
+  if(job && downloadOwnerId && job.ownerId === downloadOwnerId) return { state: job.status, percent: job.percent, error: job.error };
   return { state: 'none' };
 }
 
@@ -735,7 +858,7 @@ function openDownloadsScreen(){
 // anyone who already has downloads, or is offline and can't be checked);
 // Membership, with a line saying why, for everyone else.
 function openDownloadsFromProfile(){
-  if(hasActiveSubscription() || downloadedRecords.size || downloadJobs.size || appIsOffline()){
+  if(hasActiveSubscription() || downloadedRecords.size || ownDownloadJobs().length || appIsOffline()){
     openDownloadsScreen();
     return;
   }
@@ -786,7 +909,7 @@ function downloadJobRowHtml(episodeId, job){
 
 function renderDownloadsScreen(){
   const records = [...downloadedRecords.values()];
-  const jobs = [...downloadJobs.entries()];
+  const jobs = ownDownloadJobs();
   let html = '<div class="downloads-wrap">';
 
   if(appIsOffline()){

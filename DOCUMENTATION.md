@@ -427,6 +427,36 @@ hooks in `video-player.js`, `coins.js`, `feed-data.js`, `app.js`, `watch.js`, `p
 already downloaded stay watchable offline after the subscription ends. Downloads live only inside
 the app (browser storage), never as files in the phone's gallery or Downloads folder.
 
+**Downloads belong to the account that made them** (since 2026-10-08). Each record carries
+`ownerId`, the signed-in user's id, and only that account sees, plays or counts as unlocked its
+own downloads. This covers `localPlaybackUrl()`, `isEpisodeUnlocked` (`coins.js`), the Downloads
+list, its storage total and Delete all, the Download / Downloaded button state, the offline
+episode list (`feed-data.js`) and the offline Home count (`offline.js`). In `downloads.js`,
+`allDownloadRecords` holds every record on the device and `downloadedRecords` only the current
+account's; everything outside reads the second.
+- **Who is signed in** is read from the session supabase-js keeps in local storage
+  (`supabaseClient.auth.storageKey`), never the network, so it works offline. It deliberately
+  doesn't use `getSession()`: once the stored access token has expired (an hour after last use),
+  `getSession()` first tries to refresh it over the network, and offline that returns no session.
+  Sign in, sign out and account upgrades are followed through `onAuthStateChange` (local events).
+  Nobody signed in, or a guest (anonymous) session: no downloads.
+- **Another account's downloads are hidden, not deleted.** If B signs in where A downloaded, B sees
+  none of A's, can't play them and they don't unlock anything for B. They stay on the device and
+  come back when A signs in again. Signing out shows "No downloads yet" and deletes nothing.
+  Delete all removes only the current account's. The free-space check before a download still
+  counts everything on the device (`navigator.storage.estimate()`).
+- **A download is for the account that started it.** Starting one needs a signed-in, non-anonymous
+  account (a guest gets "Sign in to download episodes."). If the account changes mid-download, it
+  stops at its next file and its files are deleted. Queued or failed downloads of the previous
+  account are dropped.
+- **Older records** (made before this rule, with no owner) only existed on test machines. The
+  database moved to version 2, which recreates the store and so deletes them, and their files are
+  deleted on the same load because they have no record. Checked in Playwright: a version-1
+  database with one ownerless record and 5 files (3.07 MB) went to version 2, 0 records, 0 files,
+  0.07 MB.
+- The database connection closes itself when another tab needs a newer version
+  (`onversionchange`), so an app update in one tab isn't blocked by an older tab left open.
+
 **Who decides.** The server. Starting a download calls `bunny-signed-playback-url` with
 `{ episodeId, purpose: 'download' }`. It gives a link (valid 30 minutes) only to active
 subscribers and admins, and otherwise answers **403 "Downloads are for subscribers"**, which the
@@ -451,14 +481,16 @@ download at 97% before that limit existed). A 401/403 mid-download (the 30-minut
 asks the server for a fresh `purpose: 'download'` link once, which also re-checks the subscription.
 
 **Where it's kept.**
-- **Cache Storage, cache `narrava-offline-v1`**, under app-local URLs `offline/<episodeId>/…`
-  next to `index.html` (e.g. `/narrava/offline/<id>/`): `master.m3u8` (just the chosen
+- **Cache Storage, cache `narrava-offline-v1`**, under app-local URLs
+  `offline/<ownerId>/<episodeId>/…` next to `index.html` (e.g. `/narrava/offline/<user id>/<episode
+  id>/`; one folder per account, so two accounts can download the same episode): `master.m3u8` (just the chosen
   rendition), `video.m3u8` (the rendition rewritten to local names), `seg-00000.ts` …, and `cover`
   (the series cover, so Downloads shows it offline; optional — a cover that can't be fetched just
   shows a plain tile). References in the saved playlists are relative local names. Before saving,
   the playlists are checked for `token=`, `expires=`, a Bunny host or any absolute URL, and the
   download fails rather than save one that has any.
-- **IndexedDB `narrava-downloads`, store `episodes`** (key `episodeId`): series id and title, the
+- **IndexedDB `narrava-downloads`, store `episodes`**, database version 2 (key
+  `[ownerId, episodeId]`): the owner's user id, series id and title, the
   series' episode count and free-episode count, episode number and title, `bunny_video_id`,
   duration (from the playlist), size in bytes (the sum of what was saved), rendition, whether a
   cover was saved, and the date. No URLs and no tokens.
@@ -466,7 +498,8 @@ asks the server for a fresh `purpose: 'download'` link once, which also re-check
   never listed as complete. A failure deletes that episode's files and shows the reason (a toast,
   Retry on the button, a red line under "In progress"). Files with no record (the tab was closed
   mid-download) are deleted the next time the app starts, and a record whose playlist has vanished
-  from the cache is removed.
+  from the cache is removed. This clean-up covers every account's files; other accounts' complete
+  downloads are kept.
 - Before a download the app calls `navigator.storage.persist()` (if not already persisted), then
   reads `navigator.storage.estimate()` and refuses with a clear message if free space is under the
   episode's estimated size (rendition bandwidth × duration) + 10% + 20 MB. Measured: a 2½-minute
@@ -475,7 +508,8 @@ asks the server for a fresh `purpose: 'download'` link once, which also re-check
   downloads that were queued but not started.
 
 **Playing.** `sw.js` answers every `offline/…` request from `narrava-offline-v1`, or a 404 if
-it isn't there — never the network. A downloaded episode counts as unlocked (`isEpisodeUnlocked`,
+it isn't there — never the network. An episode the signed-in account downloaded counts as
+unlocked (`isEpisodeUnlocked`,
 `coins.js`), and `attachEpisodePlayback` plays its local playlist in the normal player — mobile
 feed (including preloading) and the desktop Watch page — with the same controls. Progress and
 views are saved as usual when online. Checked live: a downloaded episode played online with zero
@@ -495,15 +529,15 @@ of a fresh install), since only the worker can answer `offline/…`.
   connection." The screen shows total storage used, an "In progress" group, then downloads grouped
   by series (cover, series title, "Episode X", size, date). Tap to play; the bin icon deletes after
   a confirmation (the app's own modal, not `confirm()`); **Delete all** removes every finished
-  download. Empty state: "No downloads yet." Checked live: deleting one took the site's storage
+  download of the signed-in account (other accounts' stay). Empty state: "No downloads yet." Checked live: deleting one took the site's storage
   from 67.6 MB to 35.4 MB; Delete all from 61.2 MB to 4.7 MB, leaving no files or records.
 
 **Opening the app offline** (`offline.js`). The app used to need the server to start. Now
 `loadAppSettings()` (`app.js`) decides "offline" before anything else: `navigator.onLine` is
 false, or the settings request failed **and** a plain request to the Supabase URL can't get
 through. Then `init()` runs `startOfflineMode()` instead of the normal start: no anonymous
-sign-in, no coins / subscription / progress / series requests; the feed is built only from
-downloaded episodes; Home shows "You're offline" with **Go to Downloads** (Discover's own start
+sign-in, no coins / subscription / progress / series requests; the feed is built only from the
+episodes the signed-in account downloaded (none when signed out or a guest); Home shows "You're offline" with **Go to Downloads** (Discover's own start
 returns early); progress saves are skipped. The page itself loads because `sw.js` caches the app
 files and, since this change, the two CDN libraries the app can't start without (`supabase-js`,
 `hls.js`); an app file whose exact `?v=` was never cached falls back to the copy precached at
@@ -512,7 +546,13 @@ reloads into the normal start — at once if nothing is playing, otherwise when 
 player, with a "You're back online · Refresh" bar meanwhile. Checked live in Chrome with DevTools
 set to Offline (playback, an offline start, Downloads, playback after an offline start, and the
 automatic reload when the network came back), and in Playwright with `setOffline` at 1440px and
-390px.
+390px. Since downloads belong to an account, checked again in Playwright (installed Chrome, since
+Playwright's bundled Chromium can't decode H.264) at 1440px and 390px with a stored session whose
+access token had already expired. Offline, the owner saw 1 download (Home "You have 1 downloaded
+episode", Downloads 3.0 MB), and it played from the device (5.2 s / 5.5 s in, ready state 4).
+Another account's download on the same device stayed hidden, wasn't playable and didn't count as
+unlocked. Signed out or as a guest: "No downloads yet", 0 MB, with both accounts' 10 files still
+on the device.
 
 **App updates keep downloads.** The service worker's clean-up on activation deletes old
 `narrava-shell-*` caches only; `narrava-offline-v1` is never deleted there. Checked live:
@@ -529,8 +569,12 @@ both records in place.
 - **Storage space depends on the phone** and on the browser's quota for the site. The app checks
   the estimate before each download, but the browser can still refuse a write; that shows as a
   failed download.
-- **Downloads belong to the browser on that device, not to the account.** Someone else signing in
-  on the same browser sees and can play them; signing out doesn't remove them.
+- **Downloads belong to the account that made them, but hiding them isn't protection.** Another
+  account signed in on the same browser doesn't see or play them, and they don't unlock anything
+  for it. Signing out hides them without deleting them. The files are still in the site's Cache
+  Storage, though, and `sw.js` serves any `offline/…` path to a page that asks for it directly, so
+  someone with DevTools could open them, as in "Browser storage isn't DRM" above. Who is signed
+  in is read from local storage, so it is only as trustworthy as the device.
 - **Safari / iPhone playback of downloads is untested.** Where hls.js isn't supported (iOS before
   17.1) the app uses Safari's own HLS player, and Safari's media requests may not go through the
   service worker, so offline playback there may fail. Desktop Chrome was tested; no real phone was.

@@ -127,8 +127,9 @@ async function fetchSlides() {
 // (fetchSlides above only keeps each series' first episode, enough for
 // the browsing feed alone).
 //
-// Offline (or if the read fails), the series' downloaded episodes
-// (downloads.js) are returned instead, so they can still be played.
+// Offline (or if the read fails), the series' episodes the signed-in
+// account downloaded (downloads.js) are returned instead, so they can
+// still be played; none for a guest or nobody signed in.
 async function fetchEpisodesForSeries(seriesId) {
   if (appIsOffline()) return downloadedEpisodeRows(seriesId);
   try {

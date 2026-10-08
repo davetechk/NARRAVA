@@ -152,8 +152,10 @@ function notifyCoinsChanged(){
 
 // The one lock rule, used by both players and every episode grid.
 // freeEpisodeCount is the series' own free_episode_count. Free Mode is
-// app.js's appSettings, read at call time. An episode downloaded to this
-// device (downloads.js) is always watchable: it plays the local copy,
+// app.js's appSettings, read at call time. An episode the signed-in
+// account downloaded to this device (downloads.js — another account's
+// download, or one seen by a guest, doesn't count) is always watchable:
+// it plays the local copy,
 // with no signed URL, and stays watchable after a subscription ends —
 // only NEW downloads need one, and the server decides those.
 function isEpisodeUnlocked(freeEpisodeCount, ep){

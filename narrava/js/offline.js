@@ -7,8 +7,10 @@
 // sets appStartedOffline, and init() calls startOfflineMode() instead of
 // the normal start:
 //   - no anonymous sign-in, no coins/subscription/progress requests;
-//   - the feed is built only from downloaded episodes (downloads.js), so
-//     they play in the normal player, from the device;
+//   - the feed is built only from the episodes the signed-in account
+//     downloaded (downloads.js, read from the session stored on the
+//     device), so they play in the normal player, from the device;
+//     signed out or a guest, there are none;
 //   - Home shows "You're offline" with a button to Downloads.
 // sw.js keeps the app's own files and the two CDN libraries (supabase-js,
 // hls.js) cached, which is what lets the page load at all offline.

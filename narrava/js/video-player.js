@@ -112,14 +112,15 @@ function bunnyAuthorizedUrl(url, authQuery){
 // covers all of them — never a second retry/failure mechanism built
 // per caller.
 //
-// A downloaded episode (downloads.js) plays from this device instead:
-// its local playlist (offline/<episodeId>/master.m3u8, served by sw.js
+// An episode the signed-in account downloaded (downloads.js) plays from
+// this device instead: its local playlist
+// (offline/<ownerId>/<episodeId>/master.m3u8, served by sw.js
 // from the downloads cache) goes into the same player with the same
 // retries and the same failure signal, but with no signed URL, no token
 // and no auth refresh — online too, which saves data. Everything that
 // uses the returned controller stays the same.
 async function attachEpisodePlayback(videoEl, episodeId, onFailure){
-  const localUrl = await localPlaybackUrl(episodeId); // downloads.js — null unless downloaded
+  const localUrl = await localPlaybackUrl(episodeId); // downloads.js — null unless this account downloaded it
   const isLocal = !!localUrl;
   const signed = isLocal ? { playbackUrl: localUrl, expiresAt: null } : await fetchSignedPlaybackUrl(episodeId);
   if(!signed) return null;

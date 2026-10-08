@@ -42,7 +42,7 @@
 
 // The state object sitting on the current history entry:
 //   { narrava:true, screen, watching, sid, n }
-//   screen   'discover' | 'feed' | 'library' | 'profile' | 'history' | 'help' | 'watch'
+//   screen   'discover' | 'feed' | 'library' | 'profile' | 'history' | 'help' | 'membership' | 'downloads' | 'watch'
 //   watching true while inside a series on the feed screen
 //   sid      id of the series being watched (only used to reopen it if the
 //            browser's Forward button lands on this entry again)
@@ -95,6 +95,7 @@ function navBack(){
 // Topmost first. Each entry: is it open, and how to close it with the
 // overlay's own real close function.
 const NAV_OVERLAYS = [
+  { isOpen: () => downloadConfirmBackdrop.classList.contains('open'),                        close: () => closeDownloadConfirm() },
   { isOpen: () => authModalBackdrop.classList.contains('open'),                              close: () => closeAuthModal() },
   { isOpen: () => unlockModalBackdrop.classList.contains('open'),                            close: () => closeUnlockPrompt() },
   { isOpen: () => coinSheetBackdrop.classList.contains('open'),                              close: () => closeCoinSheet() },
@@ -157,6 +158,7 @@ async function navApply(target){
       else if(target.screen === 'profile') renderProfileScreen();
       else if(target.screen === 'history') renderHistoryScreen();
       else if(target.screen === 'membership') renderMembershipScreen();
+      else if(target.screen === 'downloads') renderDownloadsScreen();
     }
   } finally {
     navApplying = false;

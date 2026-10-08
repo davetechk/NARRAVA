@@ -81,6 +81,9 @@ function markEpisodeWatchedForInstallPrompt(positionSeconds){
 async function saveWatchProgress(episodeId, seriesId, positionSeconds){
   if(!episodeId || !seriesId) return;
   markEpisodeWatchedForInstallPrompt(positionSeconds);
+  // Offline (offline.js): nothing can reach the server, so don't try
+  // every 15 seconds while a downloaded episode plays.
+  if(appIsOffline()) return;
   const userId = await getSignedInUserId();
   if(!userId) return;
 

@@ -68,10 +68,19 @@ async function fetchSignedPlaybackUrl(episodeId){
 function narravaHlsXhrSetup(getAuthQuery){
   return function(xhr, url){
     if(url.indexOf('token=') === -1){
-      const sep = url.indexOf('?') === -1 ? '?' : '&';
-      xhr.open('GET', url + sep + getAuthQuery().slice(1), true);
+      xhr.open('GET', bunnyAuthorizedUrl(url, getAuthQuery()), true);
     }
   };
+}
+
+// The rule above as a plain function: `url` with the signed query
+// (authQuery, e.g. "?token=…&expires=…") put back on, unless it already
+// carries a token. downloads.js fetches every playlist and segment of a
+// download through this same rule.
+function bunnyAuthorizedUrl(url, authQuery){
+  if(url.indexOf('token=') !== -1 || !authQuery) return url;
+  const sep = url.indexOf('?') === -1 ? '?' : '&';
+  return url + sep + authQuery.replace(/^\?/, '');
 }
 
 // Wires a real episode's real signed HLS stream to a real <video>
@@ -102,11 +111,20 @@ function narravaHlsXhrSetup(getAuthQuery){
 // goes through this one function, so wiring the signal in here once
 // covers all of them — never a second retry/failure mechanism built
 // per caller.
+//
+// A downloaded episode (downloads.js) plays from this device instead:
+// its local playlist (offline/<episodeId>/master.m3u8, served by sw.js
+// from the downloads cache) goes into the same player with the same
+// retries and the same failure signal, but with no signed URL, no token
+// and no auth refresh — online too, which saves data. Everything that
+// uses the returned controller stays the same.
 async function attachEpisodePlayback(videoEl, episodeId, onFailure){
-  const signed = await fetchSignedPlaybackUrl(episodeId);
+  const localUrl = await localPlaybackUrl(episodeId); // downloads.js — null unless downloaded
+  const isLocal = !!localUrl;
+  const signed = isLocal ? { playbackUrl: localUrl, expiresAt: null } : await fetchSignedPlaybackUrl(episodeId);
   if(!signed) return null;
 
-  let authQuery = new URL(signed.playbackUrl).search;
+  let authQuery = isLocal ? '' : new URL(signed.playbackUrl).search;
   let refreshTimer = null;
   let retryTimer = null;
   let destroyed = false;
@@ -132,7 +150,7 @@ async function attachEpisodePlayback(videoEl, episodeId, onFailure){
   // paused state are captured first and restored once the new source
   // is actually ready, rather than silently restarting the episode.
   async function refreshAuth(){
-    if(destroyed) return;
+    if(destroyed || isLocal) return; // a local copy has no auth to refresh
     const fresh = await fetchSignedPlaybackUrl(episodeId);
     if(destroyed || !fresh) return; // episode no longer playable (e.g. lost its unlock) — nothing to recover into
     authQuery = new URL(fresh.playbackUrl).search;
@@ -151,6 +169,7 @@ async function attachEpisodePlayback(videoEl, episodeId, onFailure){
 
   function scheduleRefresh(expiresAt){
     if(refreshTimer) clearTimeout(refreshTimer);
+    if(isLocal) return;
     const msUntilExpiry = expiresAt * 1000 - Date.now();
     const delay = Math.max(msUntilExpiry - 30000, 5000);
     refreshTimer = setTimeout(refreshAuth, delay);
@@ -169,9 +188,9 @@ async function attachEpisodePlayback(videoEl, episodeId, onFailure){
   let hls = null;
   let onNativeVideoError = null;
   if(!usingNativeHls){
-    hls = new Hls({ xhrSetup: narravaHlsXhrSetup(() => authQuery) });
+    hls = new Hls(isLocal ? {} : { xhrSetup: narravaHlsXhrSetup(() => authQuery) });
     hls.on(Hls.Events.ERROR, (_evt, data) => {
-      const unauthorized = data && data.response && (data.response.code === 401 || data.response.code === 403);
+      const unauthorized = !isLocal && data && data.response && (data.response.code === 401 || data.response.code === 403);
       if(unauthorized){
         // A real request lost the race against expiry — refresh right
         // now instead of waiting for the proactive timer, then let
@@ -248,7 +267,7 @@ async function attachEpisodePlayback(videoEl, episodeId, onFailure){
     }
   }
 
-  return { hls, destroy };
+  return { hls, destroy, isLocal };
 }
 
 // ================= Real episode-view counting =================

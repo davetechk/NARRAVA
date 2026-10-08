@@ -739,6 +739,9 @@ async function initDiscover(){
   // a page that no longer exists.
   await appSettingsReady;
   if(appSettings.maintenance_mode_enabled) return;
+  // Opened with no connection: Home is the "You're offline" state
+  // (offline.js) — no skeletons, nothing to fetch.
+  if(appStartedOffline) return;
   applyVipSectionSetting();
 
   // Real loading state for Home's own real first wait — genres, the

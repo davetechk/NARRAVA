@@ -51,17 +51,30 @@ let appSettings = { free_mode_enabled: false, maintenance_mode_enabled: false, f
 let resolveAppSettingsReady;
 const appSettingsReady = new Promise(resolve => { resolveAppSettingsReady = resolve; });
 
+// True when this page load found no connection (see offline.js). Decided
+// here, before appSettingsReady resolves, so init() and initDiscover()
+// both know before they do anything. A failed settings read alone isn't
+// "offline" — only when the server can't be reached at all.
+let appStartedOffline = false;
+const APP_SETTINGS_TIMEOUT_MS = 10000;
+
 async function loadAppSettings(){
+  if(navigator.onLine === false){
+    appStartedOffline = true;
+    resolveAppSettingsReady();
+    return;
+  }
   try {
-    const { data, error } = await supabaseClient
+    const { data, error } = await withTimeout(supabaseClient
       .from('app_settings')
       .select('free_mode_enabled, maintenance_mode_enabled, featured_series_count, subscriptions_enabled, vip_section_enabled')
       .eq('id', true)
-      .single();
+      .single(), APP_SETTINGS_TIMEOUT_MS);
     if(error) throw error;
     if(data) appSettings = data;
   } catch(err){
     console.error('Narrava: failed to load app settings — falling back to safe defaults (nothing overridden)', err);
+    if(!(await serverReachable())) appStartedOffline = true; // offline.js
   }
   resolveAppSettingsReady();
 }
@@ -614,6 +627,7 @@ const libraryScreen = document.getElementById('libraryScreen');
 const historyScreen = document.getElementById('historyScreen');
 const helpScreen = document.getElementById('helpScreen');
 const membershipScreen = document.getElementById('membershipScreen');
+const downloadsScreen = document.getElementById('downloadsScreen');
 const profileScreen = document.getElementById('profileScreen');
 const watchScreen = document.getElementById('watchScreen');
 const navHome = document.getElementById('navHome');
@@ -727,7 +741,7 @@ updateMuteButton();
 // phone-frame presentation. Below the breakpoint neither class does
 // anything — mobile stays exactly as it was.
 // Which screen is showing ('discover' | 'feed' | 'library' | 'profile' |
-// 'history' | 'help' | 'watch'), kept by showScreen — nav.js reads it to keep the browser history
+// 'history' | 'help' | 'membership' | 'downloads' | 'watch'), kept by showScreen — nav.js reads it to keep the browser history
 // in step with real navigation.
 let activeScreenName = 'discover';
 
@@ -745,10 +759,11 @@ function showScreen(name){
   historyScreen.classList.toggle('screen-hidden', name !== 'history');
   helpScreen.classList.toggle('screen-hidden', name !== 'help');
   membershipScreen.classList.toggle('screen-hidden', name !== 'membership');
+  downloadsScreen.classList.toggle('screen-hidden', name !== 'downloads');
   watchScreen.classList.toggle('screen-hidden', name !== 'watch');
-  // History, Help & Feedback and Membership are reached from Profile, so
-  // Profile stays the highlighted tab.
-  const profileTabActive = name === 'profile' || name === 'history' || name === 'help' || name === 'membership';
+  // History, Help & Feedback, Membership and Downloads are reached from
+  // Profile, so Profile stays the highlighted tab.
+  const profileTabActive = name === 'profile' || name === 'history' || name === 'help' || name === 'membership' || name === 'downloads';
   navHome.classList.toggle('active', name === 'discover');
   navForYou.classList.toggle('active', name === 'feed');
   navLibrary.classList.toggle('active', name === 'library');
@@ -786,6 +801,10 @@ function showScreen(name){
 
   // Tell the browser this is a real navigation step (nav.js).
   navSync();
+
+  // Started offline and the connection is back: leaving the player
+  // finishes the switch to online (offline.js).
+  onScreenChangedForReconnect(name);
 }
 
 // Continue Watching: {series_id -> latest get_continue_watching row for
@@ -850,9 +869,13 @@ function setActiveEpisode(s, ep){
 // this opens the dedicated watch page (watch.js) instead of the mobile
 // swipe feed. matchesMedia mirrors the exact 900px breakpoint styles.css
 // uses everywhere else, not a separate cutoff.
-async function openSeriesInFeed(i){
+//
+// resumeOverride ({episode_id, position_seconds, exactEpisode}) opens a
+// chosen episode instead of the saved one — Downloads uses it to play the
+// episode that was tapped (exactEpisode: even with no saved position).
+async function openSeriesInFeed(i, resumeOverride){
   const slide = slides[i];
-  const resume = slide ? continueWatchingMap.get(slide.id) : null;
+  const resume = resumeOverride || (slide ? continueWatchingMap.get(slide.id) : null);
 
   if(window.matchMedia('(min-width: 900px)').matches){
     openWatchScreen(i, resume ? { episodeId: resume.episode_id, positionSeconds: resume.position_seconds } : null);
@@ -885,9 +908,9 @@ async function enterMobileWatching(i, resume){
 
   let targetEp = slide.episodes[0];
   let resumeSeconds = 0;
-  if(resume && resume.position_seconds > 0.5){
+  if(resume && (resume.position_seconds > 0.5 || resume.exactEpisode)){
     const resumeEp = slide.episodes.find(e => e.id === resume.episode_id);
-    if(resumeEp){ targetEp = resumeEp; resumeSeconds = resume.position_seconds; }
+    if(resumeEp){ targetEp = resumeEp; resumeSeconds = resume.position_seconds || 0; }
     // Saved episode no longer in this series' real list: targetEp stays
     // the real first episode, same honest fallback as no saved progress.
   }
@@ -1420,7 +1443,11 @@ function renderEmptyFeed(){
   // permanent-sounding message during what's actually just a real,
   // temporary wait on real data. The loading state replaces the title/
   // synopsis area for that wait instead.
-  if(slidesLoaded){
+  if(slidesLoaded && appStartedOffline){
+    titleEl.innerHTML = 'You’re offline';
+    synopsisEl.innerHTML = '';
+    synopsisEl.textContent = 'Episodes you download play here without a connection.';
+  } else if(slidesLoaded){
     titleEl.innerHTML = 'No series available right now';
     synopsisEl.innerHTML = '';
     synopsisEl.textContent = 'Please check back soon.';
@@ -1478,6 +1505,7 @@ function render(){
   }
 
   Array.from(pager.children).forEach((d,i)=>d.classList.toggle('active', i===idx));
+  refreshDownloadButtons(); // downloads.js: the rail's Download button follows the current episode
 }
 
 // Real like count + this viewer's own liked/saved state (social.js),
@@ -1921,6 +1949,12 @@ async function init(){
   // else in this function (or discover.js's own initDiscover, gated the
   // same real way) ever runs.
   await appSettingsReady;
+  // No connection: open on downloads only (offline.js) — no anonymous
+  // sign-in, nothing else from the server.
+  if(appStartedOffline){
+    await startOfflineMode();
+    return;
+  }
   if(appSettings.maintenance_mode_enabled){
     renderMaintenanceMode();
     return;

@@ -8,9 +8,11 @@
 //
 // Real rows: My Wallet (the real Nava Coins balance from coins.js) and
 // Top Up, which both open the real Get Coins sheet (coins.js); History
-// (its own screen, history.js); and Help & Feedback (help.js). The
-// membership banner, Earn Rewards, Gifts, Download (the row) and all four
-// feature tiles show the same "Coming soon" toast; Language keeps its own.
+// (its own screen, history.js); Download (the row and the tile: the
+// Downloads screen for subscribers, Membership for everyone else — see
+// openDownloadsFromProfile, downloads.js); and Help & Feedback (help.js).
+// Earn Rewards, Gifts and the other three feature tiles show the same
+// "Coming soon" toast; Language keeps its own.
 
 const profilePanel = document.getElementById('profilePanel');
 
@@ -166,10 +168,13 @@ function wireProfileRows(loggedIn){
   document.getElementById('membershipBanner').addEventListener('click', () => openMembershipScreen());
 
   // Not built yet — every one of these says so the same way.
-  ['rowRewards', 'rowGifts', 'rowDownload',
-   'featureOriginals', 'featureDailyCoins', 'featureDownload', 'featureHdQuality'].forEach(id => {
+  ['rowRewards', 'rowGifts',
+   'featureOriginals', 'featureDailyCoins', 'featureHdQuality'].forEach(id => {
     document.getElementById(id).addEventListener('click', () => showToast('Coming soon'));
   });
+
+  document.getElementById('rowDownload').addEventListener('click', openDownloadsFromProfile);
+  document.getElementById('featureDownload').addEventListener('click', openDownloadsFromProfile);
 
   document.getElementById('rowHistory').addEventListener('click', () => {
     showScreen('history');

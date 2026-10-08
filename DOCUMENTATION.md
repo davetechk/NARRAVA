@@ -35,7 +35,9 @@ Nava Coins are real too: the balance, episode locks, unlocking with 1 coin, buyi
 through Paystack, and the 5-coin welcome bonus. So are subscriptions (weekly / monthly / yearly
 through Paystack, see [Membership and VIP](#membership-and-vip)) and the VIP tab for yearly members. See
 [Nava Coins](#nava-coins-balance-locks-unlocking-buying). The server decides all of it; the app only
-displays it. See [Not built yet](#not-built-yet) for what still doesn't exist.
+displays it. Subscribers can download episodes to watch offline, and the app opens with no
+connection to play them (see [Downloads and offline](#downloads-and-offline)). See
+[Not built yet](#not-built-yet) for what still doesn't exist.
 
 ## How the pieces fit
 
@@ -125,7 +127,11 @@ Browser (static files in narrava/)          Supabase                       Bunny
   PNGs (`icon-180.png`, `icon-192.png`, `icon-512.png`, `icon-triangle.png`) are regenerated
   renders of this same file at fixed sizes, not independent artwork; if the logo's colors change
   again, regenerate those PNGs from it rather than hand-editing them.
-- **`narrava/sw.js`, `manifest.json`, `img/`**: the installable-app pieces.
+- **`narrava/sw.js`, `manifest.json`, `img/`**: the installable-app pieces. `sw.js` also serves
+  offline downloads and lets the app open with no connection (see
+  [Downloads and offline](#downloads-and-offline)).
+- **`js/downloads.js`, `js/offline.js`**: offline downloads for subscribers and the offline start
+  (same section).
 - **`js/config.js`**: the Supabase URL and the *anon* (public) key. These are meant to be in the
   browser; what the key can actually do is decided by database policies. A service-role key must
   never be added anywhere in this repo.
@@ -239,11 +245,12 @@ screen too, reached from Profile (Profile stays the highlighted tab while it's o
 - **Profile** (`profile.js`): log in / sign out, username, install-app button, My Wallet (the
   real Nava Coins balance; it and Top Up open the Get Coins sheet, see Nava Coins below), the
   Narrava Membership banner (opens the Membership screen), a gold VIP badge beside your own name
-  when you're a yearly member, History and Help & Feedback (above), and an Admin Panel link that
-  only appears if you're an admin. Earn Rewards, Gifts, the Download row, and all four feature tiles
-  (Originals, Daily Coins, Download, HD Quality — each a real `<button>` reset to look exactly like
-  the old `<div>` tiles) show the same "Coming soon" toast, as does tapping a VIP poster on Home.
-  Language keeps its own toast.
+  when you're a yearly member, History and Help & Feedback (above), the Download row and tile
+  (the Downloads screen, see [Downloads and offline](#downloads-and-offline)), and an Admin Panel
+  link that only appears if you're an admin. Earn Rewards, Gifts and the other three feature tiles
+  (Originals, Daily Coins, HD Quality — each a real `<button>` reset to look exactly like the old
+  `<div>` tiles) show the same "Coming soon" toast, as does tapping a VIP poster on Home. Language
+  keeps its own toast.
 - **Watch page (desktop only)** (`watch.js`): video, breadcrumb, like/save/share/comments, and
   a numbered episode grid.
 
@@ -372,6 +379,11 @@ Videos are stored and encoded on Bunny Stream. The `episodes` table stores each 
 4. **A refusal is final.** If the function says no, the code never falls back to another URL.
 5. If loading fails, it retries up to 3 times with 1s / 2s / 4s waits, then shows a "couldn't
    load, retry" state.
+6. **A downloaded episode plays from the device instead** (online too, which saves data):
+   `attachEpisodePlayback` asks `localPlaybackUrl()` (`downloads.js`) first, and if there's a
+   local copy it gives hls.js `offline/<episodeId>/master.m3u8` — no signing call, no token, no
+   auth refresh — with the same retries, controls, progress saving and view counting. See
+   [Downloads and offline](#downloads-and-offline).
 
 On the mobile feed, the *next* episode is quietly loaded off-screen while you watch the current
 one, so a swipe usually lands on something already buffered. At most one preload runs at a time.
@@ -403,6 +415,128 @@ per episode per day, which is a separate, server-side rule this front end doesn'
 about. Fire and forget: never awaited in a way that could delay playback, and a failure only ever
 reaches the console. Only the episode id is ever sent — never a user id, series id, or a count
 computed in the browser.
+
+## Downloads and offline
+
+Built 2026-10-07. Files: `js/downloads.js` (store, queue, buttons, Downloads screen),
+`js/offline.js` (opening the app with no connection), `sw.js` (serving downloads), plus small
+hooks in `video-player.js`, `coins.js`, `feed-data.js`, `app.js`, `watch.js`, `profile.js`,
+`membership.js`, `nav.js`, `discover.js` and `watch-progress.js`.
+
+**The rule (agreed with the client).** Only active subscribers can *start* a download. Episodes
+already downloaded stay watchable offline after the subscription ends. Downloads live only inside
+the app (browser storage), never as files in the phone's gallery or Downloads folder.
+
+**Who decides.** The server. Starting a download calls `bunny-signed-playback-url` with
+`{ episodeId, purpose: 'download' }`. It gives a link (valid 30 minutes) only to active
+subscribers and admins, and otherwise answers **403 "Downloads are for subscribers"**, which the
+app shows as the failure reason. `can_download_episode(p_episode_id)` gives the same yes/no; the
+app doesn't need it. The browser only decides whether to *draw* the button
+(`hasActiveSubscription()`, from `my_subscription()`); it never decides whether a download may
+happen. Checked live: a non-subscriber account forcing a `purpose: 'download'` request got 403,
+and forcing the app's own download function produced that error and left no files.
+
+**How a download is fetched — exactly like streaming.** The signed URL is a Bunny *master*
+playlist (`/<video guid>/playlist.m3u8?token=…&expires=…`). The master lists one sub-playlist per
+rendition by relative path (`<rendition>/video.m3u8`; checked live: 360x640, 480x854, 720x1280,
+198x352). Each sub-playlist lists `.ts` segments by relative path (`video0.ts` …, 4 seconds each,
+VOD, no keys or init segments today). Relative resolution drops the query string, and Bunny
+refuses (403) every sub-playlist and segment without the token, so the same token query is put
+back on every request — `bunnyAuthorizedUrl()` in `video-player.js`, the same rule hls.js's
+`xhrSetup` uses for streaming. The download keeps **one rendition**: short side 720 (720p), else
+the highest below it, else the lowest above it. It then fetches that rendition's playlist and
+every file it lists (segments, plus any `#EXT-X-KEY` / `#EXT-X-MAP` file if a playlist ever has
+one), three at a time, each with a 45-second limit and two retries (a stalled request once held a
+download at 97% before that limit existed). A 401/403 mid-download (the 30-minute link ran out)
+asks the server for a fresh `purpose: 'download'` link once, which also re-checks the subscription.
+
+**Where it's kept.**
+- **Cache Storage, cache `narrava-offline-v1`**, under app-local URLs `offline/<episodeId>/…`
+  next to `index.html` (e.g. `/narrava/offline/<id>/`): `master.m3u8` (just the chosen
+  rendition), `video.m3u8` (the rendition rewritten to local names), `seg-00000.ts` …, and `cover`
+  (the series cover, so Downloads shows it offline; optional — a cover that can't be fetched just
+  shows a plain tile). References in the saved playlists are relative local names. Before saving,
+  the playlists are checked for `token=`, `expires=`, a Bunny host or any absolute URL, and the
+  download fails rather than save one that has any.
+- **IndexedDB `narrava-downloads`, store `episodes`** (key `episodeId`): series id and title, the
+  series' episode count and free-episode count, episode number and title, `bunny_video_id`,
+  duration (from the playlist), size in bytes (the sum of what was saved), rendition, whether a
+  cover was saved, and the date. No URLs and no tokens.
+- The IndexedDB record is written **last**, after every file is in the cache, so a half-download is
+  never listed as complete. A failure deletes that episode's files and shows the reason (a toast,
+  Retry on the button, a red line under "In progress"). Files with no record (the tab was closed
+  mid-download) are deleted the next time the app starts, and a record whose playlist has vanished
+  from the cache is removed.
+- Before a download the app calls `navigator.storage.persist()` (if not already persisted), then
+  reads `navigator.storage.estimate()` and refuses with a clear message if free space is under the
+  episode's estimated size (rendition bandwidth × duration) + 10% + 20 MB. Measured: a 2½-minute
+  720p episode is about 26–46 MB.
+- One download at a time; others wait in a queue. The queue lives in memory, so a reload drops
+  downloads that were queued but not started.
+
+**Playing.** `sw.js` answers every `offline/…` request from `narrava-offline-v1`, or a 404 if
+it isn't there — never the network. A downloaded episode counts as unlocked (`isEpisodeUnlocked`,
+`coins.js`), and `attachEpisodePlayback` plays its local playlist in the normal player — mobile
+feed (including preloading) and the desktop Watch page — with the same controls. Progress and
+views are saved as usual when online. Checked live: a downloaded episode played online with zero
+Bunny requests and zero signing calls, and saved its position (paused at 40 s; the server had
+40 s). The local copy is used only once a service worker controls the page (from the second load
+of a fresh install), since only the worker can answer `offline/…`.
+
+**Where it shows.**
+- **Download action** under Save, on the mobile feed rail (`#downloadBtn`) and the desktop Watch
+  page (`#watchDownloadBtn`), only for active subscribers. States: Download → Queued / NN% →
+  Downloaded (tap opens Downloads), or Retry after a failure. A former subscriber no longer sees
+  it but keeps their downloads.
+- **Downloads screen** (`#downloadsScreen`, built like History; Profile stays highlighted), from
+  the Profile Download row and tile. It opens for active subscribers, for anyone who already has
+  downloads (or one in progress), and when offline. Everyone else goes to **Membership** with the
+  line "Downloads are for subscribers. Subscribe to save episodes and watch them without a
+  connection." The screen shows total storage used, an "In progress" group, then downloads grouped
+  by series (cover, series title, "Episode X", size, date). Tap to play; the bin icon deletes after
+  a confirmation (the app's own modal, not `confirm()`); **Delete all** removes every finished
+  download. Empty state: "No downloads yet." Checked live: deleting one took the site's storage
+  from 67.6 MB to 35.4 MB; Delete all from 61.2 MB to 4.7 MB, leaving no files or records.
+
+**Opening the app offline** (`offline.js`). The app used to need the server to start. Now
+`loadAppSettings()` (`app.js`) decides "offline" before anything else: `navigator.onLine` is
+false, or the settings request failed **and** a plain request to the Supabase URL can't get
+through. Then `init()` runs `startOfflineMode()` instead of the normal start: no anonymous
+sign-in, no coins / subscription / progress / series requests; the feed is built only from
+downloaded episodes; Home shows "You're offline" with **Go to Downloads** (Discover's own start
+returns early); progress saves are skipped. The page itself loads because `sw.js` caches the app
+files and, since this change, the two CDN libraries the app can't start without (`supabase-js`,
+`hls.js`); an app file whose exact `?v=` was never cached falls back to the copy precached at
+install. When the connection comes back (the `online` event, or a check every 20 s), the app
+reloads into the normal start — at once if nothing is playing, otherwise when you leave the
+player, with a "You're back online · Refresh" bar meanwhile. Checked live in Chrome with DevTools
+set to Offline (playback, an offline start, Downloads, playback after an offline start, and the
+automatic reload when the network came back), and in Playwright with `setOffline` at 1440px and
+390px.
+
+**App updates keep downloads.** The service worker's clean-up on activation deletes old
+`narrava-shell-*` caches only; `narrava-offline-v1` is never deleted there. Checked live:
+changing `CACHE_NAME` (v33 → v34) deleted the old shell cache and left all 81 downloaded files and
+both records in place.
+
+**Honest limits.**
+- **Browser storage isn't DRM.** The segments are ordinary video files in Cache Storage; a
+  technical person with access to the device can copy them out. Bunny's token protects streaming
+  and downloading, not what's already on a device.
+- **iPhones and Safari may clear website storage** if the app isn't opened for a long time, even
+  after `persist()` (which is only a request the browser may ignore). Downloads then disappear
+  from the list (the app removes records whose files are gone).
+- **Storage space depends on the phone** and on the browser's quota for the site. The app checks
+  the estimate before each download, but the browser can still refuse a write; that shows as a
+  failed download.
+- **Downloads belong to the browser on that device, not to the account.** Someone else signing in
+  on the same browser sees and can play them; signing out doesn't remove them.
+- **Safari / iPhone playback of downloads is untested.** Where hls.js isn't supported (iOS before
+  17.1) the app uses Safari's own HLS player, and Safari's media requests may not go through the
+  service worker, so offline playback there may fail. Desktop Chrome was tested; no real phone was.
+- The download icon follows `my_subscription()` as the app last loaded it. If a subscription ends
+  while the app is open, the icon goes at the next refresh of that state (the app already
+  re-checks at `ends_at` and whenever it returns to the foreground).
 
 ## Nava Coins: balance, locks, unlocking, buying
 
@@ -582,7 +716,9 @@ were deliberately not changed by this work.
 ## Membership and VIP
 
 **Membership screen** (`membership.js`, `#membershipScreen`). Opened from Profile's "Narrava
-Membership" banner or the VIP tab's "Get yearly". It's built like History and Help & Feedback (same
+Membership" banner or the VIP tab's "Get yearly" — and, for someone who isn't subscribed, from
+Profile's Download row/tile, which adds the line "Downloads are for subscribers…" at the top
+(`openMembershipScreen('downloads')`; see [Downloads and offline](#downloads-and-offline)). It's built like History and Help & Feedback (same
 `.library` shell, header and back arrow), Profile stays the highlighted tab, and Back returns to
 where it was opened from. Everything on it comes from the server and is re-read each time it opens:
 the plans (`subscription_plans`, active, sorted by `sort_order`), the Subscription Payments switch
@@ -1001,14 +1137,16 @@ Home Screen web apps use an opaque status bar in some situations; either way `bl
 
 **1. The service worker can keep serving old files after you deploy.** `sw.js` answers requests
 for the app's own files from its cache first and only goes to the network when it has nothing
-cached. The cache name is currently `narrava-shell-v32` and old caches are deleted only when the name
+cached. The cache name is currently `narrava-shell-v37` and old caches are deleted only when the name
 *changes*. So after changing any app file, people who have already visited can keep getting the
 old version. **Bump `CACHE_NAME` in `sw.js` whenever you ship a change.** The service worker's
 scope is the whole `narrava/` folder, so this affects the **admin pages too**, not only the
 consumer app. (Read from the code, not tested against a live deployment.) The `?v=` numbers on
 some script tags in `index.html` are a manual cache-busting habit and don't replace this.
 `sw.js`'s precache list is also hand-maintained; it doesn't include `visit-log.js`, and a new
-script won't be listed unless added (`coins.js` and `ads.js` are). **Testing locally with VS Code Live Server:**
+script won't be listed unless added (`coins.js`, `ads.js`, `offline.js` and `downloads.js` are, as
+are the `supabase-js` and `hls.js` CDN files). The clean-up keeps `narrava-offline-v1` (downloads)
+on purpose — don't rename it casually: a new name orphans everyone's existing downloads. **Testing locally with VS Code Live Server:**
 Live Server reloads the page every time a file is saved, and the service worker then caches whatever
 it fetched under the new `?v=` number, which can be a half-edited file. If a change seems to be
 missing, clear the site's caches (DevTools → Application → Clear storage) and reload.
@@ -1102,6 +1240,9 @@ coin_transaction_id; own rows readable) ·
 `purchases` (own rows readable; `paystack_reference`, `item_id`, `currency`, `status` =
 pending / completed / failed / refunding / refunded / refund_failed).
 
+**Download function:** `can_download_episode(p_episode_id)` (yes/no; not called by the app — the
+signing function's `purpose: 'download'` answer is what counts).
+
 **Coins functions:** `my_subscription` (plan_id, plan_name, ends_at, is_vip, or no rows),
 `unlock_episode_with_coin(p_episode_id)` and
 `claim_welcome_bonus` (both return `{ status, balance }`), and `can_watch_episode(p_episode_id)`
@@ -1137,9 +1278,8 @@ Do not describe any of this as working.
   listed until they're agreed.
 - **Ad earnings.** The Revenue page counts ad views and ad unlocks, but not money from ads; that
   lives in Google Ad Manager.
-- **Earn Rewards, Gifts, Download, Language, and the Originals / Daily Coins /
-  Download / HD Quality tiles:** only show a toast.
+- **Earn Rewards, Gifts, Language, and the Originals / Daily Coins / HD Quality tiles:** only
+  show a toast.
 - **VIP posters** only show a "Coming soon" toast.
-- **Download as a feature** — there's no download button on the like/comment/save/share row.
 - **Stored episode durations.** `episodes.duration_seconds` is never written; the length shown on
   the scrub bar is read live from the video once it loads, not from the database.

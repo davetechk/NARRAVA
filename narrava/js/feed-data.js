@@ -126,7 +126,11 @@ async function fetchSlides() {
 // mobile swipe feed once a series actually enters its watching state
 // (fetchSlides above only keeps each series' first episode, enough for
 // the browsing feed alone).
+//
+// Offline (or if the read fails), the series' downloaded episodes
+// (downloads.js) are returned instead, so they can still be played.
 async function fetchEpisodesForSeries(seriesId) {
+  if (appIsOffline()) return downloadedEpisodeRows(seriesId);
   try {
     const { data, error } = await supabaseClient
       .from('episodes')
@@ -137,7 +141,7 @@ async function fetchEpisodesForSeries(seriesId) {
     return data || [];
   } catch (err) {
     console.error('Narrava: failed to load episodes for series', err);
-    return [];
+    return downloadedEpisodeRows(seriesId);
   }
 }
 

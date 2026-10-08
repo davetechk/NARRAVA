@@ -19,8 +19,16 @@ const membershipBackBtn = document.getElementById('membershipBackBtn');
 let membershipPlans = [];
 let subscriptionsEnabled = false;
 let membershipState = 'idle'; // 'loading' | 'ready' | 'failed'
+let membershipReason = null;   // 'downloads' when sent here by a Download button/row (downloads.js)
 
-function openMembershipScreen(){
+const MEMBERSHIP_REASON_LINES = {
+  downloads: 'Downloads are for subscribers. Subscribe to save episodes and watch them without a connection.'
+};
+
+// reason (optional): why this person was sent here, shown as one line at
+// the top. Opening it any other way clears it.
+function openMembershipScreen(reason){
+  membershipReason = MEMBERSHIP_REASON_LINES[reason] ? reason : null;
   clearFinishedPurchase();
   showScreen('membership');
   renderMembershipScreen();
@@ -97,7 +105,9 @@ function paintMembership(){
   const busy = purchaseInProgress();
   const buttonLabel = subscriptionsEnabled ? (subscribed ? 'Extend' : 'Subscribe') : null;
 
-  let html = '<div class="membership-wrap">' + membershipStatusHtml();
+  let html = '<div class="membership-wrap">' +
+    (membershipReason && !subscribed ? '<div class="coin-status warn membership-reason">' + MEMBERSHIP_REASON_LINES[membershipReason] + '</div>' : '') +
+    membershipStatusHtml();
   html += '<h3 class="membership-heading">' + (subscribed ? 'Extend your membership' : 'Choose a plan') + '</h3>';
   if(!subscriptionsEnabled){
     html += '<div class="coin-status warn">Subscriptions aren’t available yet.</div>';

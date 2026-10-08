@@ -1474,6 +1474,121 @@
   }
   .history-ep{margin-top:4px;font-size:12px;font-weight:600;color:var(--leaf-light);}
   .history-date{flex-shrink:0;font-size:11.5px;color:var(--muted);}
+  /* Downloads screen (downloads.js): History's row look, grouped by
+     series, with a delete button beside each row. */
+  .downloads-wrap{max-width:720px;}
+  .downloads-offline-note{
+    display:flex;align-items:center;gap:10px;
+    margin-bottom:14px;padding:10px 12px;
+    border-radius:12px;
+    background:rgba(232,184,92,0.1);border:1px solid rgba(232,184,92,0.4);
+    color:var(--gold);font-size:12.5px;font-weight:700;
+  }
+  .downloads-offline-note svg{width:18px;height:18px;flex-shrink:0;}
+  .downloads-summary{
+    display:flex;align-items:center;justify-content:space-between;gap:12px;
+    padding:14px 16px;margin-bottom:18px;
+    background:rgba(255,255,255,0.03);
+    border:1px solid rgba(255,255,255,0.06);
+    border-radius:12px;
+  }
+  .downloads-summary-label{font-size:11.5px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;}
+  .downloads-summary-value{margin-top:4px;font-size:20px;font-weight:800;color:var(--text);}
+  .downloads-summary-sub{margin-top:2px;font-size:11.5px;color:var(--muted);}
+  .downloads-summary .downloads-delete-all{margin-top:0;flex-shrink:0;}
+  .downloads-group{margin-bottom:18px;}
+  .downloads-group-title{
+    margin:0 0 8px;
+    font-size:13px;font-weight:800;color:var(--text);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .download-row{
+    display:flex;align-items:center;gap:6px;
+    padding:8px;
+    background:rgba(255,255,255,0.03);
+    border:1px solid rgba(255,255,255,0.06);
+    border-radius:12px;
+  }
+  .download-play{
+    flex:1;min-width:0;
+    display:flex;align-items:center;gap:12px;
+    background:none;border:none;padding:0;
+    color:var(--text);text-align:left;
+    font-family:inherit;cursor:pointer;
+  }
+  div.download-play{cursor:default;}
+  .download-meta{margin-top:4px;font-size:11.5px;color:var(--muted);}
+  .download-job.failed .download-meta{color:#F2A0A0;white-space:normal;}
+  .download-progress{
+    margin-top:8px;height:4px;border-radius:2px;
+    background:rgba(255,255,255,0.1);overflow:hidden;
+  }
+  .download-progress span{display:block;height:100%;background:var(--leaf);transition:width 0.3s ease;}
+  .download-delete{
+    flex-shrink:0;
+    width:44px;height:44px;
+    display:flex;align-items:center;justify-content:center;
+    background:none;border:none;border-radius:50%;
+    color:var(--muted);cursor:pointer;
+  }
+  .download-delete:hover{color:#F2A0A0;}
+  .download-delete svg{width:20px;height:20px;}
+  .download-job-actions{display:flex;align-items:center;gap:4px;flex-shrink:0;}
+  .download-job-actions .download-retry{margin-top:0;padding:8px 14px;}
+  .auth-submit.download-confirm-delete{background:#E07070;}
+  .auth-submit.download-confirm-delete:active:not(:disabled){background:#C85A5A;}
+  /* The Download action (feed rail + Watch page). hidden must win over
+     the buttons' own display:flex. */
+  .raction[hidden], .watch-action[hidden]{display:none !important;}
+  .raction-download[data-state="downloaded"] svg{stroke:var(--leaf-light);}
+  .raction-download[data-state="downloading"] svg,
+  .raction-download[data-state="queued"] svg,
+  .watch-action-download[data-state="downloading"] svg,
+  .watch-action-download[data-state="queued"] svg{animation:downloadPulse 1.2s ease-in-out infinite;}
+  .raction-download[data-state="failed"] svg{stroke:#F2A0A0;}
+  @keyframes downloadPulse{0%,100%{opacity:1;}50%{opacity:0.45;}}
+  @media (prefers-reduced-motion: reduce){
+    .raction-download svg, .watch-action-download svg{animation:none !important;}
+  }
+  .downloaded-art-blank{width:100%;height:100%;background:var(--panel-2);}
+  /* Opened with no connection (offline.js): Home shows only this. */
+  body.app-offline .discover-hero,
+  body.app-offline .discover-shelves,
+  body.app-offline .shelf-back-btn,
+  body.app-offline .discover-tabs,
+  body.app-offline .discover-body,
+  body.app-offline .discover-header,
+  body.app-offline .cw-float{display:none !important;}
+  .offline-home{display:none;}
+  body.app-offline .offline-home{
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;
+    min-height:60vh;padding:40px 24px;
+  }
+  .offline-home-icon{
+    width:64px;height:64px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    background:rgba(232,184,92,0.12);color:var(--gold);
+  }
+  .offline-home-icon svg{width:32px;height:32px;}
+  .offline-home-title{margin:16px 0 0;font-size:22px;font-weight:800;color:var(--text);}
+  .offline-home-text{margin:8px 0 0;max-width:320px;font-size:13.5px;line-height:1.5;color:var(--muted);}
+  .reconnect-bar{
+    position:fixed;left:50%;top:calc(12px + env(safe-area-inset-top, 0px));
+    transform:translateX(-50%);
+    z-index:9000;
+    display:flex;align-items:center;gap:12px;
+    padding:8px 8px 8px 16px;border-radius:24px;
+    background:var(--panel-2);border:1px solid rgba(255,255,255,0.12);
+    color:var(--text);font-size:13px;font-weight:700;
+    box-shadow:0 8px 24px rgba(0,0,0,0.4);
+  }
+  .reconnect-bar button{
+    background:var(--leaf);color:#0D130E;border:none;
+    font-family:'Montserrat',sans-serif;font-weight:800;font-size:12.5px;
+    padding:7px 14px;border-radius:18px;cursor:pointer;
+  }
+  .membership-reason{margin-bottom:14px;}
   /* Help & Feedback screen (help.js): the Profile menu's own cards and
      rows (.profile-menu/.profile-row), in the History shell. Contact
      and About are cards with their details shown in place. */

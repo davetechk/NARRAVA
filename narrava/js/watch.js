@@ -92,6 +92,7 @@ function stopWatchPlayback(){
   watchPlaybackCtl = null;
   watchActiveEpisodeId = null;
   closeWatchComments();
+  refreshDownloadButtons(); // downloads.js
 }
 
 // Reads the real position straight off the real <video> element (never
@@ -169,6 +170,7 @@ async function watchPlayEpisode(ep, resumeSeconds){
   watchBreadcrumbEl.innerHTML = 'Home / ' + escapeWatchHtml(watchSlide.title) + ' / <span>Episode ' + ep.episode_number + '</span>';
   watchTitleEl.textContent = ep.title ? ('Ep ' + ep.episode_number + ': ' + ep.title) : ('Episode ' + ep.episode_number);
   renderWatchEpisodes();
+  refreshDownloadButtons(); // downloads.js: the Download action follows the playing episode
 
   const ctl = await attachEpisodePlayback(video, episodeId, () => {
     // Every real bounded retry (video-player.js) has now genuinely been

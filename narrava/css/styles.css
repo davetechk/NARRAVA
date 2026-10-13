@@ -2112,6 +2112,19 @@
     color:var(--muted);
     margin-top:16px;
   }
+  /* Forgot password (auth.js): the link under Log In's password field,
+     and the line explaining the reset request view. */
+  .auth-forgot{
+    display:flex;
+    justify-content:flex-end;
+    margin:-6px 0 14px;
+  }
+  .auth-hint{
+    font-size:12.5px;
+    line-height:1.45;
+    color:var(--muted);
+    margin:-6px 0 14px;
+  }
   /* Nava Coins (coins.js): the Get Coins sheet and the unlock prompt,
      both in the .auth-modal-backdrop/.auth-card shell. */
   .coin-modal{max-width:380px;}

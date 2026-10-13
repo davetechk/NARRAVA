@@ -349,6 +349,40 @@ not been exercised against the real project.
 **Sign-out** ends the session but doesn't create a new anonymous one until the next page load.
 Until then, like/comment prompts the log-in popup.
 
+**Forgot password** (since 2026-10-13, all in `auth.js`, same popup). Log In shows "Forgot
+password?" under the password field (Sign Up doesn't). It opens a request view, prefilled with
+whatever was typed in Log In, that calls `resetPasswordForEmail(email, { redirectTo })`.
+`redirectTo` is `index.html` on the current origin, so localhost and the live site both work
+**as long as that address is in Supabase → Auth → URL Configuration → Redirect URLs**; if it
+isn't, Supabase silently sends people to the Site URL instead.
+- **It never reveals whether an email has an account.** Success always shows "If an account
+  exists for that email, we've sent a link…". A rate-limit error shows "Please wait a minute before
+  trying again."; anything else, a plain line (the raw error goes to the console only). Supabase
+  allows one reset email per address per 60 s, so the button is disabled with a countdown for 60 s
+  after each request (for this page load only). Caveat: Supabase's own 60 s limit applies only to
+  real accounts, so a second request for the same address within a minute *from another page load*
+  gets the wait message for a real account and the normal message for an unknown one. That's
+  server behaviour and can't be hidden from the front end.
+- **The link.** supabase-js (implicit flow, its default) reads the tokens from the address while
+  the client starts, saves the session, clears the tokens (`location.hash = ''`) and fires
+  `PASSWORD_RECOVERY`, which opens "Set a new password" (new + confirm, at least 6 characters,
+  saved with `auth.updateUser({ password })`). On success: "Password updated" toast, popup closed,
+  signed in. Closing the popup without saving also leaves the person signed in (that's what the
+  link does). The leftover `#` is removed with `history.replaceState`, like `#goog_rewarded`.
+  supabase-js's clearing adds a history entry, so the entry the link loaded still holds the
+  tokens; going Back onto it removes them again (a `popstate` listener in `auth.js`).
+- **Expired or already-used link.** Supabase sends people back with `#error=…&error_code=otp_expired`.
+  The popup shows "This reset link has expired. Request a new one." with a button to the request
+  view. Any auth error in the address gets this view (email confirmation is off, so reset links are
+  the only email links that come back here).
+- **Start-up order.** `supabase-client.js` reads the address before supabase-js clears it
+  (`authRedirectAtLoad`: `'recovery'`, `'error'` or null). No guest account is made for someone
+  arriving from a working link: `bootstrapAnonymousSession()`'s `getSession()` waits for
+  supabase-js to finish with the link, and by then the reset session exists. With maintenance mode
+  on, `init()` waits for `authRedirectSettled` (resolved when the popup closes) before showing the
+  maintenance screen, which would otherwise wipe the popup. If `auth.js` loads after
+  `PASSWORD_RECOVERY` has already fired, `handleAuthRedirectAtLoad()` opens the view itself.
+
 Every user (anonymous included) gets a `profiles` row, created by a database trigger (not in
 this repo). A user can edit their own `display_name` (the "username", which is what shows next
 to their comments), but not `coin_balance` or `is_admin`. The database enforces that, not the
@@ -1181,7 +1215,7 @@ Home Screen web apps use an opaque status bar in some situations; either way `bl
 
 **1. The service worker can keep serving old files after you deploy.** `sw.js` answers requests
 for the app's own files from its cache first and only goes to the network when it has nothing
-cached. The cache name is currently `narrava-shell-v37` and old caches are deleted only when the name
+cached. The cache name is currently `narrava-shell-v40` and old caches are deleted only when the name
 *changes*. So after changing any app file, people who have already visited can keep getting the
 old version. **Bump `CACHE_NAME` in `sw.js` whenever you ship a change.** The service worker's
 scope is the whole `narrava/` folder, so this affects the **admin pages too**, not only the
@@ -1306,7 +1340,7 @@ called), `admin_revenue_overview(p_days)` (Revenue page; see [The admin panel](#
 
 **Storage:** the `cover-images` bucket (public read, admin write).
 
-**Auth:** email/password and anonymous sign-ins enabled.
+**Auth:** email/password and anonymous sign-ins enabled. The app's address (each origin it runs on, `…/index.html`) must be in Redirect URLs for password reset links.
 
 **Bunny Stream:** one video library; needs its own API access (used by the Edge Functions, never
 by the browser).

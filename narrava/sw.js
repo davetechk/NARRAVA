@@ -15,7 +15,7 @@
 // shell caches only — DOWNLOADS_CACHE is never deleted here, so
 // downloads survive app updates.
 
-const CACHE_NAME = 'narrava-shell-v39';
+const CACHE_NAME = 'narrava-shell-v40';
 const DOWNLOADS_CACHE = 'narrava-offline-v1'; // same name in js/downloads.js
 
 // Cross-origin files the app can't start without, cached like the shell.

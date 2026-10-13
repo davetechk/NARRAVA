@@ -1956,6 +1956,9 @@ async function init(){
     return;
   }
   if(appSettings.maintenance_mode_enabled){
+    // Someone arriving from a password reset link sets their new password
+    // first (auth.js); the maintenance screen would wipe the popup.
+    await authRedirectSettled;
     renderMaintenanceMode();
     return;
   }
@@ -1963,7 +1966,10 @@ async function init(){
   // Real anonymous account bootstrap (watch-progress.js) — first thing
   // this app does, before slides/continue-watching are even fetched, so
   // every visitor already has a real, genuine account (anonymous or
-  // not) for the rest of init and everything after it.
+  // not) for the rest of init and everything after it. Someone arriving
+  // from a password reset link never gets a guest account here: its
+  // getSession() waits for supabase-js to finish reading the link, and by
+  // then the reset session is already saved.
   await bootstrapAnonymousSession();
 
   // Real Nava Coins state (coins.js) — balance, unlocks, subscription —

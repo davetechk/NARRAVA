@@ -1,33 +1,5 @@
-// auth.js
-//
-// Sign Up / Log In, presented as a popup over the Profile screen instead
-// of replacing it. Every call here is still a direct Supabase Auth SDK
-// method — no custom password handling, no custom session storage (the
-// SDK's own default handles persistence). Week 1's auto-profile-creation
-// trigger and RLS policies already cover what happens in the database
-// once a real user exists; nothing here touches that.
-//
-// Sign Up while on an anonymous session UPGRADES that same account in place
-// (auth.updateUser with an email + password — Supabase's supported way to
-// turn an anonymous user into a permanent one), instead of calling signUp,
-// which always creates a second, separate user. Same user id before and
-// after, so every like, comment and bit of watch progress made while
-// anonymous is still attached — nothing is copied or moved, it's the same
-// row owner throughout. Log In is unchanged: it signs into a different,
-// already-existing account, so there is nothing to carry over there.
-//
-// profile.js owns the Profile screen's menu itself (and the real logged
-// state, like the wallet balance) — this file only owns the popup:
-// opening/closing it, the Sign Up/Log In form and its submit handling,
-// and a thin signOutUser() wrapper so profile.js's Sign Out row can reuse
-// the same signOut() call without duplicating it.
-//
-// Forgot password, also in this popup: Log In's "Forgot password?" opens
-// a request view (resetPasswordForEmail), which always shows the same
-// message whether or not the email has an account. The email's link comes
-// back to index.html; supabase-js signs the person in from it and fires
-// PASSWORD_RECOVERY, which opens "Set a new password" (updateUser). A link
-// that has expired or was already used opens a view saying so instead.
+// Log In / Sign Up / Forgot password popup (Supabase Auth).
+// Sign Up on a guest session upgrades that same account in place.
 
 const authModalBackdrop = document.getElementById('authModalBackdrop');
 const authModalBody = document.getElementById('authModalBody');
@@ -35,8 +7,7 @@ const authModalClose = document.getElementById('authModalClose');
 
 let authMode = 'login'; // 'login' | 'signup'
 
-// note (optional): a short line shown above the form saying why it
-// opened — e.g. coins.js's "You need an account to unlock episodes."
+// note: optional line shown above the form
 function openAuthModal(mode, note){
   authMode = mode === 'signup' ? 'signup' : 'login';
   renderAuthForm(note);
@@ -45,7 +16,7 @@ function openAuthModal(mode, note){
 
 function closeAuthModal(){
   authModalBackdrop.classList.remove('open');
-  settleAuthRedirect(); // supabase-client.js: a reset link's popup is done, app.js may go on
+  settleAuthRedirect(); // lets app.js go on after a reset link
 }
 
 authModalClose.addEventListener('click', closeAuthModal);
@@ -94,9 +65,7 @@ function renderAuthForm(noteMessage){
   document.getElementById('authForm').addEventListener('submit', handleAuthSubmit);
 }
 
-// The signed-in user IF (and only if) this browser is on a real anonymous
-// session right now — i.e. someone who has been using the app as a guest.
-// Null for no session at all, or for anyone already on a permanent account.
+// The current user only if it's an anonymous (guest) session
 async function currentAnonymousUser(){
   try {
     const { data, error } = await supabaseClient.auth.getSession();
@@ -109,19 +78,12 @@ async function currentAnonymousUser(){
   }
 }
 
-// Turns the current anonymous account into a permanent email + password
-// account, in place. Resolves to the same {data, error} shape as
-// signUp/signInWithPassword so handleAuthSubmit can treat both alike;
-// data.upgraded is true when this path ran.
+// Guest -> permanent account, same user id. Returns {data, error}, data.upgraded = true.
 async function upgradeAnonymousAccount(email, password){
   const { data, error } = await supabaseClient.auth.updateUser({ email, password });
   if(error) return { data: null, error };
 
-  // The access token still carries "is_anonymous: true" until it's
-  // re-issued, and row-level-security policies read the token, not the
-  // local copy of the user — so fetch fresh tokens now. If this fails the
-  // upgrade itself has still succeeded; the session just refreshes on its
-  // own schedule.
+  // Refresh so the token stops saying is_anonymous (RLS reads the token)
   let session = null;
   try {
     const refreshed = await supabaseClient.auth.refreshSession();
@@ -134,6 +96,16 @@ async function upgradeAnonymousAccount(email, password){
     session = current && current.data ? current.data.session : null;
   }
   return { data: { user: (session && session.user) || data.user, session, upgraded: true }, error: null };
+}
+
+// Plain text for a Supabase Auth error (never the raw message)
+function authErrorText(error, isLogin){
+  if(error.code === 'invalid_credentials' || /invalid login credentials/i.test(error.message || '')) return 'Wrong email or password.';
+  if(error.code === 'email_not_confirmed') return 'Confirm your email first.';
+  if(error.code === 'weak_password') return 'Use at least 6 characters.';
+  if(error.code === 'validation_failed' || error.code === 'email_address_invalid') return 'Enter a valid email and password.';
+  if(error.status === 429) return 'Too many tries. Wait a minute and try again.';
+  return isLogin ? 'Couldn’t log in. Try again.' : 'Couldn’t sign up. Try again.';
 }
 
 async function handleAuthSubmit(e){
@@ -151,9 +123,6 @@ async function handleAuthSubmit(e){
   submitBtn.textContent = isLogin ? 'Logging in…' : 'Signing up…';
 
   try {
-    // Log In is untouched. Sign Up upgrades the current anonymous account in
-    // place when there is one; with no anonymous session (signed out, or
-    // already on a real account) it's the ordinary signUp as before.
     let result;
     if(isLogin){
       result = await supabaseClient.auth.signInWithPassword({ email, password });
@@ -167,8 +136,8 @@ async function handleAuthSubmit(e){
     if(error){
       const alreadyRegistered = !isLogin && (error.code === 'email_exists' || /already (been )?registered|already exists/i.test(error.message || ''));
       errorEl.textContent = alreadyRegistered
-        ? 'An account with this email already exists — log in to it instead. (What you did as a guest on this device stays with the guest account and won’t move to that account.)'
-        : error.message;
+        ? 'That email already has an account. Log in instead (your guest activity won’t move over).'
+        : authErrorText(error, isLogin);
       errorEl.classList.add('show');
       submitBtn.disabled = false;
       submitBtn.textContent = isLogin ? 'Log In' : 'Sign Up';
@@ -176,56 +145,49 @@ async function handleAuthSubmit(e){
     }
 
     if(!isLogin && data.upgraded && data.user && data.user.is_anonymous){
-      // The project has "confirm email" on: the email is attached to this
-      // same account but not yet verified, so it is still a guest account
-      // until the person clicks the link. Nothing is lost meanwhile — it's
-      // the same account.
+      // "Confirm email" on: still a guest until the link is clicked
       authMode = 'login';
-      renderAuthForm('Almost done — check your email to confirm it. Everything you’ve done so far stays with this same account.');
+      renderAuthForm('Almost done. Check your email to confirm it.');
       return;
     }
 
     if(!isLogin && !data.session){
-      // Project has "confirm email" on: the account was created but
-      // there's no session yet until the person clicks the email link.
+      // "Confirm email" on: no session until the link is clicked
       authMode = 'login';
-      renderAuthForm('Account created — check your email to confirm it, then log in.');
+      renderAuthForm('Account created. Confirm your email, then log in.');
       return;
     }
 
     closeAuthModal();
-    renderProfileScreen(); // profile.js: re-check session, re-render the menu logged in
-    refreshContinueWatchingMap().then(renderContinueWatchingBar); // app.js/discover.js: this viewer may now have real watch history
-    onCoinAccountChanged(); // coins.js: this account's real balance/unlocks, plus the one-time welcome bonus
+    renderProfileScreen();
+    refreshContinueWatchingMap().then(renderContinueWatchingBar);
+    onCoinAccountChanged(); // balance, unlocks and the welcome bonus
   } catch(err){
     console.error('Narrava: auth request failed', err);
-    errorEl.textContent = 'Something went wrong. Please try again.';
+    errorEl.textContent = 'Something went wrong. Try again.';
     errorEl.classList.add('show');
     submitBtn.disabled = false;
     submitBtn.textContent = isLogin ? 'Log In' : 'Sign Up';
   }
 }
 
-// Thin wrapper so profile.js's Sign Out row can call the same signOut()
-// the rest of this file uses, without owning that call itself.
+// Used by profile.js's Sign Out row
 async function signOutUser(){
   return await supabaseClient.auth.signOut();
 }
 
 // ---------- Forgot password ----------
 
-// Supabase sends at most one reset email per address per 60 seconds, so
-// the Send button waits that long after each request. Kept for this page
-// load, so going back to Log In and returning doesn't skip it.
+// Supabase allows one reset email per address per 60s
 const RESET_EMAIL_COOLDOWN_SECONDS = 60;
 let resetCooldownUntil = 0;
 let resetCooldownTimer = null;
 
-const RESET_SENT_MESSAGE = 'If an account exists for that email, we’ve sent a link to reset your password. Check your inbox and spam folder.';
-const RESET_WAIT_MESSAGE = 'Please wait a minute before trying again.';
-const NEW_PASSWORD_MIN_LENGTH = 6; // the same rule as Sign Up's password field
+const RESET_SENT_MESSAGE = 'If that email has an account, we’ve sent a reset link. Check your spam too.';
+const RESET_WAIT_MESSAGE = 'Wait a minute and try again.';
+const NEW_PASSWORD_MIN_LENGTH = 6; // same as Sign Up
 
-// Message line at the top of the card: kind 'note' (green) or 'error' (red).
+// kind: 'note' (green) or 'error' (red)
 function showAuthMessage(text, kind){
   const el = document.getElementById('authError');
   if(!el) return;
@@ -242,10 +204,7 @@ function clearAuthMessage(){
   el.classList.remove('show', 'note');
 }
 
-// Where the email's link sends people: this app's own index.html, on
-// whatever origin it's running from (localhost or the live site). The
-// address must be in Supabase's Auth → URL Configuration → Redirect URLs,
-// or Supabase falls back to the project's Site URL.
+// Must be listed in Supabase's Redirect URLs, or Supabase uses the Site URL
 function passwordResetRedirectUrl(){
   return new URL('index.html', window.location.href).href;
 }
@@ -265,7 +224,7 @@ function renderForgotPasswordForm(prefillEmail, message){
   authModalBody.innerHTML =
     '<div class="auth-card">' +
       '<h2 class="auth-title">Reset Password</h2>' +
-      '<p class="auth-hint">Enter the email you log in with and we’ll send you a link to set a new password.</p>' +
+      '<p class="auth-hint">Enter your email to get a reset link.</p>' +
       '<div class="auth-error" id="authError"></div>' +
       '<form id="authForgotForm" novalidate>' +
         '<label class="auth-label" for="authEmail">Email</label>' +
@@ -282,8 +241,7 @@ function renderForgotPasswordForm(prefillEmail, message){
   updateResetCooldownButton();
 }
 
-// Shows the countdown on the Send button while the cooldown runs, and puts
-// the button back when it ends. Safe to call when the view isn't showing.
+// Countdown on the Send button. Safe when the view isn't showing.
 function updateResetCooldownButton(){
   const btn = document.getElementById('authSubmitBtn');
   const onForgotView = !!document.getElementById('authForgotForm');
@@ -325,7 +283,7 @@ async function handleForgotPasswordSubmit(e){
 
   clearAuthMessage();
   if(!email || email.indexOf('@') === -1){
-    showAuthMessage('Enter the email address you log in with.', 'error');
+    showAuthMessage('Enter your email.', 'error');
     return;
   }
 
@@ -334,8 +292,7 @@ async function handleForgotPasswordSubmit(e){
 
   try {
     const { error } = await supabaseClient.auth.resetPasswordForEmail(email, { redirectTo: passwordResetRedirectUrl() });
-    // Never says whether the email has an account: the same message for
-    // both. Supabase itself answers the same way for an unknown email.
+    // Same message whether or not the email has an account
     if(!error){
       showAuthMessage(RESET_SENT_MESSAGE, 'note');
       startResetCooldown();
@@ -347,10 +304,10 @@ async function handleForgotPasswordSubmit(e){
       return;
     }
     console.error('Narrava: password reset request failed', error);
-    showAuthMessage('We couldn’t send the email just now. Please try again in a moment.', 'error');
+    showAuthMessage('Couldn’t send the email. Try again soon.', 'error');
   } catch(err){
     console.error('Narrava: password reset request failed', err);
-    showAuthMessage('We couldn’t send the email just now. Please check your connection and try again.', 'error');
+    showAuthMessage('Couldn’t send the email. Check your connection.', 'error');
   }
   submitBtn.disabled = false;
   submitBtn.textContent = 'Send reset link';
@@ -360,9 +317,7 @@ async function handleForgotPasswordSubmit(e){
 
 let passwordRecoveryViewShown = false;
 
-// supabase-js replaces a working link's tokens with an empty "#"; an
-// expired link's error it leaves. Either way, drop what's left from the
-// address in place, the same way ads.js clears "#goog_rewarded".
+// Drop the reset tokens / error (or a bare "#") from the URL in place
 function clearAuthRedirectFromUrl(){
   const authParams = /access_token=|refresh_token=|error_code=|error_description=/;
   const searchHasAuth = authParams.test(window.location.search);
@@ -418,11 +373,11 @@ async function handleSetNewPasswordSubmit(e){
 
   clearAuthMessage();
   if(password.length < NEW_PASSWORD_MIN_LENGTH){
-    showAuthMessage('Your password must be at least ' + NEW_PASSWORD_MIN_LENGTH + ' characters.', 'error');
+    showAuthMessage('Use at least ' + NEW_PASSWORD_MIN_LENGTH + ' characters.', 'error');
     return;
   }
   if(password !== confirmPassword){
-    showAuthMessage('The two passwords don’t match.', 'error');
+    showAuthMessage('Passwords don’t match.', 'error');
     return;
   }
 
@@ -434,14 +389,14 @@ async function handleSetNewPasswordSubmit(e){
     if(error){
       console.error('Narrava: setting a new password failed', error);
       if(error.code === 'same_password'){
-        showAuthMessage('That’s your current password. Choose a different one.', 'error');
+        showAuthMessage('That’s your current password. Pick a new one.', 'error');
       } else if(error.code === 'weak_password'){
-        showAuthMessage('That password is too weak. Try a longer one.', 'error');
+        showAuthMessage('Too weak. Try a longer password.', 'error');
       } else if(error.status === 401 || error.status === 403 || error.name === 'AuthSessionMissingError'){
-        openPasswordResetExpired(); // the reset session itself is gone
+        openPasswordResetExpired();
         return;
       } else {
-        showAuthMessage('We couldn’t save your password. Please try again.', 'error');
+        showAuthMessage('Couldn’t save your password. Try again.', 'error');
       }
       submitBtn.disabled = false;
       submitBtn.textContent = 'Save password';
@@ -450,28 +405,24 @@ async function handleSetNewPasswordSubmit(e){
 
     showToast('Password updated');
     closeAuthModal();
-    if(appSettings.maintenance_mode_enabled) return; // app.js now shows the maintenance screen instead
-    renderProfileScreen(); // profile.js: signed in on this account now
+    if(appSettings.maintenance_mode_enabled) return;
+    renderProfileScreen();
     refreshContinueWatchingMap().then(renderContinueWatchingBar);
     onCoinAccountChanged();
   } catch(err){
     console.error('Narrava: setting a new password failed', err);
-    showAuthMessage('We couldn’t save your password. Please check your connection and try again.', 'error');
+    showAuthMessage('Couldn’t save your password. Check your connection.', 'error');
     submitBtn.disabled = false;
     submitBtn.textContent = 'Save password';
   }
 }
 
-// supabase-js fires this once it has signed the person in from the link.
 supabaseClient.auth.onAuthStateChange(event => {
   if(event === 'PASSWORD_RECOVERY' && !passwordRecoveryViewShown) openSetNewPassword();
 });
 
-// The page load itself: a link that didn't work (expired, already used)
-// gets the expired view. A working one is normally caught by the event
-// above; supabase-js fires it from a timer scheduled before initialize()
-// resolves, so this later timer only acts if this file loaded too late
-// to hear it.
+// Expired link at load: show the expired view.
+// Working link: backup in case this file loaded after PASSWORD_RECOVERY fired.
 async function handleAuthRedirectAtLoad(){
   if(!authRedirectAtLoad) return;
   let failed = authRedirectAtLoad === 'error';
@@ -490,6 +441,5 @@ async function handleAuthRedirectAtLoad(){
 }
 handleAuthRedirectAtLoad();
 
-// Back onto the entry the reset link loaded (supabase-js's clearing of the
-// tokens added an entry after it): drop the tokens from the address again.
+// Back onto the entry the link loaded: drop the tokens again
 window.addEventListener('popstate', clearAuthRedirectFromUrl);

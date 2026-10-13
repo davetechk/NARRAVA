@@ -1,18 +1,5 @@
-// admin-shared.js
-//
-// Shared across every real admin page (admin/dashboard.html,
-// series-list.html, episodes.html, genres.html, revenue-analytics.html,
-// user-management.html, system-settings.html) — NOT admin/login.html,
-// which has its own small script since it runs before any of this is
-// relevant. One shared source for: the sidebar shell (so every page's
-// nav is generated from the same markup, never hand-copied seven
-// times), the admin-session guard, core series/genre data loading, the
-// genre-chip widget, and the exact tested Bunny upload flow (used by
-// both dashboard.html's "Upload Episodes" panel and episodes.html's
-// upload form — same steps, same permission check, only the DOM it's
-// wired to differs).
-//
-// escapeHtml/showToast come from shared-utils.js.
+// Shared by every admin page except login: sidebar, admin guard, data loading,
+// genre chips, Bunny upload and cover image upload
 
 const ADMIN_ICONS = {
   brand: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 4h3v16H4V4zm5 6h3v10H9V10zm5-4h3v14h-3V6z" fill="currentColor"/></svg>',
@@ -42,10 +29,7 @@ const ADMIN_NAV_ITEMS = [
   { page: 'system-settings', label: 'System Settings', href: 'system-settings.html', icon: ADMIN_ICONS.settings }
 ];
 
-// Money from admin_revenue_overview, which is in minor units (kobo / cents).
-// Used by the Revenue page and the Dashboard's revenue card, so both show
-// the same figure the same way. Naira and dollars are never converted.
-// ₦20,000 / ₦20,000.50 · $5.00
+// Minor units (kobo / cents) to display text, e.g. ₦20,000.50 · $5.00
 function formatMinorAmount(minor, currency){
   const n = Number(minor) || 0;
   if(currency === 'USD'){
@@ -55,12 +39,10 @@ function formatMinorAmount(minor, currency){
     const whole = n % 100 === 0;
     return '₦' + (n / 100).toLocaleString('en-US', { minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: 2 });
   }
-  // A currency this page doesn't know: shown raw rather than guessed at.
   return escapeHtml(String(currency || '?')) + ' ' + n.toLocaleString('en-US') + ' (minor units)';
 }
 
-// The purchase types counted as revenue (Revenue page Overview and the
-// Dashboard card), so the two always add up the same rows.
+// Purchase types counted as revenue (Revenue page and Dashboard)
 const REVENUE_PURCHASE_TYPES = ['coin_pack', 'subscription'];
 
 function adminInitialsFromEmail(email){
@@ -82,8 +64,7 @@ function renderAdminSidebar(activePage, session){
     return '<a class="admin-nav-item' + (item.page === activePage ? ' active' : '') + '" href="' + item.href + '">' + item.icon + item.label + '</a>';
   });
 
-  // Group the three sub-items under Content Management inside .admin-nav-sub,
-  // same shape the reference design uses (indented links below the heading).
+  // Group the Content Management links
   const grouped = [];
   let subBuffer = [];
   ADMIN_NAV_ITEMS.forEach((item, i) => {
@@ -122,14 +103,7 @@ function renderAdminSidebar(activePage, session){
 }
 
 // ---------- Phone layout ----------
-//
-// Below 860px the sidebar becomes a slide-in drawer (see admin.css), opened
-// from a sticky top bar. Everything in the sidebar is still there — every
-// page link and the sign-out button — it just lives in the drawer instead
-// of squeezing the page. On wider screens none of this shows (the bar and
-// backdrop are display:none) and the sidebar is the same fixed column as
-// ever. The drawer closes on: the backdrop, the close (✕) button, Escape,
-// choosing a page, or the window growing back to desktop width.
+// Below 860px the sidebar is a slide-in drawer
 function setupAdminMobileNav(activePage){
   const shell = document.querySelector('.admin-shell');
   const sidebar = document.getElementById('adminSidebar');
@@ -179,16 +153,7 @@ function setupAdminMobileNav(activePage){
 }
 
 // ---------- Tables on a phone ----------
-//
-// Every admin table is built by its own page script as plain <td> cells.
-// On a phone admin.css lays each row out as a stacked card, and each cell
-// shows its column name in front of its value — from a data-label
-// attribute. Rather than change every page's renderer, this labels cells
-// from the table's own header text, and re-runs whenever a page re-renders
-// a table (they all do, after every edit, delete or search). Cells that
-// span the full row (the inline edit / delete-confirm forms) get no label.
-// It only sets attributes, so it changes nothing on desktop, and it never
-// touches what any page's buttons do.
+// Labels each cell from its column header (data-label) for the stacked card layout
 function labelAdminTableCells(){
   document.querySelectorAll('table.admin-table').forEach(table => {
     const heads = Array.from(table.querySelectorAll('thead th')).map(th => th.textContent.trim());
@@ -207,14 +172,7 @@ function labelAdminTableCells(){
     .observe(document.documentElement, { childList: true, subtree: true });
 })();
 
-// Every protected admin page calls this first, before rendering
-// anything real. Same admin check used throughout the app
-// (profiles.is_admin on the signed-in user's own row) — this only
-// decides whether *this page* shows its content; the real boundary is
-// the admin-only RLS policies on series/episodes/genres themselves.
-// Resolves to the session on success; otherwise redirects to
-// login.html and never resolves (the caller's page script simply never
-// runs its render step).
+// Run first on every admin page. Redirects to login.html (never resolves) if not an admin.
 async function requireAdminSession(activePage){
   return new Promise((resolve) => {
     (async () => {
@@ -243,9 +201,7 @@ async function requireAdminSession(activePage){
   });
 }
 
-// Series + genres + series_genres links, the core data almost every
-// admin page needs in some form. Returns plain objects/arrays, not
-// cached globally, so each page fetches its own current copy.
+// Series, genres and their links, fresh each call
 async function loadCoreAdminData(){
   const [seriesResult, genreResult, linkResult] = await Promise.all([
     supabaseClient.from('series').select('id, title, description, cover_image_url, free_episode_count, featured_at, status').order('created_at', { ascending: false }),
@@ -265,20 +221,16 @@ async function loadCoreAdminData(){
   return { series: seriesResult.data || [], genres: genreResult.data || [], seriesGenres };
 }
 
-// Read-only tag pills for a table cell — genre *assignment* now happens
-// in the series edit form (see admin-series-list.js), not inline here,
-// so this is display only.
+// Read-only genre pills
 function genreTagsHtml(genres, genreIds){
   const names = genres.filter(g => genreIds && genreIds.has(g.id)).map(g => g.name);
   if(!names.length) return '<span class="admin-row-sub">No genres</span>';
   return '<div class="admin-genre-tags">' + names.map(n => '<span class="admin-tag">' + escapeHtml(n) + '</span>').join('') + '</div>';
 }
 
-// Editable genre chips — toggling a chip writes straight to
-// series_genres immediately (no separate "save" step, matching how
-// this already worked before), used inside the series edit form.
+// Editable genre chips (each toggle saves straight away)
 function genreChipsEditHtml(seriesId, genres, genreIds){
-  if(!genres.length) return '<div class="admin-row-sub">No genres exist yet — add one on the Genres page.</div>';
+  if(!genres.length) return '<div class="admin-row-sub">No genres yet. Add one on the Genres page.</div>';
   return '<div class="genre-chips">' + genres.map(g =>
     '<button type="button" class="genre-chip' + (genreIds.has(g.id) ? ' active' : '') + '" data-series-id="' + seriesId + '" data-genre-id="' + g.id + '">' + escapeHtml(g.name) + '</button>'
   ).join('') + '</div>';
@@ -306,7 +258,7 @@ function wireGenreChipsEdit(container, seriesGenres){
         }
       } catch(err){
         console.error('Narrava: failed to update series genre', err);
-        showToast('Could not update genre — please try again');
+        showToast('Couldn’t update the genre. Try again.');
       } finally {
         chip.disabled = false;
       }
@@ -314,21 +266,8 @@ function wireGenreChipsEdit(container, seriesGenres){
   });
 }
 
-// The full upload flow, in the exact order it has to happen — unchanged
-// from where it was originally built and tested, only factored out so
-// both dashboard.html and episodes.html can present it in their own
-// layout without duplicating the logic:
-//   1. ask bunny-upload-init for permission (stop on any failure — never
-//      touch Bunny without it)
-//   2. stream the actual file to Bunny over tus, real progress
-//   3. only once the upload has genuinely succeeded, save the episode
-//      row (bunny_video_id from step 1, duration_seconds left null —
-//      there's no reliable way to know it yet)
-// `els` = { errorEl, submitBtn, progressWrap, progressFill, progressLabel }.
-// Throws on failure (with a message already suited for display); the
-// one edge case worth calling out in that message is a step-3 failure,
-// where the video is already sitting on Bunny even though saving the
-// row failed.
+// Upload: 1. bunny-upload-init  2. tus upload to Bunny  3. save the episode row.
+// Throws a display-ready message.
 async function uploadEpisodeToBunny({ seriesId, seriesTitle, episodeNumber, title, file }, els){
   const bunnyTitle = title || (seriesTitle ? seriesTitle + ' — Episode ' + episodeNumber : 'Episode ' + episodeNumber);
 
@@ -340,7 +279,7 @@ async function uploadEpisodeToBunny({ seriesId, seriesTitle, episodeNumber, titl
     const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
     if(sessionError) throw sessionError;
     if(!sessionData || !sessionData.session || !sessionData.session.access_token){
-      throw new Error('No active session — please log in again.');
+      throw new Error('Session ended. Log in again.');
     }
 
     const initResponse = await fetch(SUPABASE_URL + '/functions/v1/bunny-upload-init', {
@@ -353,7 +292,7 @@ async function uploadEpisodeToBunny({ seriesId, seriesTitle, episodeNumber, titl
     });
 
     if(!initResponse.ok){
-      let message = 'Upload permission request failed (status ' + initResponse.status + ').';
+      let message = 'Upload permission was refused.';
       try {
         const errBody = await initResponse.json();
         if(errBody && (errBody.error || errBody.message)) message = errBody.error || errBody.message;
@@ -363,13 +302,13 @@ async function uploadEpisodeToBunny({ seriesId, seriesTitle, episodeNumber, titl
 
     initResult = await initResponse.json();
     if(!initResult || !initResult.videoId || !initResult.signature){
-      throw new Error('Upload permission response was missing required fields.');
+      throw new Error('Upload permission reply was incomplete.');
     }
   } catch(err){
     console.error('Narrava: bunny-upload-init failed', err);
     els.submitBtn.disabled = false;
     els.submitBtn.textContent = 'Upload Episode';
-    throw new Error('Could not start the upload: ' + (err.message || 'please try again.'));
+    throw new Error('Couldn’t start the upload: ' + (err.message || 'please try again.'));
   }
 
   els.submitBtn.textContent = 'Uploading…';
@@ -408,7 +347,7 @@ async function uploadEpisodeToBunny({ seriesId, seriesTitle, episodeNumber, titl
     els.submitBtn.disabled = false;
     els.submitBtn.textContent = 'Upload Episode';
     if(els.progressWrap) els.progressWrap.classList.remove('show');
-    throw new Error('The upload failed partway through: ' + (err && err.message ? err.message : 'please try again.'));
+    throw new Error('Upload failed partway: ' + (err && err.message ? err.message : 'please try again.'));
   }
 
   els.submitBtn.textContent = 'Saving…';
@@ -432,29 +371,17 @@ async function uploadEpisodeToBunny({ seriesId, seriesTitle, episodeNumber, titl
     els.submitBtn.disabled = false;
     els.submitBtn.textContent = 'Upload Episode';
     if(els.progressWrap) els.progressWrap.classList.remove('show');
-    throw new Error('The video uploaded to Bunny successfully (video ID: ' + initResult.videoId + '), but saving the episode record failed: ' +
-      (err.message || 'please try again') + '. The video isn’t lost — retry saving, or add it manually using that video ID.');
+    throw new Error('Video uploaded to Bunny (ID ' + initResult.videoId + '), but the episode couldn’t be saved: ' +
+      (err.message || 'please try again') + '. Retry, or add it with that video ID.');
   }
 }
 
-// Calls the already-deployed bunny-delete-video Edge Function to remove
-// one real video asset from Bunny — the real counterpart to
-// uploadEpisodeToBunny above, used by an episode's delete action so
-// deleting the record also stops it costing Bunny storage, instead of
-// just forgetting about an orphaned video. Confirmed live against the
-// real function: it expects {videoId}, returns {success:true} on a
-// genuine success and {error:"..."} with a non-2xx status on failure —
-// same envelope shape bunny-upload-init already uses, so this mirrors
-// that same error-message handling. Throws on any failure (missing/bad
-// session, non-2xx response, success:false, or a network error) — the
-// caller decides what "don't silently pretend it worked" looks like on
-// its end (see handleDelete in admin-episodes.js: the database row is
-// never deleted unless this resolves).
+// Deletes one video on Bunny via bunny-delete-video. Throws on any failure.
 async function deleteBunnyVideo(videoId){
   const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
   if(sessionError) throw sessionError;
   if(!sessionData || !sessionData.session || !sessionData.session.access_token){
-    throw new Error('No active session — please log in again.');
+    throw new Error('Session ended. Log in again.');
   }
 
   let response;
@@ -468,26 +395,21 @@ async function deleteBunnyVideo(videoId){
       body: JSON.stringify({ videoId })
     });
   } catch(networkErr){
-    throw new Error('Could not reach Bunny to delete the video — check your connection and try again.');
+    throw new Error('Couldn’t reach Bunny. Check your connection.');
   }
 
   let body = null;
   try { body = await response.json(); } catch(_parseErr){ /* body wasn't JSON */ }
 
   if(!response.ok || !body || body.success !== true){
-    const message = (body && (body.error || body.message)) || ('Bunny video deletion failed (status ' + response.status + ').');
+    const message = (body && (body.error || body.message)) || ('Bunny couldn’t delete the video.');
     throw new Error(message);
   }
 
   return body;
 }
 
-// Cover image uploads (Create Series + Series List edit forms) — real
-// files going to the existing `cover-images` Supabase Storage bucket
-// (admin-only write access already configured there), replacing the old
-// plain URL text field. Much simpler than the Bunny video flow above:
-// one direct upload, then the bucket's own public URL is the real
-// cover_image_url, same field a pasted URL used to fill.
+// Cover image upload to the cover-images bucket; returns the public URL
 async function uploadCoverImageFile(file){
   const rawExt = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '');
   const ext = rawExt || 'jpg';
@@ -500,12 +422,7 @@ async function uploadCoverImageFile(file){
   return data.publicUrl;
 }
 
-// Pulls the storage path back out of one of our own cover-images public
-// URLs, so a replaced cover can actually be deleted afterward (this
-// bucket supports real cleanup, unlike Bunny video assets). Returns null
-// for anything that isn't a URL this bucket actually issued — e.g. a
-// pasted external URL saved before this feature existed — since there's
-// nothing of ours to delete there.
+// Storage path of one of our cover-images URLs, or null for anything else
 function coverImageStoragePath(url){
   if(!url) return null;
   const marker = '/object/public/cover-images/';

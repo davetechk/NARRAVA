@@ -173,9 +173,9 @@ screen too, reached from Profile (Profile stays the highlighted tab while it's o
     get_series_rankings", seen live on a first-ever visit when it ran earlier).
   - Skeleton poster cards while loading (tab and shelf). On failure — an error, or no answer
     within 10 seconds (`withTimeout`, `shared-utils.js`) — the tab falls back to its old plain
-    list with the note "Couldn't load rankings right now — showing all series instead", and the
-    Top shelf to its old featured-first order with the caption "Couldn't load view counts —
-    featured series shown first, not ranked by views". Never stuck on the skeleton.
+    list with the note "Couldn't load rankings. Showing all series.", and the
+    Top shelf to its old featured-first order with the caption "Couldn't load views. Featured
+    series first.". Never stuck on the skeleton.
 - **For You** (`app.js`): the mobile swipe feed. One series at a time, full screen. Tapping
   enters "watching" that series: swipe up/down now moves between that series' *episodes*
   (stops at episode 1 going back; rolls into the next series after the last episode). The small
@@ -227,7 +227,7 @@ screen too, reached from Profile (Profile stays the highlighted tab while it's o
   time it opens. Tapping a row calls `openSeriesInFeed` — exactly what a Library poster does,
   including the silent resume. A series in history that's no longer loaded (unpublished) shows
   "That series isn't available". Empty: "Nothing watched yet." Failure or no answer within
-  10 seconds: "Couldn't load your history right now." with a Try again button. History is built
+  10 seconds: "Couldn't load your history." with a Try again button. History is built
   from `watch_progress`; no front-end code ever deletes those rows (see Watch progress below).
 - **Help & Feedback** (`help.js`, Profile → Help & Feedback): built like History — same
   `.library` shell, header and back arrow (`navBack()`), Profile stays highlighted. Its content
@@ -236,7 +236,7 @@ screen too, reached from Profile (Profile stays the highlighted tab while it's o
     [Privacy policy page](#privacy-policy-page)).
   - **Contact** — `support@narrava.com`, with "Open email app"
     (`mailto:support@narrava.com?subject=Narrava%20support`) and "Copy email" (clipboard, then
-    the shared toast "Email copied"; "Could not copy email — please try again" if the browser
+    the shared toast "Email copied"; "Couldn't copy the email. Try again." if the browser
     refuses).
   - **About** — "Narrava", "Short Nollywood dramas, made for your phone.", "Version " +
     `APP_VERSION`, and "© 2026 Narrava Entertainment".
@@ -355,9 +355,9 @@ whatever was typed in Log In, that calls `resetPasswordForEmail(email, { redirec
 `redirectTo` is `index.html` on the current origin, so localhost and the live site both work
 **as long as that address is in Supabase → Auth → URL Configuration → Redirect URLs**; if it
 isn't, Supabase silently sends people to the Site URL instead.
-- **It never reveals whether an email has an account.** Success always shows "If an account
-  exists for that email, we've sent a link…". A rate-limit error shows "Please wait a minute before
-  trying again."; anything else, a plain line (the raw error goes to the console only). Supabase
+- **It never reveals whether an email has an account.** Success always shows "If that email
+  has an account, we've sent a reset link. Check your spam too.". A rate-limit error shows "Wait a minute and try
+  again."; anything else, a plain line (the raw error goes to the console only). Supabase
   allows one reset email per address per 60 s, so the button is disabled with a countdown for 60 s
   after each request (for this page load only). Caveat: Supabase's own 60 s limit applies only to
   real accounts, so a second request for the same address within a minute *from another page load*
@@ -734,11 +734,11 @@ before. `my_ad_status` isn't even called for people with coins or a subscription
 - otherwise, limit not reached: "Watch N more ads to unlock 3 episodes" (N = `ads_needed_for_next`),
   "Ads watched today: X", and a **Watch ad** button. After a recorded ad the status is re-read from
   the server; once episodes are available the unlock button appears.
-- `daily_limit_reached`: "You've used today's ad unlocks. Come back tomorrow, or get Nava Coins."
-- Messages: `too_soon` -> "Please wait a few seconds before the next ad."; `no_ad_unlocks` -> "No ad
-  unlocks left..."; no fill -> "No ad available right now, please try again later."; closed early ->
-  "The ad was closed before the end, so it didn't count."; rewarded not supported -> "Ads can't be
-  shown on this device or browser..."; gpt.js blocked (ad blocker) -> its own message. If the server
+- `daily_limit_reached`: "Today's ad unlocks are used up. Come back tomorrow or get Nava Coins."
+- Messages: `too_soon` -> "Wait a few seconds before the next ad."; `no_ad_unlocks` -> "No ad
+  unlocks left..."; no fill -> "No ad available. Try again later."; closed early ->
+  "Ad closed early, so it didn't count."; rewarded not supported -> "Ads can't
+  play on this device..."; gpt.js blocked (ad blocker) -> its own message. If the server
   says the person is no longer eligible (e.g. `has_coins`), the section disappears and the message
   becomes a toast.
 - Every button is disabled while anything is in flight (`adState.phase`), so double taps send one
@@ -1040,7 +1040,7 @@ Details worth knowing:
     alert cards that appear **only when above 0**:
     - **Needs review** (`needs_review`): failed purchases a person has to look at, typically a
       payment whose amount or currency didn't match what was expected. Text: "A payment didn't
-      match what was expected. Check Paystack before refunding or crediting manually." Don't credit
+      match. Check Paystack before refunding or crediting." Don't credit
       coins or days by hand until Paystack confirms what was actually paid.
     - **Refunds that failed** (`refunds.refund_failed`): the server tried to refund (e.g. a
       foreign card on a naira payment) and Paystack's refund didn't go through. Text: "Refund
@@ -1051,7 +1051,7 @@ Details worth knowing:
     plan. Weekly, Monthly and Yearly are always listed (0 when none); an unexpected plan id is
     listed too.
   - **Ads:** ad views today, ad views in the period, people who watched ads, episodes unlocked
-    with ads, and the line "Ad earnings are reported in your Google Ad Manager account, not here."
+    with ads, and the line "Ad earnings are in Google Ad Manager, not here."
   - **Recent purchases** (below the tabs, independent of the period): the function's last 50
     purchases, any status. Date (Lagos time), email, what ("50 coins" from `coin_packs`, or the
     plan name), amount in its own currency, and a status badge: completed green, pending grey,
@@ -1215,7 +1215,7 @@ Home Screen web apps use an opaque status bar in some situations; either way `bl
 
 **1. The service worker can keep serving old files after you deploy.** `sw.js` answers requests
 for the app's own files from its cache first and only goes to the network when it has nothing
-cached. The cache name is currently `narrava-shell-v40` and old caches are deleted only when the name
+cached. The cache name is currently `narrava-shell-v42` and old caches are deleted only when the name
 *changes*. So after changing any app file, people who have already visited can keep getting the
 old version. **Bump `CACHE_NAME` in `sw.js` whenever you ship a change.** The service worker's
 scope is the whole `narrava/` folder, so this affects the **admin pages too**, not only the

@@ -1,7 +1,7 @@
-// admin-genres.js — admin/genres.html only.
+// admin/genres.html
 
 let gGenres = [];       // [{id, name}]
-let gSeriesCounts = {}; // genre_id -> number of series carrying it
+let gSeriesCounts = {}; // genre_id -> series count
 let gSearchQuery = '';
 let gEditingId = null;
 let gDeletingId = null;
@@ -51,7 +51,7 @@ function deleteCardHtml(genre){
   const count = gSeriesCounts[genre.id] || 0;
   return '<div class="admin-genre-card" data-genre-id="' + genre.id + '" style="display:block;">' +
     '<div class="admin-delete-confirm">' +
-      '<p>Delete “' + escapeHtml(genre.name) + '” permanently? ' + (count ? ('It’s currently tagged on ' + count + ' series — ') : '') + 'this removes it from every series it’s attached to. This can’t be undone.</p>' +
+      '<p>Delete “' + escapeHtml(genre.name) + '” permanently? ' + (count ? ('Used on ' + count + ' series. ') : '') + 'It’s removed from every series. This can’t be undone.</p>' +
       '<div class="admin-delete-confirm-actions">' +
         '<button type="button" class="admin-delete-confirm-btn" data-action="confirm-delete" data-genre-id="' + genre.id + '">Delete Permanently</button>' +
         '<button type="button" class="admin-delete-cancel-btn" data-action="cancel-delete">Cancel</button>' +
@@ -66,13 +66,13 @@ function renderGenreList(){
 
   if(!gGenres.length){
     heading.textContent = 'Content Categories';
-    list.innerHTML = '<div class="admin-empty">No genres yet — add the first one above.</div>';
+    list.innerHTML = '<div class="admin-empty">No genres yet. Add one above.</div>';
     return;
   }
 
   const liveCount = gGenres.filter(g => (gSeriesCounts[g.id] || 0) > 0).length;
   heading.textContent = 'Content Categories';
-  document.getElementById('genreListSub').textContent = liveCount + ' of ' + gGenres.length + ' genre' + (gGenres.length === 1 ? '' : 's') + ' currently used by at least one series';
+  document.getElementById('genreListSub').textContent = liveCount + ' of ' + gGenres.length + ' genre' + (gGenres.length === 1 ? '' : 's') + ' in use';
 
   const filtered = filteredGenres();
   if(!filtered.length){
@@ -124,7 +124,7 @@ async function handleAddGenreSubmit(e){
     renderGenreList();
   } catch(err){
     console.error('Narrava: failed to add genre', err);
-    errorEl.textContent = err.message || 'Could not add genre — please try again.';
+    errorEl.textContent = err.message || 'Couldn’t add the genre. Try again.';
     errorEl.classList.add('show');
   } finally {
     submitBtn.disabled = false;
@@ -163,7 +163,7 @@ async function handleEditGenreSubmit(e){
     renderGenreList();
   } catch(err){
     console.error('Narrava: failed to update genre', err);
-    errorEl.textContent = err.message || 'Could not save changes — please try again.';
+    errorEl.textContent = err.message || 'Couldn’t save changes. Try again.';
     errorEl.classList.add('show');
     submitBtn.disabled = false;
     submitBtn.textContent = 'Save';
@@ -181,11 +181,11 @@ async function handleDeleteGenre(btn){
     gGenres = gGenres.filter(g => String(g.id) !== String(genreId));
     delete gSeriesCounts[genreId];
     gDeletingId = null;
-    showToast('Genre deleted ✓ — removed from every series it was tagged on');
+    showToast('Genre deleted ✓');
     renderGenreList();
   } catch(err){
     console.error('Narrava: failed to delete genre', err);
-    showToast('Could not delete genre — please try again');
+    showToast('Couldn’t delete the genre. Try again.');
     btn.disabled = false;
     btn.textContent = 'Delete Permanently';
   }
@@ -217,6 +217,6 @@ document.getElementById('genresSearch').addEventListener('input', (e) => {
     renderGenreList();
   } catch(err){
     console.error('Narrava: failed to load genres', err);
-    showToast('Could not load genres — please try again');
+    showToast('Couldn’t load genres. Try again.');
   }
 })();

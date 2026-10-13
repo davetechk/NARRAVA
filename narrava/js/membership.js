@@ -1,32 +1,18 @@
-// membership.js
-//
-// The Membership screen (Profile -> Narrava Membership banner, or the
-// VIP tab's "Get yearly"). Built like History and Help & Feedback: same
-// .library shell, header and back arrow, Profile stays highlighted.
-//
-// Everything shown comes from the server: the plans from
-// subscription_plans, the person's status from my_subscription()
-// (coinState.subscription, coins.js), and the Subscription Payments
-// switch from app_settings. Subscribing/extending runs the one shared
-// purchase flow, startPaystackPurchase('subscription', planId)
-// (coins.js) — the server prices it and the webhook grants the days.
-// Buying again while subscribed adds the new days after the current end
-// date (the server does that; this screen only says so).
+// Membership screen: plans, status and subscribing (via startPaystackPurchase)
 
 const membershipBody = document.getElementById('membershipBody');
 const membershipBackBtn = document.getElementById('membershipBackBtn');
 
 let membershipPlans = [];
 let subscriptionsEnabled = false;
-let membershipState = 'idle'; // 'loading' | 'ready' | 'failed'
-let membershipReason = null;   // 'downloads' when sent here by a Download button/row (downloads.js)
+let membershipState = 'idle';
+let membershipReason = null;   // 'downloads' when sent here by a Download button
 
 const MEMBERSHIP_REASON_LINES = {
-  downloads: 'Downloads are for subscribers. Subscribe to save episodes and watch them without a connection.'
+  downloads: 'Downloads are for subscribers. Subscribe to watch offline.'
 };
 
-// reason (optional): why this person was sent here, shown as one line at
-// the top. Opening it any other way clears it.
+// reason: optional line shown at the top
 function openMembershipScreen(reason){
   membershipReason = MEMBERSHIP_REASON_LINES[reason] ? reason : null;
   clearFinishedPurchase();
@@ -34,8 +20,7 @@ function openMembershipScreen(reason){
   renderMembershipScreen();
 }
 
-// Plans + switch re-read on every open (an admin change shows up without
-// a reload), and my_subscription refreshed with them.
+// Re-reads plans, the switch and my_subscription on every open
 async function renderMembershipScreen(){
   membershipState = membershipPlans.length ? 'ready' : 'loading';
   paintMembership();
@@ -130,8 +115,7 @@ function membershipScreenVisible(){
   return !document.getElementById('membershipScreen').classList.contains('screen-hidden');
 }
 
-// A purchase moved on, or the subscription changed (bought, expired,
-// signed in/out): repaint if the screen is showing.
+// Repaint if showing
 document.addEventListener('narrava:purchase-changed', () => {
   if(purchase && purchase.kind === 'subscription' && purchase.phase === 'done' && purchase.code === 'subscriptions_disabled') subscriptionsEnabled = false;
   if(purchase && purchase.kind === 'subscription' && purchase.phase === 'done' && purchase.code === 'unknown_plan' && membershipScreenVisible()){ renderMembershipScreen(); return; }
@@ -141,5 +125,4 @@ document.addEventListener('narrava:coins-changed', () => {
   if(membershipScreenVisible() && membershipState === 'ready') paintMembership();
 });
 
-// Same as the browser's own Back (nav.js) — returns to where it came from.
 membershipBackBtn.addEventListener('click', () => navBack());

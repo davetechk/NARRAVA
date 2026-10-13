@@ -1,4 +1,4 @@
-// admin-dashboard.js — admin/dashboard.html only.
+// admin/dashboard.html
 
 let dashSeries = [];
 let dashGenres = [];
@@ -22,9 +22,7 @@ document.getElementById('adminCoverFile').addEventListener('change', () => {
   document.getElementById('adminCoverFileBtn').textContent = file ? ('✓ ' + file.name) : 'Choose Image';
 });
 
-// All-time revenue per currency from admin_revenue_overview's
-// totals_all_time (the same rows the Revenue page's "All time" Overview
-// adds up). Naira and dollars stay separate: never converted or combined.
+// All-time revenue per currency (never converted or combined)
 function allTimeRevenueByCurrency(overview){
   const out = { NGN: 0, USD: 0 };
   ((overview && overview.totals_all_time) || []).forEach(r => {
@@ -81,7 +79,7 @@ function seriesPreviewRowHtml(series){
 function renderSeriesPreview(){
   const el = document.getElementById('adminSeriesPreview');
   if(!dashSeries.length){
-    el.innerHTML = '<div class="admin-empty">No series yet — create the first one above.</div>';
+    el.innerHTML = '<div class="admin-empty">No series yet. Create one above.</div>';
     return;
   }
   const list = dashFilteredSeries();
@@ -119,7 +117,7 @@ async function handleFeaturedToggle(btn){
     showToast(series.featured_at ? 'Marked as featured ✓' : 'Removed from featured');
   } catch(err){
     console.error('Narrava: failed to toggle featured', err);
-    showToast('Could not update featured status — please try again');
+    showToast('Couldn’t update featured. Try again.');
   } finally {
     btn.disabled = false;
   }
@@ -171,7 +169,7 @@ async function handleCreateSeriesSubmit(e){
     if(error) throw error;
 
     dashSeries.unshift(data);
-    showToast('Series created ✓ — it starts as a draft, publish it from Series List when ready');
+    showToast('Series created ✓ It’s a draft until you publish it in Series List');
     form.reset();
     document.getElementById('adminFreeEpisodes').value = 10;
     resetDashCoverPicker();
@@ -179,7 +177,7 @@ async function handleCreateSeriesSubmit(e){
     populateUploadSeriesSelect();
   } catch(err){
     console.error('Narrava: failed to create series', err);
-    errorEl.textContent = err.message || 'Could not create series — please try again.';
+    errorEl.textContent = err.message || 'Couldn’t create the series. Try again.';
     errorEl.classList.add('show');
   } finally {
     submitBtn.disabled = false;
@@ -233,7 +231,7 @@ async function handleDashUploadSubmit(e){
 
   try {
     await uploadEpisodeToBunny({ seriesId, seriesTitle: series.title, episodeNumber, title, file }, els);
-    showBunnyProcessingToast('Episode uploaded — Bunny may take a few minutes to finish processing');
+    showBunnyProcessingToast('Episode uploaded. Bunny may take a few minutes to process it.');
     document.getElementById('dashUploadForm').reset();
     document.getElementById('dashUploadFileBtn').textContent = 'Add Video File';
     document.getElementById('dashUploadNumber').value = 1;
@@ -258,7 +256,7 @@ document.getElementById('adminDashboardSearch').addEventListener('input', (e) =>
     const [core, usersResult, revenueResult] = await Promise.all([
       loadCoreAdminData(),
       supabaseClient.rpc('admin_total_users'),
-      // Any p_days works: only totals_all_time is used, which ignores it.
+      // p_days is ignored for totals_all_time
       supabaseClient.rpc('admin_revenue_overview', { p_days: 1 })
     ]);
     dashSeries = core.series;
@@ -275,6 +273,6 @@ document.getElementById('adminDashboardSearch').addEventListener('input', (e) =>
     populateUploadSeriesSelect();
   } catch(err){
     console.error('Narrava: failed to load dashboard data', err);
-    showToast('Could not load dashboard data — please try again');
+    showToast('Couldn’t load the dashboard. Try again.');
   }
 })();

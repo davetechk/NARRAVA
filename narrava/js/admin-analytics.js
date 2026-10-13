@@ -1,30 +1,16 @@
-// admin-analytics.js — admin/analytics.html only.
-//
-// Real visits to the actual consumer app (page_visits, logged once per
-// real page load by js/visit-log.js — never from inside this admin
-// panel), read here through the two already-deployed admin RPCs
-// (admin_visit_stats, admin_daily_visits) exactly as they return.
-// Neither RPC is touched or recomputed here — this only ever renders
-// what they hand back.
+// admin/analytics.html: consumer app visits
 
 function analyticsStatsRowHtml(stats){
   const fmt = (v) => (v === null || v === undefined) ? '—' : Number(v).toLocaleString();
 
   return '<div class="admin-stats-row cols-3">' +
     '<div class="admin-stat-card"><div class="admin-stat-icon">' + ADMIN_ICONS.analytics + '</div><div class="admin-stat-body"><div class="admin-stat-label">Today’s Visits</div><div class="admin-stat-value">' + fmt(stats && stats.today_visits) + '</div><div class="admin-stat-caption">Since midnight</div></div></div>' +
-    '<div class="admin-stat-card"><div class="admin-stat-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.7"/><path d="M3 9h18" stroke="currentColor" stroke-width="1.7"/></svg></div><div class="admin-stat-body"><div class="admin-stat-label">Visits — Last 7 Days</div><div class="admin-stat-value">' + fmt(stats && stats.last_7_days_visits) + '</div><div class="admin-stat-caption">Total, every real visit</div></div></div>' +
+    '<div class="admin-stat-card"><div class="admin-stat-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.7"/><path d="M3 9h18" stroke="currentColor" stroke-width="1.7"/></svg></div><div class="admin-stat-body"><div class="admin-stat-label">Visits — Last 7 Days</div><div class="admin-stat-value">' + fmt(stats && stats.last_7_days_visits) + '</div><div class="admin-stat-caption">Total visits</div></div></div>' +
     '<div class="admin-stat-card"><div class="admin-stat-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="3.4" stroke="currentColor" stroke-width="1.8"/><path d="M4.5 20c1.4-4 4.2-6 7.5-6s6.1 2 7.5 6" stroke="currentColor" stroke-width="1.8"/></svg></div><div class="admin-stat-body"><div class="admin-stat-label">Unique Visitors — 7 Days</div><div class="admin-stat-value">' + fmt(stats && stats.unique_visitors_7_days) + '</div><div class="admin-stat-caption">Deduplicated by account</div></div></div>' +
   '</div>';
 }
 
-// Builds one continuous, gap-filled day series from whatever real rows
-// admin_daily_visits actually returned. A day that RPC didn't return a
-// row for is a real zero, filled in here so the line reads as one
-// continuous real trend rather than sparse dots — never a fabricated
-// non-zero value, only a genuine zero for a day with no real visits.
-// With no real rows at all (nothing ever visited yet), falls back to a
-// real last-7-days-ending-today all-zero baseline — still honest, not
-// invented, since an empty result genuinely means zero visits.
+// One entry per day, days with no visits filled with 0 (last 7 days if empty)
 function buildDailySeries(rows){
   const byDate = {};
   (rows || []).forEach(r => { byDate[r.visit_date] = Number(r.visit_count) || 0; });
@@ -69,7 +55,7 @@ function lineChartSvg(series){
     return '<line x1="' + padL + '" y1="' + y + '" x2="' + (W - padR) + '" y2="' + y + '" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>';
   }).join('');
 
-  // Thins labels out so they never overlap once there are many days.
+  // Thin labels so they don't overlap
   const labelEvery = Math.max(1, Math.ceil(series.length / 10));
   const labels = points.map((pt, i) => {
     if(i % labelEvery !== 0 && i !== points.length - 1) return '';
@@ -115,10 +101,10 @@ function lineChartSvg(series){
 
     const hasAnyRealVisit = series.some(p => p.count > 0);
     document.getElementById('analyticsChartNote').textContent = hasAnyRealVisit
-      ? 'Real visit counts per day.'
-      : 'No visits recorded yet — every point above is a real, honest zero, not a placeholder.';
+      ? 'Visits per day.'
+      : 'No visits recorded yet.';
   } catch(err){
     console.error('Narrava: failed to load analytics', err);
-    showToast('Could not load analytics — please try again');
+    showToast('Couldn’t load analytics. Try again.');
   }
 })();

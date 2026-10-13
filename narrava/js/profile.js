@@ -1,24 +1,10 @@
-// profile.js
-//
-// The Profile screen: always renders the same menu — avatar, membership
-// banner, feature row, then Top Up / My Wallet / Earn Rewards / Gifts /
-// History / Download, then Language / Help & Feedback — whether or not
-// anyone is signed in. Signing in happens through the popup in auth.js,
-// opened from inside this screen; it no longer replaces the screen.
-//
-// Real rows: My Wallet (the real Nava Coins balance from coins.js) and
-// Top Up, which both open the real Get Coins sheet (coins.js); History
-// (its own screen, history.js); Download (the row and the tile: the
-// Downloads screen for subscribers, Membership for everyone else — see
-// openDownloadsFromProfile, downloads.js); and Help & Feedback (help.js).
-// Earn Rewards, Gifts and the other three feature tiles show the same
-// "Coming soon" toast; Language keeps its own.
+// Profile screen menu (the same whether or not anyone is signed in)
 
 const profilePanel = document.getElementById('profilePanel');
 
-let currentSession = null; // Supabase session, or null when signed out
+let currentSession = null; // null when signed out
 let isAdmin = false; // profiles.is_admin for the current session, false when signed out
-let currentDisplayName = null; // profiles.display_name for the current session — null until loadProfileExtras resolves, and genuinely null/empty when nobody's actually set one yet
+let currentDisplayName = null; // profiles.display_name, null until loaded or if not set
 
 const usernameModalBackdrop = document.getElementById('usernameModalBackdrop');
 const usernameModalClose = document.getElementById('usernameModalClose');
@@ -52,8 +38,7 @@ function menuRow(id, label, icon, valueHtml){
   '</button>';
 }
 
-// Same visual row, but a plain link — the Admin Panel now lives on its
-// own separate pages under admin/, not a screen inside this app.
+// Link row (Admin Panel)
 function menuLinkRow(id, label, icon, href){
   return '<a class="profile-row" id="' + id + '" href="' + href + '">' +
     '<span class="profile-row-icon">' + icon + '</span>' +
@@ -64,22 +49,10 @@ function menuLinkRow(id, label, icon, href){
 
 function renderProfileMenu(){
   const loggedIn = !!currentSession;
-  // Every visitor now genuinely has a session (see bootstrapAnonymousSession,
-  // watch-progress.js) — a real anonymous account has no real email, so the
-  // identity row specifically needs the stronger "is this a real account"
-  // check, not just "is there a session at all", or it would show the
-  // literal string "undefined" instead of an email for an anonymous-only
-  // visitor. Wallet balance below is unaffected — a real anonymous account
-  // has a real profiles row and a real coin_balance, nothing broken there.
+  // Guests have a session but no email
   const isRealAccount = loggedIn && !currentSession.user.is_anonymous;
 
-  // Once a real username (profiles.display_name) is actually set, show
-  // that in place of the email — currentDisplayName is already loaded
-  // by checkIsAdmin() before this ever runs, straight off the same real
-  // profiles row the username itself was added to, so there's no separate
-  // fetch or flash of the email first.
-  // The gold VIP badge sits beside (not inside) the name element, which
-  // the username editor rewrites. Only ever on this person's own profile.
+  // Username if set, else email. VIP badge sits beside the name.
   const identityHtml = isRealAccount
     ? '<div class="profile-id"><div class="profile-email" id="profileIdentityValue">' + escapeHtml(currentDisplayName || currentSession.user.email) + '</div>' +
         '<span class="vip-badge" id="profileVipBadge"' + (isVipMember() ? '' : ' hidden') + '>VIP</span></div>'
@@ -143,14 +116,7 @@ function renderProfileMenu(){
   if(loggedIn) loadWalletBalance();
 }
 
-// Always-visible install help, near the top of the Profile screen, opposite
-// the avatar and username. Never conditional — it's there whether or not the
-// automatic popup has been shown, closed or skipped, so anyone can find it on
-// purpose. Tapping it opens the same modal the automatic popup uses
-// (pwa-install.js): the real install prompt where the browser offers one,
-// the Share → Add to Home Screen steps on iPhone, an honest note elsewhere,
-// or "already installed" when running as the installed app. There is no
-// separate flow here; pwa-install.js's installVariant() decides.
+// Install help button (pwa-install.js decides what it shows)
 function pwaInstallButtonHtml(){
   return '<button type="button" class="profile-install-btn" id="profileInstallBtn">' +
     PROFILE_ICONS.download + '<span>How to install</span></button>';
@@ -167,7 +133,7 @@ function wireProfileRows(loggedIn){
 
   document.getElementById('membershipBanner').addEventListener('click', () => openMembershipScreen());
 
-  // Not built yet — every one of these says so the same way.
+  // Not built yet
   ['rowRewards', 'rowGifts',
    'featureOriginals', 'featureDailyCoins', 'featureHdQuality'].forEach(id => {
     document.getElementById(id).addEventListener('click', () => showToast('Coming soon'));
@@ -181,8 +147,6 @@ function wireProfileRows(loggedIn){
     renderHistoryScreen();
   });
 
-  // Both open the real Get Coins sheet (coins.js), which itself sends an
-  // anonymous visitor to sign up when they tap a pack.
   document.getElementById('rowTopUp').addEventListener('click', () => openCoinSheet());
   document.getElementById('rowWallet').addEventListener('click', () => openCoinSheet());
 
@@ -201,7 +165,7 @@ function wireProfileRows(loggedIn){
 
       if(error){
         console.error('Narrava: sign out failed', error);
-        showToast('Could not sign out — please try again');
+        showToast('Couldn’t sign out. Try again.');
         signOutRow.disabled = false;
         return;
       }
@@ -210,18 +174,13 @@ function wireProfileRows(loggedIn){
       isAdmin = false;
       currentDisplayName = null;
       renderProfileMenu();
-      onCoinAccountChanged(); // coins.js: back to 0 coins and the plain lock rule
-      refreshContinueWatchingMap().then(renderContinueWatchingBar); // app.js/discover.js: nobody's signed in now, so the floating bar must go away too
+      onCoinAccountChanged();
+      refreshContinueWatchingMap().then(renderContinueWatchingBar); // hide the Continue Watching bar
     });
   }
 }
 
-// A normal select-own read on the current user's own profiles row,
-// governed by the existing RLS policy. Decides whether the Admin Panel
-// row is drawn (the real gate is the admin-only RLS policies on
-// series/series_genres) AND loads the real username up front, before
-// renderProfileMenu ever runs — so the identity row can show it
-// immediately instead of the email, with no separate fetch or flash.
+// Loads is_admin and the username before the menu renders
 async function checkIsAdmin(){
   if(!currentSession){ isAdmin = false; currentDisplayName = null; return; }
 
@@ -244,28 +203,16 @@ async function checkIsAdmin(){
 
 async function loadWalletBalance(){
   const walletEl = document.getElementById('walletBalanceValue');
-  // currentDisplayName is already loaded by checkIsAdmin() before this
-  // ever runs, so the Username row can show it straight away — no need
-  // to wait on this (coin_balance-only) fetch to resolve it.
   const usernameEl = document.getElementById('usernameValue');
   if(usernameEl) usernameEl.textContent = currentDisplayName || 'Not set';
   if(!currentSession || !walletEl) return;
 
-  // The real balance lives in coins.js (coinState): show the last value
-  // the server gave straight away, then re-read it (0 for anonymous
-  // visitors, who can't hold coins).
+  // Last known balance now, then re-read
   renderCoinBalances();
   await refreshCoinBalance();
 }
 
-// Real write to the one column this is actually allowed to touch —
-// confirmed live before this was built: a real, signed-in, non-admin
-// account can update its own display_name, but coin_balance/is_admin
-// are genuinely refused ("permission denied for table profiles") even
-// on that same row. Once saved, this exact value is what
-// get_series_comments already returns as display_name for every
-// comment/reply this account posts (comments-panel.js) — nothing else
-// needs to change there.
+// Username popup (display_name is the only column users can update)
 function openUsernameModal(){
   usernameError.textContent = '';
   usernameError.classList.remove('show');
@@ -299,16 +246,14 @@ usernameForm.addEventListener('submit', async (e) => {
     currentDisplayName = name || null;
     const usernameEl = document.getElementById('usernameValue');
     if(usernameEl) usernameEl.textContent = currentDisplayName || 'Not set';
-    // Identity row at the top shows this same real name in place of the
-    // email once it's set — update it live rather than waiting on the
-    // next full renderProfileMenu().
+    // Update the identity row live
     const identityEl = document.getElementById('profileIdentityValue');
     if(identityEl) identityEl.textContent = currentDisplayName || currentSession.user.email;
     closeUsernameModal();
     showToast('Username updated ✓');
   } catch(err){
     console.error('Narrava: failed to update username', err);
-    usernameError.textContent = 'Could not save — please try again.';
+    usernameError.textContent = 'Couldn’t save. Try again.';
     usernameError.classList.add('show');
   } finally {
     usernameSubmitBtn.disabled = false;
@@ -316,14 +261,13 @@ usernameForm.addEventListener('submit', async (e) => {
   }
 });
 
-// The subscription changed (loaded, bought, expired): show or hide the
-// VIP badge without re-rendering the whole menu.
+// Show or hide the VIP badge
 document.addEventListener('narrava:coins-changed', () => {
   const badge = document.getElementById('profileVipBadge');
   if(badge) badge.hidden = !isVipMember();
 });
 
-// Entry point, called from app.js each time the Profile tab is opened.
+// Called each time the Profile tab opens
 async function renderProfileScreen(){
   try {
     const { data, error } = await supabaseClient.auth.getSession();

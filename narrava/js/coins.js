@@ -1,39 +1,5 @@
-// coins.js
-//
-// Nava Coins — the real coin economy, replacing the old session-only
-// placeholder (a hardcoded `coins = 3`, a 2-coin episode cost, episode
-// ids "unlocked" in a browser-only Set, and a Pay button that just added
-// coins after a timeout). Everything here only ever DISPLAYS what the
-// server says and ASKS the server to act — nothing about a balance, a
-// price, or an unlock is decided or stored in the browser as the source
-// of truth:
-//
-//   - balance:  profiles.coin_balance (own row). Anonymous visitors show 0.
-//   - lock:     an episode is unlocked if its number is within the series'
-//               free_episode_count, Free Mode is on, my_subscription()
-//               returns an active plan, or an episode_unlocks row exists
-//               for it — the same rule the video signing function
-//               enforces on the server. No admin exception here.
-//   - unlock:   rpc unlock_episode_with_coin(p_episode_id); the balance
-//               shown afterwards is the one the server returns.
-//   - buying:   startPaystackPurchase — the ONE purchase flow, shared by
-//               coin packs (Get Coins sheet, below) and subscriptions
-//               (membership.js): Edge Function paystack-init (kind/itemId/
-//               currency only), then Paystack's own inline popup. Coins and
-//               subscription days are granted only by the server's webhook
-//               — onSuccess is never trusted; the purchases row is polled
-//               until the server says completed.
-//   - subscription: my_subscription() (plan_id, plan_name, ends_at,
-//               is_vip), held as-is in coinState.subscription and never
-//               granted or extended here.
-//   - welcome:  rpc claim_welcome_bonus(), safe to call any number of
-//               times (the server only ever pays once).
-//   - ads:      for a 0-coin account the server allows (my_ad_status), the
-//               unlock prompt also gets ads.js's "watch ads" section.
-//
-// Other files read coinState / isEpisodeUnlocked and listen for the
-// 'narrava:coins-changed' event (app.js, watch.js, profile.js) to
-// repaint lock icons and balances whenever this state changes.
+// Nava Coins: balance, lock rule, unlock prompt, Paystack purchases, Get Coins sheet.
+// The server decides everything; this file shows it and fires 'narrava:coins-changed'.
 
 const PAYSTACK_INLINE_SRC = 'https://js.paystack.co/v2/inline.js';
 const PURCHASE_POLL_MS = 2000;
@@ -41,16 +7,14 @@ const PURCHASE_POLL_LIMIT_MS = 60000;
 
 const coinState = {
   userId: null,
-  isRealAccount: false,       // signed up / logged in (not an anonymous guest)
+  isRealAccount: false,       // not an anonymous guest
   balance: 0,                 // last value the server reported
   unlockedEpisodeIds: new Set(), // episode_unlocks rows for this person
-  serverPlayableIds: new Set(),  // episodes the unlock RPC itself answered "free" for this session (e.g. Free Mode switched on after load)
-  subscription: null          // my_subscription()'s row (plan_id, plan_name, ends_at, is_vip), or null
+  serverPlayableIds: new Set(),  // episodes the unlock RPC answered "free" for (e.g. Free Mode switched on after load)
+  subscription: null          // my_subscription() row, or null
 };
 
-// Active = the server returned a plan whose ends_at hasn't passed yet. The
-// ends_at check only makes an expiry show without waiting for the next
-// refresh; the server's own answer is still what's displayed.
+// Active = a plan whose ends_at hasn't passed
 function hasActiveSubscription(){
   const sub = coinState.subscription;
   return !!(sub && sub.plan_id && (!sub.ends_at || Date.parse(sub.ends_at) > Date.now()));
@@ -72,8 +36,7 @@ async function currentCoinUser(){
   }
 }
 
-// RPCs returning a table come back as an array; a scalar/composite as an
-// object. Both shapes are accepted.
+// Table RPCs return an array, others an object
 function firstRow(data){
   return Array.isArray(data) ? (data[0] || null) : (data || null);
 }
@@ -93,7 +56,7 @@ async function refreshCoinBalance(){
     if(error) throw error;
     coinState.balance = (data && typeof data.coin_balance === 'number') ? data.coin_balance : 0;
   } catch(err){
-    // Keep the last value the server gave rather than inventing one.
+    // Keep the last value the server gave
     console.error('Narrava: failed to load coin balance', err);
   }
   renderCoinBalances();
@@ -122,10 +85,7 @@ async function refreshEntitlements(){
   notifyCoinsChanged();
 }
 
-// When an active subscription's ends_at arrives while the app is open,
-// re-ask the server, so episodes lock again without a reload. (Timers
-// can't wait longer than ~24 days; a later end is caught by the next
-// load/foreground refresh instead.)
+// Re-check when the subscription ends while the app is open (timers max ~24 days)
 let subscriptionExpiryTimer = null;
 function scheduleSubscriptionExpiry(){
   if(subscriptionExpiryTimer){ clearTimeout(subscriptionExpiryTimer); subscriptionExpiryTimer = null; }
@@ -134,9 +94,7 @@ function scheduleSubscriptionExpiry(){
   if(ms > 0 && ms < 2147000000) subscriptionExpiryTimer = setTimeout(refreshEntitlements, ms);
 }
 
-// Full reload: who is signed in, their balance, unlocks and subscription.
-// Called once at app load and whenever the account changes (sign up, log
-// in, sign out).
+// Full reload of the coin state. At load and when the account changes.
 async function refreshCoinState(){
   const user = await currentCoinUser();
   const newUserId = user ? user.id : null;
@@ -150,14 +108,8 @@ function notifyCoinsChanged(){
   document.dispatchEvent(new CustomEvent('narrava:coins-changed'));
 }
 
-// The one lock rule, used by both players and every episode grid.
-// freeEpisodeCount is the series' own free_episode_count. Free Mode is
-// app.js's appSettings, read at call time. An episode the signed-in
-// account downloaded to this device (downloads.js — another account's
-// download, or one seen by a guest, doesn't count) is always watchable:
-// it plays the local copy,
-// with no signed URL, and stays watchable after a subscription ends —
-// only NEW downloads need one, and the server decides those.
+// The one lock rule (players and every episode grid).
+// This account's downloads are always watchable.
 function isEpisodeUnlocked(freeEpisodeCount, ep){
   if(!ep) return false;
   if(isEpisodeDownloaded(ep.id)) return true;
@@ -171,8 +123,7 @@ function coinCountLabel(n){
   return n + ' Nava Coin' + (n === 1 ? '' : 's');
 }
 
-// Every place a balance is shown: the feed's coin chip, Profile's My
-// Wallet row, the Get Coins sheet and the unlock prompt.
+// Every place a balance shows
 function renderCoinBalances(){
   const chip = document.getElementById('coinBalance');
   if(chip) chip.textContent = coinState.balance;
@@ -181,9 +132,7 @@ function renderCoinBalances(){
   document.querySelectorAll('[data-coin-balance]').forEach(el => { el.textContent = coinCountLabel(coinState.balance); });
 }
 
-// Back in the foreground (switched apps, came back from a payment page):
-// the server may have credited coins or days meanwhile, or a
-// subscription may have ended.
+// Back in the foreground: coins or days may have changed
 document.addEventListener('visibilitychange', () => {
   if(!document.hidden && coinState.userId){
     refreshCoinBalance();
@@ -195,7 +144,7 @@ document.addEventListener('visibilitychange', () => {
 
 async function claimWelcomeBonusIfEligible(){
   const user = await currentCoinUser();
-  if(!user || user.is_anonymous) return; // never for anonymous visitors
+  if(!user || user.is_anonymous) return;
   try {
     const { data, error } = await supabaseClient.rpc('claim_welcome_bonus');
     if(error) throw error;
@@ -208,14 +157,13 @@ async function claimWelcomeBonusIfEligible(){
       await refreshCoinBalance();
       showToast('Welcome! You got 5 free Nava Coins');
     }
-    // Any other status: stay silent.
+    // Other statuses: stay silent
   } catch(err){
     console.error('Narrava: welcome bonus check failed', err);
   }
 }
 
-// Called by auth.js after a successful sign up / account link / log in,
-// and by profile.js after sign out.
+// After sign up / log in / sign out
 async function onCoinAccountChanged(){
   await refreshCoinState();
   await claimWelcomeBonusIfEligible();
@@ -233,15 +181,13 @@ let unlockMode = null;     // 'checking' | 'confirm' | 'insufficient'
 
 function closeUnlockPrompt(){
   unlockModalBackdrop.classList.remove('open');
-  cancelPendingAd(); // ads.js
+  cancelPendingAd();
   if(!unlockInFlight) unlockTarget = null;
 }
 unlockModalClose.addEventListener('click', closeUnlockPrompt);
 unlockModalBackdrop.addEventListener('click', e => { if(e.target === unlockModalBackdrop) closeUnlockPrompt(); });
 
-// The one entry point for "someone tapped a locked episode", from the
-// mobile feed and the desktop watch page alike. onUnlocked runs once the
-// server has said the episode is watchable — it plays it.
+// Entry point for tapping a locked episode. onUnlocked plays it.
 function openUnlockPrompt(ep, onUnlocked){
   if(!ep) return;
   if(!coinState.isRealAccount){
@@ -255,8 +201,7 @@ function openUnlockPrompt(ep, onUnlocked){
     renderUnlockPrompt('confirm');
     return;
   }
-  // 0 coins: ask the server whether this person can watch ads (ads.js)
-  // before choosing the prompt. Not eligible → the usual prompt.
+  // 0 coins: check ad eligibility first
   renderUnlockPrompt('checking');
   prepareAdsForPrompt().then(() => {
     if(unlockTarget !== target) return; // closed or replaced meanwhile
@@ -283,7 +228,7 @@ function renderUnlockPrompt(mode){
         '<p class="unlock-sub">Episode ' + ep.episode_number + ' costs 1 Nava Coin to unlock.</p>' +
         balanceHtml +
         '<button type="button" class="auth-submit" id="unlockGetCoinsBtn">Get Nava Coins</button>' +
-        adsSectionHtml() + // ads.js — empty unless the server says this person can watch ads
+        adsSectionHtml() + // empty unless ads are allowed
         '<button type="button" class="unlock-cancel" id="unlockCancelBtn">Cancel</button>' +
       '</div>';
     document.getElementById('unlockGetCoinsBtn').addEventListener('click', () => { closeUnlockPrompt(); openCoinSheet(); });
@@ -303,7 +248,7 @@ function renderUnlockPrompt(mode){
   document.getElementById('unlockCancelBtn').addEventListener('click', closeUnlockPrompt);
 }
 
-// ads.js's status or progress changed: repaint the open prompt's ads section.
+// Repaint the ads section
 document.addEventListener('narrava:ads-changed', () => {
   if(unlockMode === 'insufficient' && unlockTarget && unlockModalBackdrop.classList.contains('open')){
     renderUnlockPrompt('insufficient');
@@ -311,9 +256,9 @@ document.addEventListener('narrava:ads-changed', () => {
 });
 
 const UNLOCK_ERROR_MESSAGES = {
-  not_signed_in: 'Please sign in to unlock episodes',
+  not_signed_in: 'Sign in to unlock episodes',
   not_found: 'This episode isn’t available',
-  no_profile: 'Your account isn’t ready yet — please try again'
+  no_profile: 'Your account isn’t ready yet. Try again.'
 };
 
 async function confirmUnlock(){
@@ -345,7 +290,7 @@ async function confirmUnlock(){
   }
 
   if(status === 'insufficient_coins'){
-    // The server says 0 coins after all: offer ads too, if it allows them.
+    // 0 coins after all: offer ads if allowed
     await prepareAdsForPrompt();
     if(unlockTarget === target) renderUnlockPrompt('insufficient');
     return;
@@ -353,12 +298,10 @@ async function confirmUnlock(){
 
   unlockTarget = null;
   unlockModalBackdrop.classList.remove('open');
-  showToast(UNLOCK_ERROR_MESSAGES[status] || 'Couldn’t unlock the episode — please try again');
+  showToast(UNLOCK_ERROR_MESSAGES[status] || 'Couldn’t unlock the episode. Try again.');
 }
 
-// The server said the episode is watchable — after a coin unlock or an ad
-// unlock alike. Its answer is recorded as-is; refreshEntitlements below
-// reloads the subscription itself for 'subscribed'.
+// The server said the episode is watchable (coins or ads)
 function onEpisodeUnlocked(target, status){
   if(status === 'unlocked' || status === 'already_unlocked') coinState.unlockedEpisodeIds.add(target.ep.id);
   else coinState.serverPlayableIds.add(target.ep.id);
@@ -367,18 +310,14 @@ function onEpisodeUnlocked(target, status){
     unlockModalBackdrop.classList.remove('open');
   }
   if(status === 'unlocked') showToast('Episode ' + target.ep.episode_number + ' unlocked');
-  // Play first, then tell every grid to repaint its lock icons.
+  // Play first, then repaint lock icons
   if(typeof target.onUnlocked === 'function') target.onUnlocked();
   notifyCoinsChanged();
-  refreshEntitlements(); // resync with the server in the background
+  refreshEntitlements(); // resync in the background
 }
 
-// ---------- shared Paystack purchase flow ----------
-//
-// One flow for every purchase kind. paystack-init gets ONLY
-// { kind, itemId, currency }; the server prices it. Surfaces (the Get
-// Coins sheet, the Membership screen) re-render on
-// 'narrava:purchase-changed' and read `purchase` to show its status.
+// ---------- Paystack purchase flow ----------
+// paystack-init gets only { kind, itemId, currency }; the server prices it
 
 const PURCHASE_KINDS = {
   coin_pack: {
@@ -396,10 +335,10 @@ const PAYSTACK_INIT_ERRORS = {
   subscriptions_disabled: 'Subscriptions aren’t available yet.',
   unknown_pack: 'That coin pack isn’t available anymore.',
   unknown_plan: 'That plan isn’t available anymore.',
-  paystack_unavailable: 'Payments are unavailable right now. Please try again later.'
+  paystack_unavailable: 'Payments aren’t available right now. Try again later.'
 };
 
-// The one Naira / US Dollar choice, shared by Get Coins and Membership.
+// Naira / US Dollar choice, shared by Get Coins and Membership
 let paymentCurrency = 'NGN';
 
 // null | { kind, phase:'starting'|'paying'|'confirming', reference } |
@@ -415,13 +354,12 @@ function setPurchase(state){
   document.dispatchEvent(new CustomEvent('narrava:purchase-changed'));
 }
 
-// Clears a finished result (not one in progress) — e.g. when a surface
-// is reopened, so an old message doesn't linger.
+// Clear a finished result so an old message doesn't linger
 function clearFinishedPurchase(){
   if(purchase && purchase.phase === 'done') setPurchase(null);
 }
 
-// Status markup for a surface: only for its own kind of purchase.
+// Status markup for one kind of purchase
 function purchaseStatusHtml(kind){
   if(!purchase || purchase.kind !== kind) return '';
   if(purchase.phase === 'starting') return '<div class="coin-status"><span class="coin-spinner"></span><span>Starting payment…</span></div>';
@@ -430,8 +368,7 @@ function purchaseStatusHtml(kind){
   return '<div class="coin-status ' + purchase.tone + '">' + escapeHtml(purchase.message) + '</div>';
 }
 
-// The Naira / US Dollar toggle with the naira note, as used by both
-// surfaces. Wire it with wireCurrencyToggle(container, rerender).
+// Currency toggle. Wire with wireCurrencyToggle(container, rerender).
 function currencyToggleHtml(){
   const busy = purchaseInProgress();
   return '<div class="coin-currency">' +
@@ -451,7 +388,7 @@ function wireCurrencyToggle(container, rerender){
   });
 }
 
-// Price display from the server's own kobo/cents columns.
+// Price from the server's kobo/cents columns
 function formatPrice(row, currency){
   if(currency === 'USD'){
     const dollars = row.price_usd_cents / 100;
@@ -476,7 +413,7 @@ function loadPaystackScript(){
   return paystackScriptPromise;
 }
 
-// paystack-init's error body, whatever the transport put it in.
+// Error code from paystack-init's body
 async function paystackInitErrorCode(error, data){
   if(data && (data.error || data.code)) return data.error || data.code;
   try {
@@ -488,10 +425,9 @@ async function paystackInitErrorCode(error, data){
   return null;
 }
 
-// kind: 'coin_pack' | 'subscription'. itemId: the server's own pack/plan
-// id. Returns immediately if another purchase is already running.
+// kind: 'coin_pack' | 'subscription'. One purchase at a time.
 async function startPaystackPurchase(kind, itemId){
-  if(purchaseInProgress()) return; // one payment at a time
+  if(purchaseInProgress()) return;
   const cfg = PURCHASE_KINDS[kind];
   if(!cfg || !itemId) return;
 
@@ -526,7 +462,7 @@ async function startPaystackPurchase(kind, itemId){
       openAuthModal('signup', cfg.signUpNote);
       return;
     }
-    setPurchase({ kind, phase: 'done', tone: 'error', code, message: PAYSTACK_INIT_ERRORS[code] || 'Couldn’t start the payment. Please try again.' });
+    setPurchase({ kind, phase: 'done', tone: 'error', code, message: PAYSTACK_INIT_ERRORS[code] || 'Couldn’t start the payment. Try again.' });
     return;
   }
 
@@ -534,7 +470,7 @@ async function startPaystackPurchase(kind, itemId){
     await loadPaystackScript();
   } catch(err){
     console.error('Narrava: could not load Paystack', err);
-    setPurchase({ kind, phase: 'done', tone: 'error', message: 'Couldn’t open the payment window. Check your connection and try again.' });
+    setPurchase({ kind, phase: 'done', tone: 'error', message: 'Couldn’t open the payment window. Check your connection.' });
     return;
   }
 
@@ -542,23 +478,23 @@ async function startPaystackPurchase(kind, itemId){
   try {
     const popup = new PaystackPop();
     popup.resumeTransaction(accessCode, {
-      // Not proof of payment — only the server's webhook grants anything.
+      // Not proof of payment: only the webhook grants anything
       onSuccess: () => confirmPurchase(kind, reference),
       onCancel: () => { if(purchase && purchase.reference === reference) setPurchase(null); },
       onError: (err) => {
         console.error('Narrava: Paystack popup error', err);
         if(purchase && purchase.reference === reference){
-          setPurchase({ kind, phase: 'done', tone: 'error', message: 'The payment window ran into a problem. You weren’t charged — please try again.' });
+          setPurchase({ kind, phase: 'done', tone: 'error', message: 'The payment window had a problem. You weren’t charged. Try again.' });
         }
       }
     });
   } catch(err){
     console.error('Narrava: Paystack popup failed to open', err);
-    setPurchase({ kind, phase: 'done', tone: 'error', message: 'Couldn’t open the payment window. Please try again.' });
+    setPurchase({ kind, phase: 'done', tone: 'error', message: 'Couldn’t open the payment window. Try again.' });
   }
 }
 
-// Polls the purchases row the webhook updates — every 2s for up to 60s.
+// Poll the purchases row every 2s for up to 60s
 async function confirmPurchase(kind, reference){
   const cfg = PURCHASE_KINDS[kind];
   setPurchase({ kind, phase: 'confirming', reference });
@@ -579,8 +515,6 @@ async function confirmPurchase(kind, reference){
     }
 
     if(status === 'completed'){
-      // Balance, unlocks and my_subscription — every lock re-checks via
-      // narrava:coins-changed.
       await Promise.all([refreshCoinBalance(), refreshEntitlements()]);
       setPurchase({ kind, phase: 'done', tone: 'ok', message: cfg.completedMessage });
       showToast(cfg.completedMessage);
@@ -623,8 +557,7 @@ function closeCoinSheet(){
 coinSheetClose.addEventListener('click', closeCoinSheet);
 coinSheetBackdrop.addEventListener('click', e => { if(e.target === coinSheetBackdrop) closeCoinSheet(); });
 
-// Packs and the Coin Payments switch are re-read on every open, so a
-// change in the admin panel shows up without a reload.
+// Packs and the switch re-read on every open
 async function loadCoinSheetData(){
   coinSheetLoading = !coinPacks.length;
   coinSheetLoadFailed = false;
@@ -659,7 +592,7 @@ function renderCoinSheet(){
   if(coinSheetLoading){
     html += '<div class="coin-sheet-loading">' + narravaLoaderHtml('pulse') + '</div>';
   } else if(coinSheetLoadFailed){
-    html += '<div class="coin-status error">Couldn’t load coin packs. Please try again.</div>';
+    html += '<div class="coin-status error">Couldn’t load coin packs. Try again.</div>';
   } else if(!coinPurchasesEnabled){
     html += '<div class="coin-status warn">Buying coins isn’t available right now</div>';
   } else {

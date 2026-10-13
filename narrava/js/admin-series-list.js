@@ -1,4 +1,4 @@
-// admin-series-list.js — admin/series-list.html only.
+// admin/series-list.html
 
 let slSeries = [];
 let slGenres = [];
@@ -7,7 +7,7 @@ let slEpisodeCounts = {}; // series_id -> number
 let slSearchQuery = '';
 let slEditingId = null;
 let slDeletingId = null;
-let slEditCoverFile = null; // File picked in the currently-open edit row, or null if unchanged
+let slEditCoverFile = null; // Cover file picked in the open edit row, or null
 
 function statsRowHtml(){
   const total = slSeries.length;
@@ -40,16 +40,9 @@ function seriesRowHtml(series){
   const hasNoEpisodes = episodeCount === 0;
   const cover = series.cover_image_url ? 'background-image:url(\'' + series.cover_image_url.replace(/'/g, '') + '\');' : '';
 
-  // A series with zero real episodes never appears anywhere on the live
-  // app, no matter its published/featured status (fetchSlides skips it
-  // outright) — that's correct, existing behavior, but nothing in the
-  // admin used to say so. Shown twice on purpose: a quiet reminder under
-  // the title for every zero-episode series, and — right where it's
-  // truly easy to miss — an unmissable badge directly beside the Live/
-  // Draft status itself, since a "Live" badge with no episodes behind it
-  // is the exact case an admin could otherwise be misled by.
+  // A series with no episodes never shows in the app, so flag it
   const noEpisodesNote = hasNoEpisodes
-    ? '<div class="admin-row-sub admin-warn-text">No episodes yet — won’t appear on the live app</div>'
+    ? '<div class="admin-row-sub admin-warn-text">No episodes, so it won’t show in the app</div>'
     : '';
   const noEpisodesBadge = hasNoEpisodes
     ? '<span class="admin-warn-badge" title="This series has no real episodes yet, so it will not appear anywhere on the live app regardless of this status.">⚠ Won’t show — no episodes</span>'
@@ -103,7 +96,7 @@ function deleteRowHtml(series){
   const episodeCount = slEpisodeCounts[series.id] || 0;
   return '<tr data-series-id="' + series.id + '"><td colspan="6">' +
     '<div class="admin-delete-confirm">' +
-      '<p>Delete “' + escapeHtml(series.title) + '” permanently? This deletes its ' + episodeCount + ' episode' + (episodeCount === 1 ? '' : 's') + ' one by one — each episode’s video is removed from Bunny first, then its record — and only then the series itself and its genre links. If any video can’t be removed from Bunny, it stops and tells you, and nothing after that point is deleted. This can’t be undone.</p>' +
+      '<p>Delete “' + escapeHtml(series.title) + '” permanently? This deletes its ' + episodeCount + ' episode' + (episodeCount === 1 ? '' : 's') + ' and their Bunny videos, then the series. It stops at the first failure. This can’t be undone.</p>' +
       '<div class="auth-error" id="seriesDeleteError-' + series.id + '"></div>' +
       '<div class="admin-delete-confirm-actions">' +
         '<button type="button" class="admin-delete-confirm-btn" data-action="confirm-delete" data-series-id="' + series.id + '">Delete Permanently</button>' +
@@ -116,7 +109,7 @@ function deleteRowHtml(series){
 function renderTable(){
   const wrap = document.getElementById('seriesListTableWrap');
   if(!slSeries.length){
-    wrap.innerHTML = '<div class="admin-empty">No series yet — create one from the Dashboard.</div>';
+    wrap.innerHTML = '<div class="admin-empty">No series yet. Create one on the Dashboard.</div>';
     return;
   }
   const list = filteredSeries();
@@ -177,10 +170,10 @@ async function handlePublishedToggle(btn){
     btn.classList.toggle('green', series.status === 'published');
     btn.classList.toggle('gray', series.status !== 'published');
     btn.textContent = series.status === 'published' ? 'Live' : 'Draft';
-    showToast(series.status === 'published' ? 'Series published ✓ — now visible in Discover' : 'Moved back to draft — hidden from Discover');
+    showToast(series.status === 'published' ? 'Series published ✓' : 'Moved to draft (hidden from the app)');
   } catch(err){
     console.error('Narrava: failed to toggle published status', err);
-    showToast('Could not update published status — please try again');
+    showToast('Couldn’t update the status. Try again.');
   } finally {
     btn.disabled = false;
   }
@@ -201,7 +194,7 @@ async function handleFeaturedToggle(btn){
     showToast(series.featured_at ? 'Marked as featured ✓' : 'Removed from featured');
   } catch(err){
     console.error('Narrava: failed to toggle featured', err);
-    showToast('Could not update featured status — please try again');
+    showToast('Couldn’t update featured. Try again.');
   } finally {
     btn.disabled = false;
   }
@@ -254,11 +247,7 @@ async function handleEditSubmit(e){
     const idx = slSeries.findIndex(s => String(s.id) === String(seriesId));
     if(idx !== -1) slSeries[idx] = data;
 
-    // Only after the row is safely pointing at the new image — delete the
-    // old file from storage (this bucket supports real cleanup, unlike
-    // Bunny video assets, so there's no reason to leave it orphaned).
-    // Only ever deletes a file this app itself uploaded there (see
-    // coverImageStoragePath) — a pasted external URL is left untouched.
+    // Delete the old cover from storage (only files we uploaded)
     if(pickedFile && previousCoverUrl && previousCoverUrl !== coverImageUrl){
       deleteCoverImageIfOwned(previousCoverUrl);
     }
@@ -269,32 +258,15 @@ async function handleEditSubmit(e){
     renderTable();
   } catch(err){
     console.error('Narrava: failed to update series', err);
-    errorEl.textContent = err.message || 'Could not save changes — please try again.';
+    errorEl.textContent = err.message || 'Couldn’t save changes. Try again.';
     errorEl.classList.add('show');
     submitBtn.disabled = false;
     submitBtn.textContent = 'Save Changes';
   }
 }
 
-// Real delete, in the same honest order single-episode delete uses (see
-// admin-episodes.js handleDelete: Bunny first, then the record), applied to
-// EVERY episode of the series, with the series row itself last:
-//   1. read the series' current episodes fresh from the database (the
-//      cached counts on this page could be stale) — if that fails, nothing
-//      is touched;
-//   2. for each episode, in order: delete its video from Bunny
-//      (deleteBunnyVideo -> the bunny-delete-video Edge Function), and only
-//      once that has genuinely succeeded, delete its database record. An
-//      episode with no video attached skips straight to its record;
-//   3. only when every episode is gone, delete the series row (its genre
-//      links cascade in the database).
-// Any real failure stops everything right there and says so — never a
-// silent continue. Because each episode's record goes immediately after its
-// own video, a stop never leaves a record pointing at an already-deleted
-// video (the state that would show broken episodes in the app): episodes
-// before the failure are fully gone, the failed one and everything after
-// it are fully intact, and the series still exists. Clicking delete again
-// carries on with what's left.
+// Delete: for each episode, Bunny video then its row; series row last.
+// Stops at the first failure; clicking again carries on.
 async function handleDelete(btn){
   const seriesId = btn.dataset.seriesId;
   const cancelBtn = btn.parentElement.querySelector('[data-action="cancel-delete"]');
@@ -308,8 +280,6 @@ async function handleDelete(btn){
     if(cancelBtn) cancelBtn.disabled = false;
   };
 
-  // Re-render so the episode count in the confirmation text is current,
-  // then show the explanation there and leave the button ready to retry.
   const finishStopped = (message) => {
     renderTable();
     const freshError = document.getElementById('seriesDeleteError-' + seriesId);
@@ -318,14 +288,14 @@ async function handleDelete(btn){
     if(freshBtn) freshBtn.textContent = 'Retry Delete';
   };
   const progressNote = (done, count) =>
-    done + ' of ' + count + ' episode' + (count === 1 ? ' was' : 's were') + ' already fully removed (video and record).';
+    done + ' of ' + count + ' episode' + (count === 1 ? ' was' : 's were') + ' already deleted.';
 
   if(errorEl){ errorEl.textContent = ''; errorEl.classList.remove('show'); }
   btn.disabled = true;
   if(cancelBtn) cancelBtn.disabled = true;
   btn.textContent = 'Checking episodes…';
 
-  // 1. the real, current episode list
+  // 1. current episode list
   let episodes;
   try {
     const { data, error } = await supabaseClient
@@ -337,7 +307,7 @@ async function handleDelete(btn){
     episodes = data || [];
   } catch(err){
     console.error('Narrava: could not load episodes before deleting series', err);
-    showError('Could not load this series’ episodes, so nothing was deleted: ' + (err.message || 'please try again') + '.');
+    showError('Couldn’t load its episodes, so nothing was deleted: ' + (err.message || 'please try again') + '.');
     restore();
     return;
   }
@@ -356,7 +326,7 @@ async function handleDelete(btn){
         videosRemoved++;
       } catch(err){
         console.error('Narrava: Bunny video delete failed — stopping the series delete', ep, err);
-        finishStopped('Stopped at ' + label + ': its video could not be deleted from Bunny (' + (err.message || 'unknown error') + '). ' + progressNote(removed, total) + ' Nothing after this point was touched, and the series is still here. Fix the problem and click Delete Permanently again to carry on.');
+        finishStopped('Stopped at ' + label + ': its Bunny video couldn’t be deleted (' + (err.message || 'unknown error') + '). ' + progressNote(removed, total) + ' Nothing after it was touched. Click Delete Permanently again to carry on.');
         return;
       }
     }
@@ -366,7 +336,7 @@ async function handleDelete(btn){
       if(error) throw error;
     } catch(err){
       console.error('Narrava: episode record delete failed after its Bunny video was removed', ep, err);
-      finishStopped('Stopped at ' + label + ': ' + (ep.bunny_video_id ? 'its video was deleted from Bunny, but ' : '') + 'its database record could not be deleted (' + (err.message || 'unknown error') + '). ' + progressNote(removed, total) + ' The series is still here. Click Delete Permanently again to carry on' + (ep.bunny_video_id ? ' (this episode’s video is already gone, so Bunny may report it as missing).' : '.'));
+      finishStopped('Stopped at ' + label + ': ' + (ep.bunny_video_id ? 'its Bunny video is gone, but ' : '') + 'its record couldn’t be deleted (' + (err.message || 'unknown error') + '). ' + progressNote(removed, total) + ' Click Delete Permanently again to carry on' + (ep.bunny_video_id ? ' (Bunny may say its video is missing).' : '.'));
       return;
     }
 
@@ -374,15 +344,15 @@ async function handleDelete(btn){
     slEpisodeCounts[seriesId] = Math.max(0, (slEpisodeCounts[seriesId] || 0) - 1);
   }
 
-  // 3. the series itself, last — only reached if every episode above succeeded
+  // 3. the series row
   btn.textContent = 'Deleting series…';
   try {
     const { data, error } = await supabaseClient.from('series').delete().eq('id', seriesId).select('id');
     if(error) throw error;
-    if(!data || !data.length) throw new Error('the database refused to delete it (no row was removed)');
+    if(!data || !data.length) throw new Error('the database refused');
   } catch(err){
     console.error('Narrava: all episodes were removed but the series row could not be deleted', err);
-    finishStopped('All ' + total + ' episode' + (total === 1 ? '' : 's') + ' and their Bunny videos were deleted, but the series itself could not be deleted (' + (err.message || 'unknown error') + '). It now has no episodes. Click Delete Permanently again to finish.');
+    finishStopped('All ' + total + ' episode' + (total === 1 ? '' : 's') + ' and their videos were deleted, but the series couldn’t be (' + (err.message || 'unknown error') + '). Click Delete Permanently again to finish.');
     return;
   }
 
@@ -428,12 +398,8 @@ document.getElementById('seriesListSearch').addEventListener('input', (e) => {
     renderTable();
   } catch(err){
     console.error('Narrava: failed to load series list', err);
-    showToast('Could not load series — please try again');
-    // The toast alone used to leave the loader (now the skeleton) sitting
-    // there forever on a genuine failure — this is that area's one
-    // honest error state, matching the empty-state markup renderTable()
-    // itself already uses elsewhere in this file.
-    document.getElementById('seriesListTableWrap').innerHTML = '<div class="admin-empty">Could not load series — please try again.</div>';
+    showToast('Couldn’t load series. Try again.');
+    document.getElementById('seriesListTableWrap').innerHTML = '<div class="admin-empty">Couldn’t load series. Try again.</div>';
   } finally {
     hideSkeletonLogo();
   }

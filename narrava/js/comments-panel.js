@@ -1,66 +1,10 @@
-// comments-panel.js
-//
-// Real comment panel content — one implementation, used by both the
-// mobile feed's sheet and the desktop watch page's drawer (see the two
-// controller instances at the bottom). Reads/writes go through
-// social.js (fetchSeriesComments/postSeriesComment/deleteSeriesComment/
-// toggleCommentLike/isCurrentUserAdmin) — get_series_comments is the one
-// real source for comment data, this file never queries series_comments
-// directly for a list.
-//
-// Reply depth itself is unlimited — a reply can be posted on any other
-// comment or reply, at any depth, and parent_comment_id always points at
-// whichever exact comment was actually being replied to (never forced up
-// to the top-level id).
-//
-// Only the original top-level comment gets a "N replies" toggle — there
-// is no separate toggle at any deeper level. Tapping that one toggle
-// reveals the comment's ENTIRE real reply chain, however deep it
-// actually goes, all in one place (see renderChildrenHtml below), in the
-// same depth-first order a real conversation actually happened in — a
-// reply always lands right after the specific comment it answers.
-//
-// Worked out directly as two diagrams with the person running this
-// project: each reply's connecting line has to visibly branch from the
-// specific comment it answers, not run as one line straight from the
-// root through everything under it — so this renders REAL nested
-// containers (one .cmt-replies per parent that actually has visible
-// children), each contributing one small indent step and its own
-// border-left, rather than one flat list at a single indent. Two
-// replies answering the same comment share that comment's own nested
-// container, so they land at the same small indent, branching from the
-// same point; something replying to one of those two gets its own
-// nested container one further small step in. The indent step stays
-// small and fixed regardless of depth specifically so a genuinely deep
-// thread doesn't become unreadable on a narrow phone.
-//
-// If a root's real reply count is more than a reasonable first batch,
-// a real "Load more" control reveals the rest in place — a shared
-// budget threaded through the recursive render (see the `budget`
-// param below) that cuts the same depth-first walk off at N items,
-// wherever in the tree that happens to land, not a second kind of
-// toggle.
-//
-// After any write (post, delete, like), the whole panel just re-fetches
-// via load() rather than guessing the new state locally — simpler and
-// guaranteed correct, since get_series_comments already computes
-// like_count/liked_by_me for us.
+// Comment panel, shared by the mobile sheet and the desktop drawer.
+// Only roots get a replies toggle; replies render as nested containers, any depth.
 
-// How many of a root's flattened replies show right away once its
-// toggle is opened, before "Load more" is needed — a reasonable first
-// batch, not the honest full count (that's what the toggle's own number
-// already shows).
+// Replies shown when a root's toggle opens, before "Load more"
 const REPLIES_INITIAL_BATCH = 5;
 
-// A real, stable identifier for whoever hasn't set a real username yet
-// (profiles.display_name — see profile.js) — drawn directly from that
-// account's own real, permanent user_id (get_series_comments already
-// returns it, used elsewhere here for the "is this my own comment"
-// check), the same slice every time for that same account, never
-// random and never invented fresh per render. Replaces the old flat
-// "Narrava viewer" label every nameless commenter used to share
-// identically, which made two different anonymous or unnamed accounts
-// genuinely indistinguishable in a real thread.
+// Stable fallback name from the user id, for accounts without a username
 function fallbackViewerName(userId){
   const slice = String(userId || '').replace(/-/g, '').slice(0, 6).toUpperCase();
   return slice ? 'Viewer ' + slice : 'Narrava viewer';
@@ -70,9 +14,7 @@ function commentDisplayName(c){
   return (c.display_name && c.display_name.trim()) ? c.display_name.trim() : fallbackViewerName(c.user_id);
 }
 
-// Deterministic color from the name so the same person always gets the
-// same avatar color across renders/reloads — not random, not invented
-// per-render.
+// Avatar color from the name, same every time
 const CMT_AVATAR_COLORS = ['#1A8445', '#157A3A', '#0F6B32', '#3b82c4', '#c47d3b', '#a83b6f', '#3ba894'];
 function commentAvatarHtml(name){
   const initial = name.trim().charAt(0).toUpperCase() || 'N';
@@ -87,17 +29,14 @@ function createCommentsPanelController(els){
   let comments = [];
   let commentsById = {};
   let childrenByParent = {};
-  let expandedRoots = new Set(); // top-level comment ids whose full reply chain is currently open
-  let visibleCounts = {}; // root id -> how many of its flattened replies are currently shown
-  let activeReplyBoxId = null; // comment id (any depth) currently showing an inline reply composer
+  let expandedRoots = new Set(); // roots whose reply chain is open
+  let visibleCounts = {}; // root id -> replies shown
+  let activeReplyBoxId = null; // comment id with the reply box open
   let confirmDeleteId = null;
   let isAdmin = false;
   let myUserId = null;
 
-  // Splits the flat RPC result into top-level comments plus a general
-  // parent-id -> children map. childrenByParent is keyed by ANY comment's
-  // id, not just top-level ones, so it already supports real, unlimited
-  // reply depth — nothing here caps how deep parent_comment_id can chain.
+  // Top-level comments + parent id -> children map (any depth)
   function groupComments(list){
     const topLevel = [];
     const byParent = {};
@@ -124,9 +63,6 @@ function createCommentsPanelController(els){
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7.5-4.6-10-9.2C.5 8.4 2.3 4.8 6 4.2c2.3-.4 4.3.9 6 3 1.7-2.1 3.7-3.4 6-3 3.7.6 5.5 4.2 4 7.6C19.5 16.4 12 21 12 21z"/></svg>' +
       '<span>' + (c.like_count || 0) + '</span>' +
     '</button>';
-    // Reply is available on every comment regardless of depth — replying
-    // to a reply is a real, unlimited-depth action now, not just on
-    // top-level comments.
     const replyBtn = '<button type="button" class="cmt-reply-btn" data-action="reply" data-comment-id="' + c.id + '">Reply</button>';
     let deleteHtml = '';
     if(canDelete(c)){
@@ -169,11 +105,7 @@ function createCommentsPanelController(els){
     '</button>';
   }
 
-  // Total real descendant count under parentId, however deep — used only
-  // for the root's own toggle label and the "Load more" remaining count,
-  // not for rendering (that's the recursive walk below, kept as its own
-  // separate pass so this count logic — unchanged — stays independent
-  // of how the tree actually gets drawn).
+  // All descendants under parentId (toggle label and "Load more" count)
   function countDescendants(parentId){
     const children = childrenByParent[parentId] || [];
     let total = children.length;
@@ -181,10 +113,7 @@ function createCommentsPanelController(els){
     return total;
   }
 
-  // Finds the top-level ancestor of any comment id — used after posting
-  // a reply so the right ROOT gets expanded (only roots have a toggle
-  // now, so expanding "the parent that was just replied to" only makes
-  // sense once translated up to its root).
+  // Top-level ancestor of a comment
   function findRootId(commentId){
     let current = commentsById[commentId];
     while(current && current.parent_comment_id){
@@ -193,16 +122,8 @@ function createCommentsPanelController(els){
     return current ? current.id : commentId;
   }
 
-  // Recursively renders parentId's own real children, each followed
-  // immediately by its own children (same depth-first, "reply lands
-  // right after what it answers" order as before) — but now as REAL
-  // nested .cmt-replies containers instead of one flat list, so each
-  // container's border-left visibly branches from parentId's own row
-  // and only ever spans parentId's own children, never anyone else's.
-  // budget.remaining is shared across the whole walk (mutated in place)
-  // so "Load more"'s batch cutoff lands at the same item regardless of
-  // which branch of the tree it falls in — the identical cutoff the old
-  // flat slice() did, just expressed while actually nesting.
+  // Children of parentId as nested containers, depth-first.
+  // budget.remaining is shared across the walk for the "Load more" cutoff.
   function renderChildrenHtml(parentId, budget){
     const children = childrenByParent[parentId] || [];
     if(!children.length || budget.remaining <= 0) return '';
@@ -238,7 +159,7 @@ function createCommentsPanelController(els){
     if(els.countEl) els.countEl.textContent = comments.length ? String(comments.length) : '';
 
     if(!comments.length){
-      els.bodyEl.innerHTML = '<div class="cmt-empty">No comments yet — be the first to say something.</div>';
+      els.bodyEl.innerHTML = '<div class="cmt-empty">No comments yet. Be the first.</div>';
       wireComposer();
       return;
     }
@@ -288,10 +209,7 @@ function createCommentsPanelController(els){
         const ok = await postSeriesComment(seriesId, body, parentId);
         if(!ok) return;
         activeReplyBoxId = null;
-        // The reply they just wrote should be visible, not hidden behind
-        // the root's own toggle or a "Load more" — only roots have a
-        // toggle now, so expand whichever root this reply actually
-        // belongs to, and lift the batch cap so the new one shows.
+        // Show the new reply: open its root and lift the batch cap
         const rootId = findRootId(parentId);
         expandedRoots.add(rootId);
         visibleCounts[rootId] = Infinity;
@@ -337,9 +255,7 @@ function createCommentsPanelController(els){
     });
   }
 
-  // Composer (the always-visible "Add a comment…" box) is wired once,
-  // not re-wired on every render — it lives outside els.bodyEl, so
-  // repopulating the body's innerHTML never touches it.
+  // Composer is outside the body, so wire it once
   function wireComposer(){
     if(els.postBtn.dataset.wired) return;
     els.postBtn.dataset.wired = '1';
@@ -367,7 +283,7 @@ function createCommentsPanelController(els){
       isCurrentUserAdmin(),
       getSignedInUserId()
     ]);
-    if(seriesId !== newSeriesId){ hideSkeletonLogo(); return; } // moved to a different series (or closed/reopened) before this resolved
+    if(seriesId !== newSeriesId){ hideSkeletonLogo(); return; } // series changed before this resolved
 
     comments = fetchedComments;
     isAdmin = admin;
@@ -378,24 +294,20 @@ function createCommentsPanelController(els){
     confirmDeleteId = null;
     render();
     hideSkeletonLogo();
-    // Lets the main screen's own Comment icon badge (app.js/watch.js)
-    // stay in sync with the exact same real total this panel's heading
-    // just showed — one real source, read in two places.
+    // Keep the Comment icon count in sync
     if(els.onCountChange) els.onCountChange(newSeriesId, comments.length);
   }
 
   return { load };
 }
 
-// ================= The two real instances =================
+// ================= Instances =================
 
 const feedCommentsController = createCommentsPanelController({
   bodyEl: document.getElementById('feedCommentsBody'),
   countEl: document.getElementById('feedCommentsCount'),
   inputEl: document.getElementById('feedCommentsInput'),
   postBtn: document.getElementById('feedCommentsPost'),
-  // Mirrors the real total onto the mobile feed's own Comment icon —
-  // slides[idx] is always the series this panel was opened for.
   onCountChange: (loadedSeriesId, count) => {
     const s = slides.find(sl => sl.id === loadedSeriesId);
     if(s) s.commentCount = count;
@@ -408,7 +320,6 @@ const watchCommentsController = createCommentsPanelController({
   countEl: document.getElementById('watchCommentsCount'),
   inputEl: document.getElementById('watchCommentsInput'),
   postBtn: document.getElementById('watchCommentsPost'),
-  // Same real mirroring onto the desktop watch page's own Comment icon.
   onCountChange: (loadedSeriesId, count) => {
     if(watchSlide && watchSlide.id === loadedSeriesId){
       watchSlide.commentCount = count;

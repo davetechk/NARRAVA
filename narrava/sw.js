@@ -1,24 +1,10 @@
-// sw.js — minimal service worker.
-//
-// Three jobs: (1) satisfy Chrome/Android's real installability
-// requirement (a registered service worker with a real fetch handler —
-// without this, beforeinstallprompt never fires at all); (2) a real
-// cache-first app shell so the interface itself still loads offline or
-// on a flaky connection — including the two CDN libraries the page can't
-// start without (supabase-js, hls.js), so the app opens with no
-// connection at all (see offline.js); and (3) downloads: every request
-// under offline/ is answered from the downloads cache (DOWNLOADS_CACHE,
-// written by js/downloads.js) and NEVER from the network. Every other
-// cross-origin request (Supabase, Bunny, Paystack…) is left alone.
-//
-// Updates: bump CACHE_NAME on every release. Activation deletes old
-// shell caches only — DOWNLOADS_CACHE is never deleted here, so
-// downloads survive app updates.
+// Service worker: installability, cache-first app shell, downloads cache.
+// Bump CACHE_NAME on every release. DOWNLOADS_CACHE is never deleted.
 
-const CACHE_NAME = 'narrava-shell-v40';
+const CACHE_NAME = 'narrava-shell-v42';
 const DOWNLOADS_CACHE = 'narrava-offline-v1'; // same name in js/downloads.js
 
-// Cross-origin files the app can't start without, cached like the shell.
+// CDN files the app can't start without
 const CDN_URLS = [
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js',
   'https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js'
@@ -80,7 +66,6 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// offline/… inside this worker's scope (e.g. /narrava/offline/<episode>/…).
 const OFFLINE_PREFIX = new URL('offline/', self.registration.scope).pathname;
 
 self.addEventListener('fetch', (event) => {
@@ -88,7 +73,7 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
 
-  // Downloads: the downloads cache or a 404 — never the network.
+  // Downloads: from the downloads cache or 404, never the network
   if (url.origin === self.location.origin && url.pathname.startsWith(OFFLINE_PREFIX)) {
     event.respondWith(
       caches.open(DOWNLOADS_CACHE)
@@ -98,8 +83,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Everything else cross-origin passes straight through, except the
-  // CDN libraries above (cache first, like the shell).
+  // Other cross-origin requests pass through, except the CDN files
   const isCdnFile = CDN_URLS.includes(req.url);
   if (url.origin !== self.location.origin && !isCdnFile) return;
 
@@ -110,9 +94,7 @@ self.addEventListener('fetch', (event) => {
         if (res.ok) shell.put(req, res.clone());
         return res;
       }).catch(() =>
-        // Offline and never fetched with this exact ?v=: the shell's own
-        // copy (precached at install, same release) — and for a page
-        // load, index.html.
+        // Offline fallback: shell copy ignoring ?v=, or index.html for a page load
         shell.match(req, { ignoreSearch: true }).then((fallback) =>
           fallback || (req.mode === 'navigate' ? shell.match('./index.html') : Response.error())
         )

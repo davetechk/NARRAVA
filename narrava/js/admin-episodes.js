@@ -1,6 +1,6 @@
-// admin-episodes.js — admin/episodes.html only.
+// admin/episodes.html
 
-let epAllEpisodes = []; // [{id, series_id, episode_number, title, bunny_video_id, duration_seconds, created_at}]
+let epAllEpisodes = [];
 let epSeriesById = {};  // series_id -> series row (id, title, ...)
 let epSearchQuery = '';
 let epEditingId = null;
@@ -59,7 +59,7 @@ function editRowHtml(ep){
           '<div><label class="auth-label" for="epEditNumber-' + ep.id + '">Episode #</label><input class="auth-input" type="number" min="1" id="epEditNumber-' + ep.id + '" value="' + ep.episode_number + '" required></div>' +
           '<div><label class="auth-label" for="epEditTitle-' + ep.id + '">Title</label><input class="auth-input" type="text" id="epEditTitle-' + ep.id + '" value="' + escapeHtml(ep.title || '') + '"></div>' +
         '</div>' +
-        '<div class="admin-helper-text">Editing here only changes the episode\'s number and title — the video file itself isn\'t replaced. To swap the video, delete this episode and upload it again.</div>' +
+        '<div class="admin-helper-text">This changes the number and title only. To replace the video, delete the episode and upload again.</div>' +
         '<div class="admin-inline-form-actions">' +
           '<button class="auth-submit" type="submit" id="epEditSubmit-' + ep.id + '">Save Changes</button>' +
           '<button type="button" class="admin-inline-cancel" data-action="cancel-edit">Cancel</button>' +
@@ -73,8 +73,8 @@ function deleteRowHtml(ep){
   const series = epSeriesById[ep.series_id];
   const label = 'Ep ' + ep.episode_number + (ep.title ? ' — “' + escapeHtml(ep.title) + '”' : '') + (series ? ' from “' + escapeHtml(series.title) + '”' : '');
   const warning = ep.bunny_video_id
-    ? 'Delete ' + label + '? This removes the episode record from Narrava <strong>and</strong> deletes the actual video file from Bunny — both go away for good. This can’t be undone.'
-    : 'Delete ' + label + '? This episode has no video attached, so this only removes the episode record from Narrava. This can’t be undone.';
+    ? 'Delete ' + label + '? This deletes the episode <strong>and</strong> its video on Bunny. This can’t be undone.'
+    : 'Delete ' + label + '? It has no video, so only the episode is deleted. This can’t be undone.';
   return '<tr data-episode-id="' + ep.id + '"><td colspan="5">' +
     '<div class="admin-delete-confirm">' +
       '<p>' + warning + '</p>' +
@@ -92,7 +92,7 @@ function renderTable(){
   document.getElementById('epCountSub').textContent = epAllEpisodes.length + ' episode' + (epAllEpisodes.length === 1 ? '' : 's') + ' across ' + Object.keys(epSeriesById).length + ' series';
 
   if(!epAllEpisodes.length){
-    wrap.innerHTML = '<div class="admin-empty">No episodes yet — upload the first one above.</div>';
+    wrap.innerHTML = '<div class="admin-empty">No episodes yet. Upload one above.</div>';
     return;
   }
   const list = filteredEpisodes();
@@ -156,21 +156,14 @@ async function handleEditSubmit(e){
     renderTable();
   } catch(err){
     console.error('Narrava: failed to update episode', err);
-    errorEl.textContent = err.message || 'Could not save changes — please try again.';
+    errorEl.textContent = err.message || 'Couldn’t save changes. Try again.';
     errorEl.classList.add('show');
     submitBtn.disabled = false;
     submitBtn.textContent = 'Save Changes';
   }
 }
 
-// Real delete, both halves together: the actual video asset on Bunny
-// (via deleteBunnyVideo — admin-shared.js, the already-deployed
-// bunny-delete-video function) and the database row. Bunny goes first,
-// on purpose — if it fails, the database row is left completely alone
-// rather than silently deleting the record and pretending the video
-// went with it. An episode with no video attached (bunny_video_id
-// null) skips straight to the database delete, since there's nothing
-// real on Bunny to remove.
+// Delete: Bunny video first, then the row (row kept if Bunny fails)
 async function handleDelete(btn){
   const epId = btn.dataset.episodeId;
   const ep = epAllEpisodes.find(e => String(e.id) === String(epId));
@@ -186,10 +179,10 @@ async function handleDelete(btn){
     } catch(err){
       console.error('Narrava: failed to delete video from Bunny — episode record left untouched', err);
       if(errorEl){
-        errorEl.textContent = 'Could not delete the video from Bunny: ' + (err.message || 'please try again') + '. The episode record was not deleted either.';
+        errorEl.textContent = 'Couldn’t delete the video from Bunny: ' + (err.message || 'please try again') + '. Nothing was deleted.';
         errorEl.classList.add('show');
       } else {
-        showToast('Could not delete the video from Bunny — the episode record was not deleted either');
+        showToast('Couldn’t delete the video from Bunny. Nothing was deleted.');
       }
       btn.disabled = false;
       btn.textContent = 'Delete Permanently';
@@ -203,13 +196,13 @@ async function handleDelete(btn){
 
     epAllEpisodes = epAllEpisodes.filter(e => String(e.id) !== String(epId));
     epDeletingId = null;
-    showToast('Episode deleted ✓' + (ep && ep.bunny_video_id ? ' — the video on Bunny was removed too' : ''));
+    showToast('Episode deleted ✓' + (ep && ep.bunny_video_id ? ' (video removed from Bunny too)' : ''));
     renderTable();
   } catch(err){
     console.error('Narrava: video deleted from Bunny, but the episode record could not be deleted', err);
     const message = ep && ep.bunny_video_id
-      ? 'The video was deleted from Bunny, but the episode record could not be deleted: ' + (err.message || 'please try again') + '. Try deleting again to remove the leftover record.'
-      : 'Could not delete the episode record: ' + (err.message || 'please try again');
+      ? 'Video deleted from Bunny, but the episode couldn’t be: ' + (err.message || 'please try again') + '. Delete again to finish.'
+      : 'Couldn’t delete the episode: ' + (err.message || 'please try again');
     if(errorEl){
       errorEl.textContent = message;
       errorEl.classList.add('show');
@@ -228,18 +221,9 @@ function populateSeriesSelect(preselectId){
     series.map(s => '<option value="' + s.id + '"' + (String(s.id) === String(preselectId) ? ' selected' : '') + '>' + escapeHtml(s.title) + '</option>').join('');
 }
 
-// ============ Batch upload queue ============
-//
-// Reuses uploadEpisodeToBunny (admin-shared.js) completely unchanged —
-// same bunny-upload-init permission step, same tus upload to Bunny, same
-// "only save the episode row after a genuine success" rule, per file.
-// This only adds the queueing/tracking around that one already-tested
-// function: real per-file progress (each row gets its own progressFill,
-// not one shared bar), auto-assigned consecutive episode numbers, and an
-// honest per-file result — a batch is never reported "done" if any file
-// in it actually failed.
+// Batch upload queue (one uploadEpisodeToBunny per file)
 
-let epQueue = []; // [{file, number, title, status: 'pending'|'uploading'|'done'|'error', errorMessage}]
+let epQueue = []; // status: 'pending'|'uploading'|'done'|'error'
 
 function nextEpisodeNumberForSeries(seriesId){
   const nums = epAllEpisodes
@@ -306,11 +290,7 @@ document.getElementById('epUploadFile').addEventListener('change', () => {
   renderUploadQueue();
 });
 
-// Re-numbers only the still-pending rows if the series is chosen (or
-// changed) after files are already queued — never touches a row that's
-// already uploading, done, or that failed (its number stays put so a
-// retry doesn't silently renumber something the admin may have already
-// fixed by hand).
+// Renumber only rows still pending
 document.getElementById('epUploadSeries').addEventListener('change', () => {
   if(!epQueue.length) return;
   const seriesId = document.getElementById('epUploadSeries').value;
@@ -322,12 +302,7 @@ document.getElementById('epUploadSeries').addEventListener('change', () => {
   renderUploadQueue();
 });
 
-// Adapts one queue row's own DOM elements into the exact {submitBtn,
-// progressWrap, progressFill, progressLabel} shape uploadEpisodeToBunny
-// already expects — submitBtn/progressLabel both point at the row's own
-// status text (only .disabled/.textContent are ever touched on it, both
-// safe on a plain <div>), progressWrap is a harmless no-op stand-in since
-// each row's progress bar is always visible, never hidden/shown.
+// Maps a queue row onto the els shape uploadEpisodeToBunny expects
 async function uploadOneQueuedEpisode(item, seriesId, seriesTitle){
   const idx = epQueue.indexOf(item);
   const statusEl = document.getElementById('epqStatus-' + idx);
@@ -383,7 +358,7 @@ async function handleUploadSubmit(e){
     return;
   }
   if(new Set(numbers).size !== numbers.length){
-    errorEl.textContent = 'Two queued files share the same episode number — give each one a unique number.';
+    errorEl.textContent = 'Two files share an episode number. Make each one unique.';
     errorEl.classList.add('show');
     return;
   }
@@ -406,19 +381,17 @@ async function handleUploadSubmit(e){
   if(failed === 0){
     summaryEl.textContent = 'All ' + succeeded + ' episode' + (succeeded === 1 ? '' : 's') + ' uploaded ✓';
     summaryEl.classList.add('success');
-    showBunnyProcessingToast(succeeded + ' episode' + (succeeded === 1 ? '' : 's') + ' uploaded — Bunny may take a few minutes to finish processing');
+    showBunnyProcessingToast(succeeded + ' episode' + (succeeded === 1 ? '' : 's') + ' uploaded. Bunny may take a few minutes to process them.');
     epQueue = [];
     document.getElementById('epUploadFile').value = '';
-    document.getElementById('epUploadFileBtn').textContent = 'Add Video Files (select multiple at once)';
+    document.getElementById('epUploadFileBtn').textContent = 'Add Video Files';
     populateSeriesSelect(seriesId);
     renderUploadQueue();
   } else {
-    // Never claim this batch is "done" — exactly which files failed (and
-    // why) stays visible in the queue above, each one still individually
-    // marked, not folded into a single vague error.
-    summaryEl.textContent = succeeded + ' of ' + toUpload.length + ' uploaded, ' + failed + ' failed — see below. Fix and press Upload again to retry just the failed ones.';
+    // Failed files stay marked in the queue
+    summaryEl.textContent = succeeded + ' of ' + toUpload.length + ' uploaded, ' + failed + ' failed (see below). Press Upload to retry the failed ones.';
     summaryEl.classList.add('partial');
-    showToast(succeeded + ' of ' + toUpload.length + ' episodes uploaded, ' + failed + ' failed — check the list below');
+    showToast(succeeded + ' of ' + toUpload.length + ' episodes uploaded, ' + failed + ' failed (see the list)');
   }
 }
 
@@ -451,11 +424,8 @@ document.getElementById('episodesSearch').addEventListener('input', (e) => {
     renderTable();
   } catch(err){
     console.error('Narrava: failed to load episodes', err);
-    showToast('Could not load episodes — please try again');
-    // See admin-series-list.js's identical fix — the toast alone used to
-    // leave the loader (now the skeleton) sitting there forever on a
-    // genuine failure.
-    document.getElementById('episodesTableWrap').innerHTML = '<div class="admin-empty">Could not load episodes — please try again.</div>';
+    showToast('Couldn’t load episodes. Try again.');
+    document.getElementById('episodesTableWrap').innerHTML = '<div class="admin-empty">Couldn’t load episodes. Try again.</div>';
   } finally {
     hideSkeletonLogo();
   }

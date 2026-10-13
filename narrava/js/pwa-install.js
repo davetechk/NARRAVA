@@ -1,23 +1,5 @@
-// pwa-install.js
-//
-// Real PWA installability: a real service worker registration (required
-// before Chrome/Android will ever fire beforeinstallprompt at all), the
-// real Android/Chrome install prompt (via that same captured event), and
-// real, honest "Add to Home Screen" instructions on iPhone, in any real
-// browser (Safari, Chrome, Firefox, Edge…) — Apple genuinely gives no
-// website a way to trigger a real install prompt there, so a fake button
-// that did nothing would be worse than just being straightforward about
-// the two real steps.
-//
-// Two real chances, EVERY visit, until the app is genuinely installed: once
-// on a normal visit, and once more after actually watching part of an
-// episode and returning to the real Home screen — see
-// evaluateInstallPrompt() below. The only thing that ever ends them for
-// good is the app actually running installed (isStandaloneDisplay()).
-// Closing or cancelling the popup is not "installed": it only dismisses it
-// for the rest of that visit. (It used to remember that each chance had
-// been shown once, in localStorage, so anyone who closed it a single time
-// never saw it again.)
+// Service worker registration, install popup (Android prompt / iPhone steps)
+// and the Profile install button. Shown twice per visit until installed.
 
 if('serviceWorker' in navigator){
   navigator.serviceWorker.register('sw.js').catch((err) => {
@@ -25,33 +7,28 @@ if('serviceWorker' in navigator){
   });
 }
 
-// Per-visit state only — deliberately NOT persisted. A new page load / app
-// open starts them all fresh, so someone who dismissed the popup last time
-// and still hasn't installed sees it again. (Old localStorage keys from the
-// once-only version, narrava_pwa_*, are simply ignored now.)
+// Per visit only, not saved
 let shownInitialThisVisit = false;
 let shownAfterWatchThisVisit = false;
 let watchedThisVisit = false;
-let installedThisVisit = false; // the browser said the install just happened (Android/Chrome 'appinstalled')
+let installedThisVisit = false; // Android 'appinstalled' fired
 
 const pwaModalBackdrop = document.getElementById('pwaModalBackdrop');
 const pwaModalBody = document.getElementById('pwaModalBody');
 const pwaModalClose = document.getElementById('pwaModalClose');
 
-let deferredInstallEvent = null; // the real beforeinstallprompt event, captured and reused for both the popup's own button and the Profile screen's
+let deferredInstallEvent = null; // captured beforeinstallprompt, reused by the popup and Profile
 let modalVisible = false;
 
 const PWA_SHARE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v10"/><path d="M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/></svg>';
 
 pwaModalClose.addEventListener('click', hideModal);
-// Tapping the dimmed backdrop itself, outside the real card, is the
-// same real cancel as the close button — matching every other modal
-// in this app (auth/share/username).
+// Backdrop tap = cancel
 pwaModalBackdrop.addEventListener('click', (e) => { if(e.target === pwaModalBackdrop) hideModal(); });
 
 function isStandaloneDisplay(){
   return window.matchMedia('(display-mode: standalone)').matches ||
-    window.navigator.standalone === true || // iOS Safari's own real flag once actually installed
+    window.navigator.standalone === true ||
     document.referrer.indexOf('android-app://') === 0;
 }
 
@@ -62,17 +39,7 @@ function isIOSDevice(){
   return isIOSUA || isIPadOS13Plus;
 }
 
-// Any real browser on an iPhone/iPad can install — not just Safari. Since
-// iOS 16.4, Apple lets Chrome, Firefox, Edge and other browsers offer the
-// same Share → "Add to Home Screen" path Safari always had, so what
-// matters is the device (isIOSDevice above), not which browser is on it.
-// The old check required Safari specifically (it ruled out CriOS/FxiOS/
-// EdgiOS/OPiOS), which is why the instructions never showed in Chrome on
-// iPhone. Two guards remain so the instructions only appear where they can
-// actually work: every real iOS browser carries the "Safari/" token in its
-// user agent, whereas a webview embedded inside another app (Facebook,
-// Instagram, Line, WeChat, …) can't add to the home screen at all — those
-// either lack the token or name themselves.
+// Any iPhone/iPad browser can Add to Home Screen, except in-app webviews
 function isIOSBrowserThatCanInstall(){
   if(!isIOSDevice()) return false;
   const ua = navigator.userAgent;
@@ -83,9 +50,7 @@ function isIOSBrowserThatCanInstall(){
 
 const isIOSInstallableNow = isIOSBrowserThatCanInstall();
 
-// This feature is scoped to real phones (Android Chrome-family browsers
-// + iOS Safari) — the desktop view here is a boxed preview/mockup of
-// the phone app, not a real install target, so it's left alone entirely.
+// Phones only; the desktop view is a preview
 function isMobileWidth(){
   return window.matchMedia('(max-width: 899px)').matches;
 }
@@ -106,7 +71,7 @@ function hideModal(){
 async function triggerInstallPrompt(){
   if(!deferredInstallEvent) return;
   const evt = deferredInstallEvent;
-  deferredInstallEvent = null; // Chrome only ever lets a captured prompt be used once regardless
+  deferredInstallEvent = null; // Chrome lets a prompt be used once
   try {
     await evt.prompt();
     await evt.userChoice;
@@ -116,26 +81,8 @@ async function triggerInstallPrompt(){
   notifyInstallAvailabilityChanged();
 }
 
-// A real, large popup centered on screen — not the small Continue
-// Watching-style strip this used to (mistakenly) reuse. Android/Chrome
-// gets a plain, honest message plus the one real Install action; iOS
-// Safari gets the real, clear two-step instructions instead, since
-// nothing there can ever trigger a real install by itself. (iOS gets
-// these in every real browser on iPhone, not just Safari.) Either way
-// there's always a real, clearly labeled Cancel button, on top of the
-// real close (✕) in the corner.
-// Which install experience applies right now. ONE decision, used by the
-// automatic popup and by the Profile "How to install" button alike, so they
-// can never disagree:
-//   'installed'  — already running as the installed app
-//   'prompt'     — the browser gave us a real install prompt (Android/Chrome…)
-//   'ios'        — an iPhone browser that can Share → Add to Home Screen
-//   'ios-inapp'  — an iPhone, but inside another app's embedded browser
-//   'other'      — no one-tap install here (desktop Firefox, a browser that
-//                  hasn't offered the prompt yet, …)
-// The automatic popup only ever runs for 'prompt' and 'ios' (it's gated by
-// canOfferInstallHere below), so its behaviour is exactly as before; the
-// other three exist for the button, which is always available.
+// Install variant, shared by the popup and the Profile button:
+// 'installed' | 'prompt' | 'ios' | 'ios-inapp' | 'other'
 function installVariant(){
   if(isStandaloneDisplay()) return 'installed';
   if(deferredInstallEvent) return 'prompt';
@@ -164,7 +111,7 @@ function renderModal(){
     messageHtml = '<div class="pwa-modal-message">Open Narrava in Safari or Chrome first, then tap Share and "Add to Home Screen".</div>';
     actionsHtml = '<button type="button" class="pwa-modal-btn-secondary" id="pwaModalCancelBtn">Close</button>';
   } else {
-    messageHtml = '<div class="pwa-modal-message">This browser doesn\u2019t offer a one-tap install here. In Chrome or Edge, open the browser menu and choose "Install app" (or "Add to Home screen"). On iPhone, tap Share, then "Add to Home Screen".</div>';
+    messageHtml = '<div class="pwa-modal-message">No one-tap install here. Use your browser menu\u2019s "Install app", or on iPhone tap Share, then "Add to Home Screen".</div>';
     actionsHtml = '<button type="button" class="pwa-modal-btn-secondary" id="pwaModalCancelBtn">Close</button>';
   }
 
@@ -177,9 +124,6 @@ function renderModal(){
   const installBtn = document.getElementById('pwaModalInstallBtn');
   if(installBtn) installBtn.addEventListener('click', () => { hideModal(); triggerInstallPrompt(); });
 
-  // Tapping Cancel only ever dismisses this one popup — the same real
-  // timing rules below still decide if/when the other real chance
-  // shows later, nothing about that is affected by this tap.
   document.getElementById('pwaModalCancelBtn').addEventListener('click', hideModal);
 }
 
@@ -190,14 +134,7 @@ function showModal(){
   pwaModalBackdrop.classList.add('open');
 }
 
-// The one real gate for both real chances. Popups are suppressed for good
-// ONLY when the app is genuinely running installed (standalone display —
-// the home-screen app itself, not a browser tab), or, on Android, the
-// browser has just reported the install. Everything else — never seen it,
-// seen it and closed it, seen it many times — still gets it, at exactly
-// two moments per visit: a normal visit (first), and returning to Home
-// after genuinely watching part of an episode (second). Never on the
-// desktop preview.
+// Two chances per visit: normal visit, then back on Home after watching. Never once installed.
 function evaluateInstallPrompt(){
   if(modalVisible) return;
   if(installedThisVisit) return;
@@ -217,18 +154,16 @@ function evaluateInstallPrompt(){
   showModal();
 }
 
-// Called by watch-progress.js once a real 3+ seconds of an episode has
-// played this visit.
+// Called by watch-progress.js after 3+ seconds watched
 window.narravaPwaMarkWatched = function(){ watchedThisVisit = true; };
 
-// Called by app.js's showScreen() every time the real Home screen
-// becomes the visible one — the only trigger for the second chance.
+// Called by showScreen when Home shows (second chance)
 function notifyHomeScreenShown(){
   evaluateInstallPrompt();
 }
 
 window.addEventListener('beforeinstallprompt', (e) => {
-  e.preventDefault(); // suppress Chrome's own mini-infobar — this app's own banner/profile button are the only real triggers
+  e.preventDefault(); // hide Chrome's mini-infobar
   deferredInstallEvent = e;
   notifyInstallAvailabilityChanged();
   evaluateInstallPrompt();
@@ -241,20 +176,10 @@ window.addEventListener('appinstalled', () => {
   notifyInstallAvailabilityChanged();
 });
 
-// Real per-visit chance #1 (every visit until installed). On Android/Chrome this only actually shows
-// once beforeinstallprompt fires (see the handler above calling this
-// same function) — beforeinstallprompt is nearly always asynchronous,
-// so this first call typically only matters for iPhone browsers, which have
-// no such event to wait for.
+// Chance 1 (Android waits for beforeinstallprompt)
 setTimeout(evaluateInstallPrompt, 1500);
 
-// Public surface for profile.js's own always-available install button —
-// only ever real: true/present exactly when a real prompt can actually
-// be triggered right now.
-// The Profile screen's always-visible "How to install" button. Opens the very
-// same modal the automatic popup uses, whatever the automatic popup has or
-// hasn't done: it deliberately doesn't touch the per-visit flags, so the
-// automatic chances (a normal visit, and after watching) are unaffected.
+// Profile "How to install" button: same modal, doesn't touch the per-visit flags
 window.narravaPwaShowInstallHelp = function(){
   if(modalVisible) return;
   showModal();

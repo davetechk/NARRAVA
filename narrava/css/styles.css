@@ -9,32 +9,19 @@
     --leaf-deep:#1DB954;
     --gold:#E8B85C;
     --gold-deep:#C99A3E;
-    /* layout-guard.js sets --app-shortfall when an installed iPhone hands the
-       page a viewport shorter than the screen. --safe-bottom is the space
-       bottom controls must clear: the real home-indicator inset, or that
-       shortfall if it's larger. Both are 0px wherever there's no gap. */
+    /* --app-shortfall: set by layout-guard.js (always 0 now).
+       --safe-bottom: space bottom controls must clear. */
     --app-shortfall:0px;
-    /* Where top-anchored UI starts. 46px is the old phone-mockup status-bar zone; on an installed
-       phone app (see the standalone override in the max-width:600px block) it becomes the real
-       safe-area inset + 12px, because an opaque status bar means the page already starts below it. */
+    /* Where top UI starts: 46px in a browser, safe-area + 12px when installed */
     --top-safe:46px;
     --safe-bottom:max(env(safe-area-inset-bottom, 0px), var(--app-shortfall, 0px));
-    /* Skeleton loading blocks (see js/shared-utils.js's skeleton*Html
-       helpers) — a shade only slightly lighter than the dark backgrounds
-       they sit on (--ink/--panel/--panel-2), plus a lighter shimmer tone
-       for the sweep highlight. Both are relative white overlays rather
-       than fixed hex colors so the same two tokens read correctly on
-       every one of those slightly different dark backgrounds. */
+    /* Skeleton shades (white overlays, so they work on every dark background) */
     --skeleton-base:rgba(255,255,255,0.06);
     --skeleton-shimmer:rgba(255,255,255,0.14);
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
 
-  /* Text-selection deterrent (see js/protect.js). Only applies once that
-     script has put .protected on <html>, so the admin pages, which share
-     this stylesheet but never load protect.js, are unaffected. Text fields
-     must stay selectable — and on iOS, a field inside a user-select:none
-     page can't be typed into at all unless it is explicitly re-enabled. */
+  /* Text-selection deterrent (protect.js); text fields stay selectable */
   html.protected,
   html.protected body{
     -webkit-user-select:none;
@@ -52,25 +39,8 @@
     -webkit-user-drag:none;
   }
 
-  /* Real maintenance mode (app_settings.maintenance_mode_enabled — see
-     app.js's renderMaintenanceMode/maintenanceMarkupHtml/
-     startMaintenanceAnimation) — replaces the entire real page, nothing
-     else loads underneath it. The admin panel (admin/*.html) never
-     loads this file's own JS-driven takeover — it's a completely
-     separate set of pages — so it stays reachable regardless.
-
-     Everything below is ported from maintenance.html (repo root, the
-     source reference — left untouched) exactly as that file has it,
-     values and all, EXCEPT: the file's --paper/--ink/--muted/--green/
-     --green-deep/--spark/--metal are renamed --mt-paper/--mt-ink/
-     --mt-muted/--mt-green/--mt-green-deep/--mt-spark/--mt-metal, fixed
-     to that file's :root[data-theme="dark"] values always (this app is
-     dark-only, so there's no light-mode branch to keep), and every rule
-     that file wrote globally (:root, body, main, h1, p, button, .ink,
-     .fill-paper, .fill-ink, .fill-metal, .no-fill) is scoped under
-     .maintenance-screen instead — so none of it can leak into, or be
-     affected by, the app's own --ink/--muted (different values,
-     different elements) or its global h1/p/button styles. */
+  /* Maintenance scene, ported from maintenance.html.
+     Its custom properties are renamed --mt-* and every rule is scoped under .maintenance-screen. */
   .maintenance-screen{
     --mt-paper:#141613;
     --mt-ink:#ecece6;
@@ -92,14 +62,7 @@
     padding-bottom:calc(env(safe-area-inset-bottom,0px) + 40px);
     overflow:hidden;
   }
-  /* Whole animation sized down twice now: first to ~0.78x the original
-     maintenance.html values, then this second pass takes that result
-     down by a further ~18% (0.82x on top of the 0.78x — 0.78*0.82 =
-     0.64x the original), on every screen size — the drawing, colors,
-     motion, timing and text are all completely untouched, only these
-     CSS sizes moved. The scene shrinks via a percentage width (not
-     100%) so it scales down on mobile too, not just against the
-     desktop max-width cap. */
+  /* Scene scaled to 0.64x the original */
   .maintenance-screen main{
     width:100%;
     max-width:435px;
@@ -151,28 +114,8 @@
   .maintenance-screen .fill-metal{ fill:var(--mt-metal); }
   .maintenance-screen .no-fill{ fill:none; }
 
-  /* ============ Loading states (shared, main app + admin) ============
-     Two variants, already reviewed and picked — structure/animation
-     kept exactly as built (see loading-animations.html): a gentle pulse
-     for any general-purpose "just needs a moment" wait, and orbiting
-     dots specifically for the one real wait this app has where the
-     on-screen state genuinely lags reality — Bunny Stream still
-     processing an episode after upload. The mark at the center is
-     Narrava's one real logo, the full faceted triangle
-     (narrava/img/load_img_icon.svg — never redrawn/simplified, see the
-     note where it's inlined), as real <svg> markup (NARRAVA_LOGO_SVG in
-     shared-utils.js) rather than an <img src> — no broken-image path to
-     get wrong — in place of the placeholder "N" box, used as-is with no
-     added circle or background shape behind it. Its facet colors are
-     baked into the markup itself, not currentColor, so nothing here
-     sets a color on it. The pulse variant's two echoing rings are the
-     same logo too now (not a plain rounded square), sized to fill
-     .pulse-ring; the center copy is sized by .narrava-mark-icon below —
-     width and height equal (even though the logo's own viewBox isn't
-     square) so its default preserveAspectRatio letterboxes it instead
-     of squashing it, the same way an <img> would. See
-     narravaLoaderHtml() in shared-utils.js for the markup this CSS is
-     styling. */
+  /* ============ Loading states (app + admin) ============
+     Pulse for general waits, orbit dots for Bunny processing. Logo is NARRAVA_LOGO_SVG. */
   .narrava-loading-block{
     display:flex;flex-direction:column;align-items:center;
     gap:14px;
@@ -181,9 +124,7 @@
   .narrava-loading-label{
     font-size:12.5px;color:var(--muted);letter-spacing:.2px;
   }
-  /* The honest failed-load state (narravaLoadFailedHtml, shared-utils.js)
-     reuses .narrava-loading-block's own centered layout — just text +
-     a real retry button in place of the animated loader. */
+  /* Load failed state (narravaLoadFailedHtml) */
   .narrava-load-failed-text{
     font-size:13px;color:var(--text);text-align:center;
     max-width:220px;
@@ -217,12 +158,7 @@
     0%,100%{ transform:scale(.92); }
     50%{ transform:scale(1.04); }
   }
-  /* prefers-reduced-motion: the two echoing rings (a scale+opacity
-     animation by nature) go away entirely rather than being slowed
-     down or frozen mid-scale; the center mark keeps *a* sense of
-     "still loading" but only through opacity, never transform. Scoped
-     to the pulse variant only — orbit's dots aren't touched here, see
-     showBunnyProcessingToast/narravaLoaderHtml above. */
+  /* Reduced motion: drop the pulse rings, keep an opacity pulse */
   @media (prefers-reduced-motion: reduce){
     .narrava-loader-pulse .pulse-ring{ display:none; }
     .narrava-loader-pulse > .narrava-mark-icon{ animation:narrava-mark-fade 1.8s ease-in-out infinite; }
@@ -247,9 +183,7 @@
   .narrava-loader-orbit .dot:nth-child(3){ transform:rotate(240deg) translate(29px) translate(-3px,-3px); opacity:.4; }
   @keyframes narrava-orbit-spin{ to{ transform:rotate(360deg); } }
 
-  /* Small persisting notice (Bunny processing) — reuses .narrava-loader-orbit
-     at a smaller scale inline with text, for the one spot this app
-     genuinely has that wait: right after an episode upload succeeds. */
+  /* Small Bunny processing notice */
   .narrava-processing-toast{
     position:fixed;left:50%;bottom:28px;
     transform:translateX(-50%) translateY(20px);
@@ -277,20 +211,7 @@
   }
 
   /* ============ Skeleton loading states ============
-     Content-shaped placeholders (see js/shared-utils.js's skeleton*Html
-     helpers) for the areas listed in DOCUMENTATION.md — grey shapes in
-     the real layout, never generic bars, never real text/numbers/images.
-     .skeleton-block is the one shared visual treatment (base shade +
-     shimmer sweep); it's applied either directly, or stacked onto a
-     real content class (e.g. "poster-card skeleton-block") so the real
-     class's own sizing/aspect-ratio/border-radius still apply and the
-     skeleton lines up exactly with where real content will land —
-     .skeleton-block itself only ever sets background/animation, never
-     size or radius, except for the freestanding shapes below
-     (.skeleton-circle/.skeleton-pill/.skeleton-text) that have no real
-     class of their own to borrow from. Only background-position
-     animates, per the no-layout-thrash rule the rest of this app's
-     animations already follow. */
+     .skeleton-block sets only background/animation; stack it on a real class for sizing. */
   .skeleton-block{
     background-color:var(--skeleton-base);
     background-image:linear-gradient(100deg, transparent 30%, var(--skeleton-shimmer) 50%, transparent 70%);
@@ -315,13 +236,7 @@
     0%,100%{ opacity:.55; }
     50%{ opacity:.85; }
   }
-  /* One faint logo per page (not one per skeleton section) — shown/hidden
-     by js/shared-utils.js's showSkeletonLogo()/hideSkeletonLogo(), which
-     just drop the real narravaLoaderHtml('pulse') markup in here at
-     reduced opacity. Fixed to the viewport so "center of the screen"
-     holds regardless of which container it's called from (a full page
-     or a bottom sheet); the loader's own existing reduced-motion rule
-     (above) applies unchanged since this is the exact same markup. */
+  /* One faint logo per page, fixed to the viewport */
   .skeleton-logo-overlay{
     position:fixed;inset:0;
     display:flex;align-items:center;justify-content:center;
@@ -330,27 +245,12 @@
     z-index:300;
   }
 
-  /* Form controls don't inherit font-family by default in any browser
-     (a well-known UA-stylesheet quirk) — without this, any button/input
-     text that doesn't set its own font-family falls back to the
-     browser's system font instead of Montserrat, everywhere in the app
-     including admin. */
+  /* Form controls don't inherit font-family by default */
   button,input,select,textarea{font-family:inherit;}
   html,body{margin:0;padding:0;overflow-x:hidden;}
-  /* overscroll-behavior-y:none belongs on <html> ONLY. It stops pull-to-refresh
-     and the rubber-band bounce at the page level, which is what the mobile app
-     wants. It used to be on <body> too (html,body{...}), and that silently
-     killed the mouse wheel and trackpad on every page whose document scrolls
-     (all the admin pages): with overflow-x:hidden on both html and body, <body>
-     becomes a scroll container, and overscroll-behavior-y:none on a scroll
-     container stops the wheel from passing on to the page. Neither property
-     alone does it; the combination on <body> does. Dragging the scrollbar still
-     worked, which is why it looked like only the wheel was broken. */
+  /* overscroll-behavior-y on <html> only: on <body> it killed the mouse wheel on admin pages */
   html{overscroll-behavior-y:none;}
-  /* body is transparent, so the page canvas takes its colour from <html>;
-     without this it fell back to the browser default (white). Anything not
-     covered by the app — a sliver under the home indicator on an installed
-     iPhone, the rubber-band overscroll area — showed as a white strip. */
+  /* Page canvas colour (otherwise white strips show under the home indicator) */
   html{background:var(--ink);}
   body{
     background:transparent;
@@ -412,20 +312,8 @@
     inset:0;
     overflow:hidden;
   }
-  /* The whole feed's custom vertical swipe (see the touchstart/touchend
-     listeners on #feed in app.js) fully replaces native touch handling
-     for a drag gesture in EITHER direction — without this, a downward
-     drag (the "backward" gesture) starting at the top of the page is
-     exactly the gesture real mobile browsers recognize as pull-to-
-     refresh/overscroll-bounce and can take over natively before our own
-     touchend ever sees a clean gesture, while an upward drag (forward)
-     is never intercepted that way — matching the reported one-sided
-     failure exactly. Scoped to the feed's own visible surface (video
-     stage + action rail + info block) rather than `.feed` itself, since
-     `touch-action:none` on an ancestor also disables native scrolling
-     for any scrollable descendant — and `.feed` is the direct parent of
-     the comments/coin/episode-grid bottom sheets, which still need
-     their own native scroll. */
+  /* The feed's own swipe replaces native touch handling (stops pull-to-refresh).
+     On the feed's visible parts, not .feed, so the sheets inside it still scroll. */
   .feed-stage > *,
   .feed > .actionrail,
   .feed > .info{
@@ -441,18 +329,12 @@
     0%{transform:scale(1.04) translate(0,0);}
     100%{transform:scale(1.12) translate(-1.5%,-1%);}
   }
-  /* Real video fills the frame exactly — the slow "drift" zoom/pan only
-     ever existed to make static cover art feel less static, a real
-     playing video doesn't need it and it would look like unwanted
-     camera shake layered on top of real footage. */
+  /* No drift zoom on a real video */
   .bgvideo.has-video{
     inset:0;
     animation:none;
   }
-  /* The real wait for a real episode's video to actually become
-     playable (see setLoadingArt in app.js) — fills the same frame a
-     real video or cover art would, with a solid backdrop since there's
-     no art behind it once this replaces it. */
+  /* Loader while an episode's video gets ready */
   .bgvideo-loading{
     position:absolute;inset:0;
     display:flex;align-items:center;justify-content:center;
@@ -467,11 +349,7 @@
     object-fit:cover;
   }
 
-  /* Off-screen home for the *next* slide's video, warming up quietly
-     while the current slide is showing — a real, rendered iframe (not
-     display:none, which some browsers throttle/pause), just clipped to
-     nothing and never interactive. Its own iframe keeps a normal video
-     frame size so Bunny doesn't pick a low-quality rendition for it. */
+  /* Off-screen preload host (clipped, not display:none, so it isn't throttled) */
   .preload-host{
     position:fixed;
     top:0;left:0;
@@ -486,23 +364,7 @@
     border:0;
   }
 
-  /* Watching: committed to this one slide, chrome clears away entirely
-     for a clean video. Browsing (the default, no class) keeps every one
-     of these visible, same as before video existed at all. The tap
-     target itself (.playpulse) is deliberately NOT hidden here — it's
-     still how play/pause works once watching (see playToggle's click
-     handler in app.js).
-     .info itself stays up (rather than collapsing whole), with only its
-     Continue button hidden individually — that's browsing-preview-only,
-     never part of the real watching chrome. The small "EP X · Y" badge
-     (.epbadge) needs to stay visible and tappable while watching (it's
-     what opens the real episode jump grid, see app.js), and .unlock
-     needs to be able to show the real unlock prompt while watching too,
-     whenever the episode landed on is actually locked (driven by JS via
-     .unlock.hidden below, not by this blanket rule — it has to work the
-     same in both states). Neither is part of the real name/description/
-     social-icons/scrub-bar group below, and neither is ever hidden by
-     it. */
+  /* Watching: hide the browsing chrome. The tap target, .epbadge and .unlock stay. */
   .feed.watching .topbar,
   .feed.watching .spine,
   .feed.watching .pager,
@@ -512,18 +374,7 @@
   .feed.watching .continue{
     display:none;
   }
-  /* The real single group — name (.title), description (.synopsis),
-     social icons (.actionrail), and the scrub bar (.video-controls,
-     further down) — that moves together the whole time watching,
-     confirmed directly, replacing the old reference-matched
-     tap-to-pause-and-show behavior entirely (see playToggle's pointer
-     handlers in app.js for the real 2-second-after-playback timer and
-     tap-reveal/toggle-pause logic that drives .chrome-hidden below).
-     Visible by default (their own normal, non-watching display values
-     apply — .actionrail's own flex, title/synopsis's own block) the
-     whole time watching; .chrome-hidden (JS-driven, never CSS-driven)
-     is the one and only thing that ever hides them, and it always hides
-     all of them together, never independently. */
+  /* Chrome group (title, synopsis, action rail, scrub bar): hidden together by .chrome-hidden */
   .feed.watching.chrome-hidden .title,
   .feed.watching.chrome-hidden .synopsis,
   .feed.watching.chrome-hidden .actionrail{
@@ -538,14 +389,7 @@
     pointer-events:none;
   }
 
-  /* Covers the entire video, not just a small center circle — it's the
-     single tap target for "commit to watching this" (browsing) and
-     "play/pause" (watching), and it doubles as a same-origin shield
-     sitting above the video iframe: without it, taps/swipes/wheel
-     scrolls that land directly on the cross-origin iframe never reach
-     this page's touch/wheel listeners at all (a separate browsing
-     context swallows them), which is what broke feed swiping once real
-     video was added. */
+  /* Full-video tap target; also shields the video so swipes reach the page */
   .playpulse{
     position:absolute;
     inset:0;
@@ -590,7 +434,7 @@
   .topbar{
     position:absolute;
     top:var(--top-safe);left:22px;right:22px;
-    padding-left:44px; /* room for .mutebtn, which sits at the same top-left spot in both states */
+    padding-left:44px; /* room for .mutebtn */
     box-sizing:border-box;
     display:flex;
     align-items:center;
@@ -621,11 +465,7 @@
   .coins svg{width:14px;height:14px;}
 
 
-  /* Real mute/unmute button (see the sound block in app.js) — top-left
-     of the video stage, the same spot in browsing and watching. Not part
-     of the watching chrome group, so nothing here ever hides it. The
-     brand row (.topbar) is padded to make room for it in browsing, and
-     the pager dots below it start at top:82px. */
+  /* Mute button, top-left of the stage in both states */
   .mutebtn{
     position:absolute;
     top:calc(var(--top-safe) - 3px);left:22px;
@@ -701,14 +541,7 @@
     100%{transform:scale(1);}
   }
 
-  /* The real scrub bar (see video-controls above the .info markup in
-     index.html) — one member of the real name/description/social-icons/
-     scrub-bar group (see the .chrome-hidden comment further up) that
-     moves together the whole time watching, confirmed directly. Visible
-     by default while watching a real video; `.chrome-hidden` (JS-driven,
-     app.js) is the one thing that ever hides it, always together with
-     the rest of the group, never on its own. `.has-video` still keeps
-     this off a locked/still-loading episode's own art entirely. */
+  /* Feed scrub bar (part of the chrome group; only with a real video) */
   .video-controls{
     display:none;
     position:absolute;
@@ -750,11 +583,7 @@
     background:var(--leaf-light);
     box-shadow:0 1px 4px rgba(0,0,0,0.5);
   }
-  /* Episode's total length at the right end of either scrub bar
-     (#scrubDuration / #watchScrubDuration) — straight off the real
-     video.duration, empty (and so taking no width) until that's known.
-     Shares the flex row with .scrub-range, which takes the remaining
-     width, so it never overlaps the bar. */
+  /* Episode length at the end of the scrub bar */
   .scrub-duration{
     flex-shrink:0;
     font-size:11.5px;font-weight:700;
@@ -775,17 +604,7 @@
     bottom:calc(24px + var(--safe-bottom));
     z-index:40;
   }
-  /* .info and .actionrail now use the same bottom offsets in browsing and
-     watching (24px / 36px), so the name, description and social icons
-     don't jump when someone taps into a series. The browsing values were
-     98px / 172px — leftovers from when .bottomnav covered the feed; it's
-     hidden whenever the feed is active now (body.feed-active
-     .bottomnav), so nothing needed that clearance any more. 24px sits
-     directly on top of the scrub bar (.video-controls, bottom:16px,
-     ~8px tall) with no gap, measured off the real rendered bar. The one
-     real difference left is deliberate: in browsing the Continue button
-     sits under the description (hidden while watching), so the text
-     block sits higher there by that button's height. */
+  /* Same bottom offsets browsing and watching, so nothing jumps on entry */
   .epbadge{
     display:inline-block;
     font-size:11.5px;
@@ -843,11 +662,7 @@
     display:flex;align-items:center;gap:5px;
     white-space:nowrap;
   }
-  /* Shown only while the episode actually being looked at right now
-     (browsing preview, or whichever real episode watching/swiping/the
-     jump grid landed on) is genuinely locked — see render() in app.js.
-     Nothing to prompt once it isn't, so it hides rather than switching
-     to some "already unlocked" cosmetic state. */
+  /* Only while the current episode is locked */
   .unlock.hidden{display:none;}
   .unlock svg{width:13px;height:13px;}
 
@@ -875,14 +690,7 @@
   .navitem svg{width:21px;height:21px;}
   .navitem.active{color:var(--leaf-light);}
 
-  /* Mobile only (desktop already hides .bottomnav outright, further
-     down) — the feed sits over the full phone frame, bottom nav
-     included, and .bottomnav was never actually hidden for it despite
-     covering part of the video. body.feed-active already exists and is
-     already kept correct by showScreen() (app.js) for exactly this —
-     set the moment "For You" becomes the active screen, whether
-     browsing or actually watching, and cleared the moment it isn't, so
-     this needs no state of its own. */
+  /* Hide the bottom nav on the feed (mobile) */
   body.feed-active .bottomnav{
     display:none;
   }
@@ -1043,24 +851,12 @@
   }
   .discover-search input::placeholder{color:var(--muted);}
 
-  /* Desktop-only featured banner — see the discover-active block below.
-     Hidden by default so it never appears on mobile. */
+  /* Desktop hero, hidden on mobile */
   .discover-hero{
     display:none;
   }
 
-  /* Mobile-only floating "Continue Watching" bar — fixed just above
-     .bottomnav (same 78px height + a little breathing room), NOT part
-     of the scrolling page content. Hidden by default, and whenever JS
-     removes .show (signed out, no real watch history, or dismissed —
-     see discover.js's renderContinueWatchingBar()), so it never reserves
-     space or shows an empty placeholder. Hidden outright on desktop
-     alongside .bottomnav itself, further down.
-     Showing it also requires body.discover-active (Home screen only) —
-     .cw-float lives outside #discoverScreen (same positioning context as
-     .bottomnav), so nothing else hides it when navigating away; without
-     this it stays visibly stuck on top of the feed/watch screen after
-     tapping Continue, confirmed live. */
+  /* Mobile floating Continue Watching bar (Home only, needs .show) */
   .cw-float{
     display:none;
     position:absolute;
@@ -1118,16 +914,7 @@
   }
   .cw-float-close svg{width:14px;height:14px;}
 
-  /* Real install prompt / real iOS "Add to Home Screen" instructions
-     (see js/pwa-install.js) — a real, large popup centered in the
-     middle of the screen, its own dedicated styling, deliberately not
-     .cw-float's small floating-strip look (confirmed directly: that was
-     genuinely what this used to reuse, by mistake). Body-level and
-     fixed to the whole viewport like the auth/share modals, so it's
-     centered on the real screen even inside the boxed desktop mockup,
-     not confined to a small corner of it. Hidden/dismissed by default;
-     JS alone (pwa-install.js) ever opens it, and only at the two real
-     moments it's genuinely earned. */
+  /* Install popup (pwa-install.js) */
   .pwa-modal-backdrop{
     position:fixed;inset:0;
     background:rgba(4,7,5,0.7);
@@ -1221,12 +1008,10 @@
   }
   .pwa-modal-btn-secondary:active{background:rgba(255,255,255,0.06);}
 
-  /* Profile screen's own always-available install trigger — only ever
-     rendered once a real beforeinstallprompt has actually fired (see
-     renderProfileMenu in profile.js), so it's never a dead button. */
+  /* Profile install button */
   .profile-install-btn{
     flex-shrink:0;
-    margin-left:auto;   /* far end of the header row, opposite the avatar + username */
+    margin-left:auto;   /* far end of the header row */
     min-height:40px;
     display:flex;align-items:center;gap:6px;
     background:rgba(232,184,92,0.14);
@@ -1302,12 +1087,7 @@
     grid-template-columns:1fr 1fr;
     gap:12px;
   }
-  /* Mobile-only Popular tab layout (see discover.js renderPopularGrid):
-     two larger feature cards, a tight 3-column grid for the next nine,
-     then a roomier 2-column grid for the rest — matches the real
-     reference screenshots. Desktop collapses all three back to the
-     same uniform grid `.poster-grid` already uses there (see the
-     body.discover-active override below), so desktop is unaffected. */
+  /* Mobile Popular layout: 2 feature cards, 3-column grid of 9, then 2 columns */
   .discover-feature-row{
     display:grid;
     grid-template-columns:1fr 1fr;
@@ -1351,11 +1131,7 @@
     display:flex;align-items:center;justify-content:center;
   }
   .poster-card .poster-lock svg{width:12px;height:12px;}
-  /* Rankings tab / desktop Top shelf only (posterCardHtml's `ranking`
-     arg, discover.js): rank badge + real view count, top-left. Same
-     dark translucent chip as .poster-lock; the top three ranks get the
-     existing gold. Sits outside .poster-title so the desktop shelf's
-     hover-only title never hides it. */
+  /* Rank badge + view count (Rankings tab, desktop Top shelf) */
   .poster-card .poster-rank-meta{
     position:absolute;top:6px;left:6px;right:6px;
     display:flex;align-items:center;gap:5px;
@@ -1389,10 +1165,7 @@
     padding:40px 20px;
   }
 
-  /* Desktop-only shelf stack and its "back to shelves" control — see
-     the discover-active block below. Hidden by default so neither ever
-     appears on mobile, which keeps the existing tabs+grid exactly as
-     it already was there. */
+  /* Desktop shelves and the "back to shelves" link, hidden on mobile */
   .discover-shelves{
     display:none;
   }
@@ -1400,13 +1173,7 @@
     display:none;
   }
 
-  /* Library screen: every series the signed-in viewer has actually
-     saved (series_saves via social.js — see library.js), reusing the
-     exact same .poster-card markup Discover already uses (posterCardHtml
-     in discover.js). .library-grid uses auto-fill instead of Discover's
-     fixed 2-column .poster-grid so it naturally gets more columns at the
-     wide desktop width on its own, without needing a separate
-     body.library-active override the way Discover's own grid does. */
+  /* Library screen (auto-fill grid gets more columns on desktop) */
   .library{
     position:absolute;
     inset:0;
@@ -1434,9 +1201,7 @@
     grid-template-columns:repeat(auto-fill, minmax(140px, 1fr));
     gap:12px;
   }
-  /* History screen (history.js): the same .library shell/header/body,
-     plus a back arrow in the header (it's reached from Profile, not the
-     nav bar) and a list of rows instead of a poster grid. */
+  /* History screen */
   .library-header.has-back{
     display:flex;align-items:center;gap:8px;
   }
@@ -1474,8 +1239,7 @@
   }
   .history-ep{margin-top:4px;font-size:12px;font-weight:600;color:var(--leaf-light);}
   .history-date{flex-shrink:0;font-size:11.5px;color:var(--muted);}
-  /* Downloads screen (downloads.js): History's row look, grouped by
-     series, with a delete button beside each row. */
+  /* Downloads screen */
   .downloads-wrap{max-width:720px;}
   .downloads-offline-note{
     display:flex;align-items:center;gap:10px;
@@ -1537,8 +1301,7 @@
   .download-job-actions .download-retry{margin-top:0;padding:8px 14px;}
   .auth-submit.download-confirm-delete{background:#E07070;}
   .auth-submit.download-confirm-delete:active:not(:disabled){background:#C85A5A;}
-  /* The Download action (feed rail + Watch page). hidden must win over
-     the buttons' own display:flex. */
+  /* Download action: hidden must beat display:flex */
   .raction[hidden], .watch-action[hidden]{display:none !important;}
   .raction-download[data-state="downloaded"] svg{stroke:var(--leaf-light);}
   .raction-download[data-state="downloading"] svg,
@@ -1551,7 +1314,7 @@
     .raction-download svg, .watch-action-download svg{animation:none !important;}
   }
   .downloaded-art-blank{width:100%;height:100%;background:var(--panel-2);}
-  /* Opened with no connection (offline.js): Home shows only this. */
+  /* Offline start: Home shows only this */
   body.app-offline .discover-hero,
   body.app-offline .discover-shelves,
   body.app-offline .shelf-back-btn,
@@ -1589,9 +1352,7 @@
     padding:7px 14px;border-radius:18px;cursor:pointer;
   }
   .membership-reason{margin-bottom:14px;}
-  /* Help & Feedback screen (help.js): the Profile menu's own cards and
-     rows (.profile-menu/.profile-row), in the History shell. Contact
-     and About are cards with their details shown in place. */
+  /* Help & Feedback screen */
   .help-list{max-width:420px;}
   .help-card{padding:14px 16px 16px;}
   .help-card-head{
@@ -1622,10 +1383,7 @@
   .help-about-name{margin-top:12px;font-size:18px;font-weight:800;color:var(--text);}
   .help-about-line{margin-top:4px;font-size:13px;color:var(--text);line-height:1.45;}
   .help-about-meta{margin-top:8px;font-size:12px;color:var(--muted);}
-  /* Generic small pill CTA — Library's own "Log in" empty-state button,
-     and (see narravaLoadFailedHtml, shared-utils.js) the real "Try
-     again" retry action on a genuinely failed video load. One shared
-     button style, not a new one invented per place that needs a CTA. */
+  /* Small pill button (Library log in, load retry) */
   .pill-cta-btn{
     display:inline-block;
     margin-top:14px;
@@ -1640,11 +1398,7 @@
     cursor:pointer;
   }
 
-  /* Profile screen: always the same menu, logged in or out (DramaBox-
-     style) — signing in happens through the popup below, opened from
-     inside this screen, instead of replacing it. profile-panel is
-     capped and centered so the menu reads as one designed column at
-     the wide desktop width too, same idea as discover-body. */
+  /* Profile screen */
   .profile{
     position:absolute;
     inset:0;
@@ -1730,8 +1484,7 @@
     text-align:center;
   }
   .profile-feature svg{width:18px;height:18px;color:var(--leaf-light);}
-  /* All four tiles are real <button>s (each -> "Coming soon"), reset so
-     they look exactly like the plain <div> tiles they replaced. */
+  /* Feature tiles are buttons, reset to look like the old divs */
   button.profile-feature{font-family:inherit;line-height:inherit;cursor:pointer;}
 
   .profile-menu{
@@ -1771,34 +1524,19 @@
   }
   .profile-row-chevron svg{width:15px;height:15px;}
 
-  /* Desktop-only watch page for a single series (see watch.js) — opened
-     instead of the mobile swipe feed when a series is opened from the
-     desktop layout. Base rule just sizes the screen; the real layout
-     only exists at the desktop breakpoint below, since this screen is
-     never shown on mobile in the first place. The screen itself does
-     NOT scroll — measured off a real reelshort.com episode page, only
-     its right-hand info column scrolls internally while the video and
-     back button stay put, so that's the structure here too. */
+  /* Desktop Watch page (only the info column scrolls) */
   .watch{
     position:absolute;
     inset:0;
     overflow:hidden;
   }
 
-  /* Comment panel on the watch page: a fixed drawer over the existing
-     layout (position:fixed, not part of the normal document flow), so
-     opening it never pushes the episode grid down — see watch.js. Base
-     rule hides it entirely outside the desktop watch page. */
+  /* Watch page comment drawer, hidden elsewhere */
   .watch-comments-backdrop{
     display:none;
   }
 
-  /* ============ Comments (shared: mobile sheet + desktop drawer) ============
-     One real comment tree — top-level comments, one level of replies,
-     each with a real like — rendered by comments-panel.js into either
-     surface's own body container. Structural styling only lives here
-     once; each surface's own shell (.sheet vs .watch-comments-panel)
-     handles positioning/open-close. */
+  /* ============ Comments (mobile sheet + desktop drawer) ============ */
   .cmt-count{
     font-size:13px;font-weight:700;color:var(--muted);
     margin-left:4px;
@@ -1866,18 +1604,8 @@
   .cmt-delete-no{
     color:var(--muted);background:none;border:none;cursor:pointer;font-size:12px;padding:0;
   }
-  /* .cmt-root-replies wraps a root comment's toggle + (once open) its
-     whole reply chain and "Load more" — no indent/line of its own, it's
-     not a reply level itself. .cmt-replies is the real per-level piece:
-     one is rendered per parent that actually has visible children (see
-     renderChildrenHtml in comments-panel.js), so its border-left only
-     ever spans that specific parent's own children — two replies to the
-     same comment share one .cmt-replies (same small indent, branching
-     from the same point), and something replying to one of those two
-     gets its own nested .cmt-replies one further small step in. The
-     10px step is deliberately small (not the ~32px gap between a root
-     and its avatar) so depth stays readable without a deep real thread
-     overflowing a narrow phone. */
+  /* One .cmt-replies per parent with visible children, so each line branches from its parent.
+     Small 10px step so deep threads fit on a phone. */
   .cmt-root-replies{
     margin-top:4px;
   }
@@ -1946,20 +1674,14 @@
   }
   .cmt-composer-post:hover{background:var(--leaf-light);}
 
-  /* Mobile sheet: reuses the existing .sheet shell (fixed 72% height,
-     flex column, its own open/close transform) — only the body needs to
-     scroll internally, same idea as .watch-comments-body on desktop. */
+  /* Mobile sheet: only the body scrolls */
   .cmt-body{
     flex:1;overflow-y:auto;
-    overscroll-behavior:contain; /* reaching either end of the list never hands the scroll on to the page behind */
+    overscroll-behavior:contain; /* don't hand the scroll on to the page */
     padding:4px 0 10px;
   }
 
-  /* Real episode jump grid, same .sheet shell as comments/Get Coins.
-     5 columns fits the phone frame's own width comfortably; locked
-     cells match the desktop watch page's own grid styling (small corner
-     lock badge, number stays visible) rather than inventing a different
-     look for the same real honest state. */
+  /* Episode jump grid (5 columns) */
   .epgrid-body{
     flex:1;overflow-y:auto;
     display:grid;
@@ -1993,10 +1715,7 @@
     color:var(--muted);
   }
 
-  /* Sign Up / Log In popup, opened from inside the Profile screen above
-     instead of replacing it — same show/hide pattern as the Get Coins
-     sheet (.sheet-backdrop), just centered instead of docked to the
-     bottom. */
+  /* Log In / Sign Up popup */
   .auth-modal-backdrop{
     position:fixed;inset:0;
     background:rgba(4,7,5,0.65);
@@ -2112,8 +1831,7 @@
     color:var(--muted);
     margin-top:16px;
   }
-  /* Forgot password (auth.js): the link under Log In's password field,
-     and the line explaining the reset request view. */
+  /* Forgot password link and hint (auth.js) */
   .auth-forgot{
     display:flex;
     justify-content:flex-end;
@@ -2125,8 +1843,7 @@
     color:var(--muted);
     margin:-6px 0 14px;
   }
-  /* Nava Coins (coins.js): the Get Coins sheet and the unlock prompt,
-     both in the .auth-modal-backdrop/.auth-card shell. */
+  /* Get Coins sheet and unlock prompt (coins.js) */
   .coin-modal{max-width:380px;}
   .coin-card{max-height:calc(100vh - 60px);overflow-y:auto;}
   .coin-card .auth-title,.unlock-card .auth-title{font-size:19px;margin-bottom:8px;}
@@ -2178,7 +1895,7 @@
     font-family:'Montserrat',sans-serif;font-weight:700;font-size:13.5px;
     padding:11px;border-radius:10px;cursor:pointer;
   }
-  /* Watch-ads section of the unlock prompt (ads.js). */
+  /* Watch-ads section of the unlock prompt */
   .unlock-ads{margin-top:14px;}
   .unlock-ads-or{
     display:flex;align-items:center;gap:10px;
@@ -2199,7 +1916,7 @@
   }
   .unlock-ads-btn:disabled{opacity:0.6;cursor:default;}
   .unlock-ads .coin-status{margin-top:10px;}
-  /* Desktop watch page: the player area for a locked episode. */
+  /* Watch page: player area for a locked episode */
   .watch-locked{
     position:absolute;inset:0;
     display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;
@@ -2217,7 +1934,7 @@
   }
   .watch-locked-btn:hover{background:rgba(232,184,92,0.24);}
 
-  /* Membership screen (membership.js) and VIP (discover.js, profile.js). */
+  /* Membership screen and VIP */
   .dtab[hidden],.vip-badge[hidden]{display:none !important;}
   .vip-badge{
     display:inline-block;vertical-align:middle;
@@ -2300,14 +2017,8 @@
     text-decoration:underline;
   }
 
-  /* Real phones / narrow browser windows: fill the viewport, no
-     illustrated phone-frame chrome (that chrome is only useful for
-     previewing the mobile-first layout on a wide desktop window). */
-  /* An installed phone app (iOS Home Screen app, Android installed PWA — html.standalone-app, set in
-     index.html's <head> from navigator.standalone / display-mode): the page starts BELOW the
-     status bar, so top-anchored UI needs only the safe-area inset (0 with an opaque bar) + a small
-     margin, not the 46px that made room for a status bar drawn over the page. Only here; browser
-     tabs and the desktop preview keep 46px. */
+  /* Phones / narrow windows: fill the viewport, no phone frame */
+  /* Installed app: page starts below the status bar, so top UI needs only the safe area + a margin */
   @media (max-width: 600px){
     html.standalone-app{ --top-safe:calc(env(safe-area-inset-top, 0px) + 12px); }
   }
@@ -2318,15 +2029,10 @@
       min-height:100dvh;
     }
     .phone{
-      /* Pinned to all four screen edges rather than sized with 100vh /
-         100dvh. On an installed iPhone app those viewport units can fall
-         short of the real screen (the strip at the bottom); fixed + inset
-         always spans it, including under the home indicator — which the
-         page opts in to with viewport-fit=cover in index.html. Bottom UI
-         then clears the indicator with --safe-bottom below. */
+      /* Pinned to all four edges (100vh / 100dvh can fall short on an installed iPhone) */
       position:fixed;
       top:0;left:0;right:0;
-      bottom:calc(-1 * var(--app-shortfall, 0px));   /* 0 normally; on an iPhone whose viewport is short, reaches down to the real screen bottom (layout-guard.js) */
+      bottom:calc(-1 * var(--app-shortfall, 0px));   /* 0 normally (layout-guard.js) */
       width:auto;
       max-width:none;
       height:auto;
@@ -2343,8 +2049,7 @@
     }
   }
 
-  /* Desktop top bar (hidden everywhere except >=900px, both screens —
-     see below; replaces the old left sidebar). */
+  /* Desktop top bar (>= 900px) */
   .topbar-desktop{
     display:none;
   }
@@ -2407,14 +2112,7 @@
   }
   .topbar-topup-btn:hover{background:var(--leaf-light);}
 
-  /* Search icon in the top bar replaces the whole nav row with this
-     input, and dims the rest of the page behind a backdrop (see
-     .topbar-search-backdrop below) — checked directly against
-     reelshort.com's own search behaviour rather than assumed: it is
-     NOT a small dropdown tucked under a still-visible nav bar, clicking
-     the icon takes over the header entirely. Reuses the same `slides`
-     data and `matchesSearch()` predicate discover.js already built for
-     the mobile/expanded grid search. */
+  /* Desktop search takes over the nav row */
   .topbar-search-bar{
     display:none;
   }
@@ -2439,20 +2137,11 @@
   .topbar-search-bar-icon{
     display:flex;flex-shrink:0;color:var(--muted);
   }
-  /* The full-page dimming overlay behind the results panel — hidden
-     entirely outside the desktop breakpoint/open state so it can never
-     leak onto mobile even if toggled. */
+  /* Search backdrop, desktop only */
   .topbar-search-backdrop{
     display:none;
   }
-  /* Real thumbnail-row grid, shown by default (unfiltered, via
-     matchesSearch with an empty query — see discover.js
-     renderTopbarSearchGrid) and live-filtered as you type, same
-     underlying search logic the mobile bar and Discover screen already
-     use. Real cover art, real titles, real genre tags where a series
-     has any — no view counts or rankings, since there's no real data
-     behind those (same honesty rule as the Discover "Top" shelf's own
-     caption) — the real site shows both, this deliberately doesn't. */
+  /* Search results grid */
   .topbar-search-grid{
     display:grid;
     grid-template-columns:repeat(2, 1fr);
@@ -2469,10 +2158,7 @@
     cursor:pointer;
     font-family:'Montserrat',sans-serif;
   }
-  /* Same fixed-proportions treatment as every other poster/thumbnail
-     card in the app (.poster-card, .hero-thumb): aspect-ratio + a
-     cover-fit image keep every card in this grid the same shape no
-     matter what proportions the source cover art happens to be. */
+  /* Fixed card shape whatever the cover's proportions */
   .search-grid-thumb{
     position:relative;
     width:84px;
@@ -2517,33 +2203,12 @@
     grid-column:1/-1;
   }
 
-  /* `.feed-stage` groups the elements that render ON TOP of the video
-     (the video itself, vignette, play/pause pulse, episode-progress
-     spine, brand/coins topbar, dot pager). display:contents makes this
-     wrapper invisible to layout by default, so on mobile — and inside
-     the illustrated phone frame between 600–900px — every one of those
-     children positions itself exactly as if it were still a direct
-     child of `#feed`, i.e. exactly as before this wrapper existed. Only
-     the desktop For You layout below gives `.feed-stage` a real box. */
+  /* .feed-stage: things drawn on the video. display:contents except on desktop For You. */
   .feed-stage{
     display:contents;
   }
 
-  /* Chrome shared by both screens at the desktop breakpoint: the top
-     bar, and stripping the illustrated phone-frame chrome (notch, fake
-     status bar, bottom nav — the top bar replaces bottom-nav's job).
-     This used to be scoped to body.discover-active only; both screens
-     now get this same shell, and each screen's own block below
-     (`body.discover-active …` / `body.feed-active …`) only styles what
-     goes *inside* it.
-
-     `.stage` stacks the top bar above the content instead of beside it
-     (the old row layout put the sidebar to the left of `.phone`), so
-     `.phone` is a flex:1 second row and just naturally gets whatever
-     height is left under the bar — `.feed`/`.discover`/`.profile`
-     inside it are already `position:absolute; inset:0`, sized off
-     `.phone`'s own box, not the viewport, so nothing inside needed to
-     change for the shrunk height. */
+  /* Desktop shell for both screens: top bar on top, no phone frame */
   @media (min-width: 900px){
     body{
       padding:0;
@@ -2578,14 +2243,7 @@
       padding:0 32px;
       box-sizing:border-box;
     }
-    /* The Discover ("Home") screen's header sits directly on top of the
-       hero image instead of pushing it down — matching the reference
-       mockup's overlay treatment. Taking the bar out of flow here is
-       what makes `.phone` (and the hero inside it) reclaim the full
-       stage height; the search panel still opens the exact same way,
-       it just now slides down over the hero image instead of over a
-       solid panel background. The For You screen keeps the plain
-       in-flow solid bar above (no hero to overlay there). */
+    /* Home: top bar overlays the hero */
     body.discover-active .topbar-desktop{
       position:fixed;
       top:0;left:0;right:0;
@@ -2593,19 +2251,12 @@
       border-bottom:none;
       transition:background 0.25s ease, border-color 0.25s ease;
     }
-    /* Once scrolled far enough to have passed the hero, the bar switches
-       to a solid background (and gets its border back) instead of the
-       gradient meant to fade into the hero image — toggled by a plain
-       scroll-position listener in discover.js, not a second layout. */
+    /* Solid top bar once scrolled past the hero */
     body.discover-active.discover-scrolled .topbar-desktop{
       background:var(--panel);
       border-bottom:1px solid rgba(255,255,255,0.06);
     }
-    /* Search takeover: the input row REPLACES the nav row (matching the
-       real site's own behaviour, checked directly) while the backdrop
-       dims everything below the bar — clicking the backdrop (outside
-       the results panel) closes it, same as clicking outside on the
-       real site. */
+    /* Search takeover: input row replaces the nav row */
     .topbar-desktop-inner.search-hidden{
       display:none;
     }
@@ -2664,16 +2315,9 @@
       display:none;
     }
 
-    /* ----- Discover ("Home") screen's own desktop layout ----- */
+    /* ----- Home: desktop layout ----- */
 
-    /* Content column: search/hero/tabs/grid all share this same capped,
-       centered width so the page reads as one designed column instead
-       of cards scattered across an ultrawide window. 1400px sits in the
-       middle of a comfortable range (roughly 1300–1500px) for a 2–6
-       column poster grid — checked at 1024px, ~1400px and ~1800px+
-       window widths; narrower than that it just fills the available
-       space as it already did, wider than that it stops growing and
-       centers instead of stretching the grid painfully thin. */
+    /* Content column capped at 1400px, centered */
     body.discover-active .discover-tabs,
     body.discover-active .discover-body{
       width:100%;
@@ -2682,31 +2326,19 @@
       box-sizing:border-box;
     }
 
-    /* The always-visible search bar is mobile-only now — desktop search
-       lives in the top bar's icon + sliding panel instead (see
-       .topbar-search-panel above), matching the reference mockup: no
-       visible, always-present search bar on this screen. */
+    /* No always-visible search bar on desktop */
     body.discover-active .discover-header{
       display:none;
     }
 
-    /* ----- Hero: full-bleed banner (deliberately NOT capped at 1400px
-       like the column below it — matches the reference's edge-to-edge
-       treatment), header overlays its top (see .topbar-desktop above),
-       content driven by the thumbnail filmstrip carousel on the right
-       instead of the old arrows/dots (see discover.js renderHero()). ----- */
+    /* ----- Hero: full-bleed banner with a thumbnail filmstrip ----- */
     body.discover-active .discover-hero{
       display:block;
       position:relative;
       width:100%;
       height:560px;
       overflow:hidden;
-      /* .discover is now a flex column that's allowed to grow taller
-         than its box and scroll (see body.discover-active .discover)
-         instead of shrinking its children to fit. Without this, the
-         hero's own overflow:hidden makes its flex automatic min-height
-         0, so the flexbox shrinks it to nothing to make room for the
-         (now unbounded) shelves below instead of actually scrolling. */
+      /* Don't let flexbox shrink the hero to nothing */
       flex-shrink:0;
     }
     body.discover-active .discover-hero-bg{
@@ -2787,19 +2419,13 @@
       background:var(--leaf-light);
     }
 
-    /* Thumbnail filmstrip: clicking a thumbnail (or autoplay advancing
-       on its own) swaps the hero bg/title/tags/synopsis above in place —
-       it doesn't navigate by itself. "Watch Now" is the real
-       destination, via openSeriesInFeed(), same as every poster card. */
+    /* Filmstrip swaps the hero content; "Watch Now" opens the series */
     body.discover-active .hero-carousel-wrap{
       position:relative;
       display:flex;align-items:center;gap:8px;
       flex-shrink:0;
     }
-    /* Sized to show exactly 4 thumbnails at once (4*112 + 3*12 gap =
-       484px, +6px breathing room) — the rest of a 5-item hero (see
-       HERO_VISIBLE/pickHeroItems in discover.js) are reachable only via
-       the next arrow or autoplay, never all visible together. */
+    /* Shows exactly 4 thumbnails */
     body.discover-active .hero-carousel-viewport{
       width:490px;
       overflow:hidden;
@@ -2875,11 +2501,7 @@
       margin-bottom:20px;
     }
     body.discover-active .poster-grid,
-    /* Desktop-only: neutralizes the mobile-only Popular tab's tiered
-       layout (see .discover-feature-row/-grid-tight/-grid-roomy above)
-       back to the same uniform grid every other tab already uses in
-       the desktop "View all" expanded view — this task is mobile-only,
-       so desktop must render identically to before. */
+    /* Desktop: the Popular tab uses the normal uniform grid */
     body.discover-active .discover-feature-row,
     body.discover-active .discover-grid-tight,
     body.discover-active .discover-grid-roomy{
@@ -2892,15 +2514,8 @@
       padding:26px 10px 10px;
     }
 
-    /* Desktop replaces the mobile tabs+grid with a stack of named
-       shelves by default; "View all" on a shelf flips a screen-level
-       state instead of building a second grid renderer — the plain
-       tabs+grid reused as-is, made to fill the desktop column, with a
-       back link above it that only exists in this expanded state. */
-    /* The whole Discover screen scrolls as one normal page (hero then
-       shelves) — see body.discover-active .discover below — rather than
-       hero pinned in place with the shelves scrolling in their own box,
-       so the fixed top bar has an actual scroll position to react to. */
+    /* Shelves by default; "View all" shows the tabs+grid expanded with a back link */
+    /* The whole Home screen scrolls as one page */
     body.discover-active .discover{
       overflow-y:auto;
       overflow-x:hidden;
@@ -2912,9 +2527,7 @@
       width:100%;
       max-width:1400px;
       margin:0 auto;
-      /* Top padding covers the fixed bar's own height (64px) plus room
-         to spare, so the first shelf's title clears it once scrolled
-         past the hero instead of sitting right under it. */
+      /* clears the fixed 64px bar */
       padding:84px 44px 60px;
       box-sizing:border-box;
     }
@@ -2991,9 +2604,7 @@
     .shelf-viewall:hover{
       text-decoration:underline;
     }
-    /* Wraps the row so the arrow buttons below can sit absolutely
-       positioned over its left/right edges without taking up their
-       own layout space or shifting the row's own width/scroll math. */
+    /* Lets the arrows sit over the row's edges */
     .shelf-row-wrap{
       position:relative;
     }
@@ -3002,18 +2613,11 @@
       gap:24px;
       overflow-x:auto;
       padding-bottom:8px;
-      /* Same pair the tabs row already uses (.discover-tabs above) —
-         scrollbar-width:thin only slims Firefox's scrollbar, it never
-         hides it, and there was no ::-webkit-scrollbar rule at all
-         here, which is the one that actually hides it in Chrome. */
+      /* Hide the scrollbar (Firefox and Chrome) */
       scrollbar-width:none;
     }
     .shelf-row::-webkit-scrollbar{display:none;}
-    /* Same visual treatment as the hero carousel's own arrow
-       (body.discover-active .hero-carousel-next below) — a small dark
-       circle, not a new style invented for this. Hidden until the
-       shelf itself is hovered, and further hidden at either end once
-       there's nothing left to scroll that direction. */
+    /* Shelf arrows: show on hover, hidden at either end */
     .shelf-arrow{
       position:absolute;
       top:50%;
@@ -3039,10 +2643,7 @@
     .shelf-arrow-left{left:-6px;}
     .shelf-arrow-right{right:-6px;}
     .shelf-arrow svg{width:16px;height:16px;}
-    /* Measured directly off reelshort.com's own shelf cards (a real
-       image element in its "Reel Original" row): 259px wide, 345px
-       tall, 24px gap — about 6 cards visible across a 1920px window,
-       matching what the real site actually shows, not a guess. */
+    /* 259x345 cards, 24px gap */
     .shelf-row .poster-card{
       flex:0 0 259px;
       width:259px;
@@ -3054,10 +2655,7 @@
       box-shadow:0 16px 34px rgba(0,0,0,0.6);
       z-index:5;
     }
-    /* Title is hidden until hover here, matching the reference's shelf
-       cards — the mobile/expanded-grid poster cards below keep their
-       title always visible (touch has no hover), this only changes the
-       desktop shelf rows. */
+    /* Shelf titles show on hover only */
     .shelf-row .poster-card .poster-title{
       opacity:0;
       transition:opacity 0.22s ease;
@@ -3066,16 +2664,8 @@
       opacity:1;
     }
 
-    /* ----- For You screen's own desktop layout -----
-       TikTok-style: no illustrated phone frame, video centered as its
-       own tall panel, with the action icons and the series info sitting
-       beside it instead of overlaid on top of it. `.feed-stage` (video +
-       vignette + play/pause pulse + progress spine + brand/coins topbar
-       + dot pager) becomes a real sized box here; `.actionrail` and
-       `.info` drop their mobile absolute-overlay positioning and become
-       ordinary flex columns next to it. Nothing inside any of these
-       three pieces changes — same elements, same IDs, same click
-       handlers, same data, only their position and the video's frame. */
+    /* ----- For You: desktop layout -----
+       Video as a centered panel, actions and info beside it */
     body.feed-active #feed{
       display:flex;
       align-items:center;
@@ -3094,11 +2684,7 @@
       overflow:hidden;
       box-shadow:0 20px 60px -20px rgba(0,0,0,0.6);
     }
-    /* Anchored to the bottom of the row, not vertically centered
-       alongside the video — confirmed directly: centering them made the
-       real name/description/Continue button (and the action icons
-       beside them) read as sitting in the middle of the screen instead
-       of at the bottom, same real mistake this replaces. */
+    /* Anchored to the bottom, not centered */
     body.feed-active .actionrail{
       position:static;
       right:auto;
@@ -3125,28 +2711,14 @@
       max-width:none;
       font-size:14px;
     }
-    /* Desktop's own dedicated per-series page (watch.js) is the real
-       "watch a series" experience at this width — this shared feed's
-       "For You" tab reuse is mobile-only in spirit (episode
-       swiping/the jump grid/the real per-episode unlock prompt are
-       genuinely mobile-only, see app.js), so it keeps its exact
-       pre-existing look here: the whole info panel, badge included,
-       stays hidden while watching, same as every other piece of chrome
-       .feed.watching already collapses at this width. */
+    /* Desktop For You keeps its simple look: info panel hidden while watching */
     body.feed-active .feed.watching .epbadge,
     body.feed-active .feed.watching .unlock{
       display:none;
     }
 
-    /* ----- Watch page (single-series desktop screen, see watch.js) -----
-       Rebuilt against real measurements taken directly off a live
-       reelshort.com episode page (see watch.js's own header comment for
-       the numbers): a fixed back button top-left, a large video filling
-       the full height of the left column (not a small boxed player —
-       the video keeps Narrava's own real 340/706 clip shape, just sized
-       tall instead of "moderate"), and a fixed-width right info column
-       that scrolls independently while the video and back button stay
-       put — the real site's own structure, not a single scrolling page. */
+    /* ----- Watch page (desktop) -----
+       Fixed back button, full-height video, fixed-width scrolling info column */
     .watch-back{
       position:absolute;
       top:24px;left:24px;
@@ -3182,7 +2754,7 @@
       background:#000;
       position:relative;
     }
-    /* The mute button (same .mutebtn as the mobile feed) sits in the video's top-left corner. */
+    /* Mute button in the video's top-left corner */
     .watch-player-box .mutebtn{
       top:14px;left:14px;
     }
@@ -3194,9 +2766,7 @@
     .watch-player-inner video{
       width:100%;height:100%;border:none;display:block;object-fit:cover;
     }
-    /* Confirmed directly against reelshort.com: not visible while a
-       video is genuinely playing, only while paused — same real gate as
-       the mobile feed's .video-controls. */
+    /* Shown only while paused */
     .watch-video-controls{
       display:none;
       position:absolute;
@@ -3209,11 +2779,7 @@
     .watch-player-box.has-video.paused .watch-video-controls{
       display:flex;
     }
-    /* The real wait for a real episode's video to actually become
-       playable (see watchPlayEpisode in watch.js) — Bunny's player
-       often takes 30+ seconds (confirmed live) to become interactive
-       after its iframe first loads, so this replaces what would
-       otherwise just be a blank/loading iframe for that whole wait. */
+    /* Loader while the episode's video gets ready */
     .watch-player-loading{
       position:absolute;inset:0;
       display:flex;align-items:center;justify-content:center;
@@ -3233,9 +2799,7 @@
       box-sizing:border-box;
     }
 
-    /* 480px measured directly off the real site's own info panel
-       (a literal `w-480px` utility class in its markup, on a 1920px
-       screen) — this is the column that scrolls, not the whole page. */
+    /* 480px info column (this is what scrolls) */
     .watch-info{
       flex-shrink:0;
       width:480px;
@@ -3272,10 +2836,7 @@
       padding:5px 12px;
       border-radius:999px;
     }
-    /* Centered, evenly-spaced icon row, matching the real site's own
-       like/bookmark/share row proportions. Each label shows that
-       series' real count once loaded (likes, comments, shares, saves —
-       see watch.js's loadWatchSocialState). */
+    /* Action row with counts */
     .watch-actions{
       display:flex;
       justify-content:space-around;
@@ -3299,11 +2860,7 @@
     .watch-action.active{color:var(--leaf-light);}
     .watch-action.active svg{fill:var(--leaf-light);}
 
-    /* Range tabs — only rendered at all once a series actually has
-       enough episodes to need grouping (see watch.js); a 2-3 episode
-       series never shows this, matching the real site's own behaviour
-       of only grouping "when there are many episodes" rather than
-       always showing a pagination control. */
+    /* Range tabs (long series only) */
     .watch-ep-ranges{
       display:flex;gap:18px;
       margin-bottom:16px;
@@ -3321,8 +2878,7 @@
     }
     .watch-range-tab.active{color:var(--leaf-light);border-bottom-color:var(--leaf);}
 
-    /* 6 columns, ~62x46 cells, 6px gaps — measured directly off the
-       real site's own episode grid rather than approximated. */
+    /* 6 columns, ~62x46 cells */
     .watch-episode-grid{
       display:grid;
       grid-template-columns:repeat(6, 1fr);
@@ -3351,9 +2907,7 @@
       color:var(--muted);
     }
     .watch-ep-card.locked:hover{border-color:var(--gold);}
-    /* Small corner badge, not a full-cell replacement — the real site
-       keeps the episode number visible on a locked cell too, checked
-       directly against a live episode page. */
+    /* Lock badge in the corner; number stays visible */
     .watch-ep-card-lock{
       position:absolute;
       top:3px;left:4px;
@@ -3361,10 +2915,7 @@
       color:var(--muted);
     }
 
-    /* Comment drawer: fixed over the whole screen (its own backdrop,
-       independent of .watch-info's own scroll), sliding in from the
-       right — a real overlay, not a block that expands in place and
-       pushes the episode grid down. */
+    /* Comment drawer slides in from the right */
     .watch-comments-backdrop.open{
       display:block;
       position:fixed;
@@ -3410,11 +2961,7 @@
       overflow-y:auto;
       padding:24px;
     }
-    /* The composer sits outside .watch-comments-body (never scrolls
-       away) — .cmt-composer's own base rule (shared with the mobile
-       sheet) has no horizontal padding of its own, since the mobile
-       sheet already gets that from .sheet; the drawer needs it added
-       explicitly here. */
+    /* Composer padding for the drawer */
     .watch-comments-panel .cmt-composer{
       padding:14px 24px;
     }

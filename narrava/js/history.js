@@ -1,27 +1,10 @@
-// history.js
-//
-// The History screen (Profile -> History): every series this viewer has
-// watched, newest first, straight from get_watch_history — a database
-// function that only ever returns the signed-in caller's own rows (an
-// anonymous account counts; it has real watch_progress of its own). One
-// row per series: cover, title, the last episode watched, and when.
-//
-// Built like Library (library.js): same .library shell/header/body,
-// same skeleton + one faint center logo while loading, re-fetched fresh
-// every time the screen is opened. Tapping a row goes through app.js's
-// openSeriesInFeed — the exact same path a Library poster or the
-// Continue Watching bar uses, including its silent resume.
-//
-// Three honest end states, and the skeleton never outlives the request
-// (withTimeout, shared-utils.js): the list, "Nothing watched yet.", or
-// an error with a retry.
+// History screen: series this viewer watched, newest first
 
 const historyBody = document.getElementById('historyBody');
 const historyBackBtn = document.getElementById('historyBackBtn');
 const HISTORY_TIMEOUT_MS = 10000;
 
-// Bumped on every render, so a slow earlier request that resolves after
-// the screen was reopened can't overwrite the newer result.
+// Stops a slow older request overwriting a newer render
 let historyRenderToken = 0;
 
 function skeletonHistoryRowsHtml(count){
@@ -40,7 +23,6 @@ function skeletonHistoryRowsHtml(count){
 
 function historyRowHtml(row){
   const slide = slides.find(s => s.id === row.series_id);
-  // The function's own cover first; the loaded series' art if it has none.
   const src = row.cover_image_url || (slide ? posterArtSrc(slide) : '');
   const title = row.title || (slide ? slide.title : '');
   return '<button type="button" class="history-row" data-series-id="' + escapeHtml(row.series_id) + '">' +
@@ -71,7 +53,7 @@ async function renderHistoryScreen(){
     console.error('Narrava: failed to load watch history', err);
     hideSkeletonLogo();
     historyBody.innerHTML =
-      '<div class="discover-empty">Couldn’t load your history right now.<br>' +
+      '<div class="discover-empty">Couldn’t load your history.<br>' +
       '<button type="button" class="pill-cta-btn" id="historyRetryBtn">Try again</button>' +
       '</div>';
     document.getElementById('historyRetryBtn').addEventListener('click', renderHistoryScreen);
@@ -89,12 +71,11 @@ async function renderHistoryScreen(){
   historyBody.querySelectorAll('.history-row').forEach(el => {
     el.addEventListener('click', () => {
       const i = slides.findIndex(s => s.id === el.dataset.seriesId);
-      // Watched once, but no longer among the loaded (published) series.
+      // Watched before, but no longer published
       if(i === -1){ showToast('That series isn’t available'); return; }
       openSeriesInFeed(i);
     });
   });
 }
 
-// Same as the browser's own Back (nav.js) — returns to Profile.
 historyBackBtn.addEventListener('click', () => navBack());

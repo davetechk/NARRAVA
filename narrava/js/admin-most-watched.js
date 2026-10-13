@@ -1,9 +1,4 @@
-// admin-most-watched.js — admin/most-watched.html only.
-//
-// Read-only report: every real series ranked by real views, from
-// admin_most_watched_series (already ranked server-side — never
-// re-sorted or recalculated here). Same skeleton/error/empty shape as
-// Series List and Episodes (admin-series-list.js, admin-episodes.js).
+// admin/most-watched.html: series ranked by views (sorted server-side)
 
 let mwRows = [];
 
@@ -47,8 +42,8 @@ function renderMostWatchedTable(){
     renderMostWatchedTable();
   } catch(err){
     console.error('Narrava: failed to load most watched series', err);
-    showToast('Could not load most watched series — please try again');
-    document.getElementById('mostWatchedTableWrap').innerHTML = '<div class="admin-empty">Could not load most watched series — please try again.</div>';
+    showToast('Couldn’t load most watched. Try again.');
+    document.getElementById('mostWatchedTableWrap').innerHTML = '<div class="admin-empty">Couldn’t load most watched. Try again.</div>';
   } finally {
     hideSkeletonLogo();
   }

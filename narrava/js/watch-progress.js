@@ -1,16 +1,6 @@
-// watch-progress.js
-//
-// "Continue Watching" support: saving playback position to the existing
-// watch_progress table, and reading it back via the existing
-// get_continue_watching RPC. Both already exist server-side (table +
-// RLS policies + function) — this file only ever calls them, it never
-// touches their structure.
+// Watch progress and Continue Watching, plus the session helpers
 
-// Resolves to the signed-in user's id, or null if nobody is signed in.
-// A real anonymous account (see bootstrapAnonymousSession below) counts
-// as genuinely signed in here — this is the one check like/comment/reply
-// and watch progress use, and none of those need a real, sign-up-backed
-// account, just a real user id to attach the row to.
+// Signed-in user id (anonymous counts), or null
 async function getSignedInUserId(){
   try {
     const { data, error } = await supabaseClient.auth.getSession();
@@ -22,12 +12,7 @@ async function getSignedInUserId(){
   }
 }
 
-// The stronger check: null unless someone has genuinely signed up or
-// logged into a real account — a real anonymous account (is_anonymous,
-// a real field Supabase Auth itself sets) does not count. Save and the
-// Library tab are the two real places that need this distinction;
-// everywhere else (like, comment, reply, watch progress) a real
-// anonymous account is genuinely signed in (see getSignedInUserId above).
+// Real (non-anonymous) account id, or null
 async function getRealAccountUserId(){
   try {
     const { data, error } = await supabaseClient.auth.getSession();
@@ -41,20 +26,12 @@ async function getRealAccountUserId(){
   }
 }
 
-// Called once, at real app startup (see app.js's init) — never on the
-// admin pages, which must never auto-sign-in as anyone and don't load
-// this file. If there's genuinely no session at all yet (a first-ever
-// open, or an old session that's since expired), signs in anonymously
-// via Supabase Auth's own real signInAnonymously — a genuine row in
-// auth.users, not a workaround — so every visitor already has a real
-// account by the time they'd ever tap like/comment/reply, before
-// they've done anything. A pre-existing session (real or already
-// anonymous, from an earlier visit) is left exactly as it is.
+// Anonymous sign-in if there's no session yet. Called once from app.js init.
 async function bootstrapAnonymousSession(){
   try {
     const { data, error } = await supabaseClient.auth.getSession();
     if(error) throw error;
-    if(data && data.session) return; // already have a real session, signed up or anonymous — nothing to do
+    if(data && data.session) return;
     const { error: signInError } = await supabaseClient.auth.signInAnonymously();
     if(signInError) throw signInError;
   } catch(err){
@@ -62,27 +39,17 @@ async function bootstrapAnonymousSession(){
   }
 }
 
-// The real "actually watched at least part of an episode" signal used
-// by pwa-install.js for the install popup's second chance: a real 3+
-// seconds of real position, not just opening one. Set here (not deeper in
-// playback) since every real playback path, feed or watch.js, already
-// funnels position saves through this one function. It's a flag for THIS
-// visit only (held in pwa-install.js) — the popup's second chance is
-// "after watching something, back on Home", every visit, not something a
-// previous visit used up.
+// 3+ seconds watched: lets the install popup offer its second chance
 function markEpisodeWatchedForInstallPrompt(positionSeconds){
   if(positionSeconds < 3) return;
   if(typeof window.narravaPwaMarkWatched === 'function') window.narravaPwaMarkWatched();
 }
 
-// Upserts the viewer's position in one episode. Silently does nothing
-// (no error surfaced to the user) if nobody is signed in, since there's
-// no user_id to attach the row to.
+// Upsert position. Does nothing if nobody is signed in.
 async function saveWatchProgress(episodeId, seriesId, positionSeconds){
   if(!episodeId || !seriesId) return;
   markEpisodeWatchedForInstallPrompt(positionSeconds);
-  // Offline (offline.js): nothing can reach the server, so don't try
-  // every 15 seconds while a downloaded episode plays.
+  // Offline: don't try
   if(appIsOffline()) return;
   const userId = await getSignedInUserId();
   if(!userId) return;
@@ -103,9 +70,7 @@ async function saveWatchProgress(episodeId, seriesId, positionSeconds){
   }
 }
 
-// Returns the signed-in viewer's continue-watching rows (via the
-// existing get_continue_watching RPC), or [] if nobody is signed in or
-// nobody has watched anything yet.
+// Continue-watching rows, or []
 async function fetchContinueWatching(){
   const userId = await getSignedInUserId();
   if(!userId) return [];

@@ -1,20 +1,7 @@
-// admin-revenue.js — admin/revenue-analytics.html only.
-//
-// Every number on this page comes from ONE server function,
-// admin_revenue_overview(p_days) (admin-only; it refuses everyone else),
-// and is only displayed here. Nothing is computed from other tables. The
-// only arithmetic in this file:
-//   - adding rows of the SAME currency together (e.g. coin-pack naira +
-//     subscription naira = the period's naira revenue), and
-//   - kobo / 100 and cents / 100 for display.
-// Naira and dollars are never converted and never added together.
+// admin/revenue-analytics.html: everything from admin_revenue_overview(p_days).
+// Naira and dollars are never converted or added together.
 
-// Periods are rolling windows: p_days × 24 hours back from now, not
-// calendar days (so "24 hours" is not "today").
-// Checked live (2026-10-05): the function treats a missing p_days as 30,
-// 0 as 1, and caps it at 3650. So "All time" sends 3650: its money comes
-// from totals_all_time (truly all time), while its *_period ad figures
-// cover the last 3650 days, which the captions say.
+// Rolling windows (p_days × 24h). Server caps p_days at 3650, so that's "All time".
 const REVENUE_ALL_TIME_DAYS = 3650;
 const REVENUE_PERIODS = [
   { key: '24h', label: '24 hours', days: 1 },
@@ -28,7 +15,7 @@ const REVENUE_TABS = [
   { key: 'subscriptions', label: 'Subscriptions' },
   { key: 'ads', label: 'Ads' }
 ];
-// Plans always listed on the Subscriptions tab, even with 0 subscribers.
+// Always listed, even with 0 subscribers
 const REVENUE_PLANS = [
   { id: 'weekly', label: 'Weekly' },
   { id: 'monthly', label: 'Monthly' },
@@ -40,14 +27,14 @@ const REVENUE_TIMEOUT_MS = 20000;
 const rev = {
   period: REVENUE_PERIODS[2],
   tab: 'overview',
-  data: null,      // the function's last answer, as-is
+  data: null,
   loading: true,
   error: null,
-  request: 0,      // only the latest request may render (fast period switching)
-  coinPackCoins: {} // coin_packs id -> coins, only to label "50 coins" in Recent purchases
+  request: 0,      // only the latest request may render
+  coinPackCoins: {} // coin_packs id -> coins, for Recent purchases labels
 };
 
-// ---------- formatting (no other maths) ----------
+// ---------- formatting ----------
 
 function formatCount(n){
   return Number(n || 0).toLocaleString('en-US');
@@ -60,8 +47,7 @@ function formatLagosDate(iso){
   return d.toLocaleString('en-GB', { timeZone: 'Africa/Lagos', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-// The totals array for the chosen period, filtered to some purchase types,
-// added up per currency (never across currencies).
+// Period totals for some purchase types, per currency
 function totalsByCurrency(types){
   const d = rev.data || {};
   const rows = (rev.period.key === 'all' ? d.totals_all_time : d.totals_period) || [];
@@ -95,7 +81,7 @@ const REV_ICONS = {
   alert: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 3.5l9.5 16.5h-19L12 3.5z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M12 10v4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="17.3" r="1" fill="currentColor"/></svg>'
 };
 
-// cardClass 'rev-money-card': a money figure, which must never break mid-number.
+// 'rev-money-card' keeps a money figure on one line
 function statCardHtml(icon, label, value, caption, tone, cardClass){
   return '<div class="admin-stat-card' + (cardClass ? ' ' + cardClass : '') + '"><div class="admin-stat-icon' + (tone ? ' ' + tone : '') + '">' + icon + '</div>' +
     '<div class="admin-stat-body"><div class="admin-stat-label">' + label + '</div>' +
@@ -103,7 +89,7 @@ function statCardHtml(icon, label, value, caption, tone, cardClass){
     '<div class="admin-stat-caption">' + caption + '</div></div></div>';
 }
 
-// One card per currency, always both, never combined.
+// One card per currency
 function currencyCardsHtml(label, byCurrency){
   const cap = moneyCaption();
   return REVENUE_CURRENCIES.map(c => {
@@ -111,7 +97,7 @@ function currencyCardsHtml(label, byCurrency){
     const caption = cap + ' · ' + (t.purchases ? formatCount(t.purchases) + ' purchase' + (t.purchases === 1 ? '' : 's') : (rev.period.key === 'all' ? 'No purchases yet' : 'No purchases in this period'));
     return statCardHtml(c === 'NGN' ? REV_ICONS.naira : REV_ICONS.dollar, label + (c === 'NGN' ? ' (Naira)' : ' (US Dollar)'), formatMinorAmount(t.amount, c), caption, null, 'rev-money-card');
   }).join('') +
-  // A currency the page doesn't know about (never expected) is still shown, separately.
+  // Unknown currency: still shown, separately
   Object.keys(byCurrency).filter(c => REVENUE_CURRENCIES.indexOf(c) === -1 && byCurrency[c].purchases).map(c =>
     statCardHtml(REV_ICONS.cart, label + ' (' + escapeHtml(c) + ')', formatMinorAmount(byCurrency[c].amount, c), moneyCaption(), null, 'rev-money-card')
   ).join('');
@@ -136,7 +122,7 @@ function overviewHtml(){
   const refundFailed = Number(d.refunds && d.refunds.refund_failed) || 0;
 
   let html = '';
-  if(needsReview > 0) html += alertCardHtml('Needs review', needsReview, 'A payment didn’t match what was expected. Check Paystack before refunding or crediting manually.');
+  if(needsReview > 0) html += alertCardHtml('Needs review', needsReview, 'A payment didn’t match. Check Paystack before refunding or crediting.');
   if(refundFailed > 0) html += alertCardHtml('Refunds that failed', refundFailed, 'Refund manually in Paystack.');
   html += '<div class="admin-stats-row cols-3">' +
     currencyCardsHtml('Revenue', all) +
@@ -194,24 +180,21 @@ function adsHtml(){
       statCardHtml(REV_ICONS.people, 'People who watched ads', formatCount(ads.viewers_period), periodCaption(), 'orange') +
       statCardHtml(REV_ICONS.unlock, 'Episodes unlocked with ads', formatCount(ads.unlocks_period), periodCaption()) +
     '</div>' +
-    '<div class="admin-helper-text rev-ads-note">Ad earnings are reported in your Google Ad Manager account, not here.</div>';
+    '<div class="admin-helper-text rev-ads-note">Ad earnings are in Google Ad Manager, not here.</div>';
 }
 
-// Money totals: the period the server says it used, or all time. Periods
-// are rolling (p_days × 24 hours), so 1 day reads "Last 24 hours".
 function moneyCaption(){
   if(rev.period.key === 'all') return 'All time';
   const days = Number(rev.data && rev.data.period_days) || rev.period.days;
   return days === 1 ? 'Last 24 hours' : 'Last ' + formatCount(days) + ' days';
 }
-// The ads *_period figures always follow p_days, even for "All time".
+// Ad figures always follow p_days, even for "All time"
 function periodCaption(){
   if(rev.period.key !== 'all') return moneyCaption();
   const days = Number(rev.data && rev.data.period_days) || rev.period.days;
   return 'All time (last ' + formatCount(days) + ' days)';
 }
-// coins { bought, welcome, spent }, refunds and needs_review come back the
-// same for every p_days: they're all-time figures.
+// These come back all-time whatever p_days is
 const ALL_TIME_CAPTION = 'All time · not affected by the period';
 
 // ---------- recent purchases ----------
@@ -329,7 +312,7 @@ function renderRevenue(){
 function withTimeout(promise, ms){
   return Promise.race([
     promise,
-    new Promise((_, reject) => setTimeout(() => reject(new Error('The server took too long to answer.')), ms))
+    new Promise((_, reject) => setTimeout(() => reject(new Error('The server took too long.')), ms))
   ]);
 }
 
@@ -345,7 +328,7 @@ async function loadRevenue(){
       supabaseClient.rpc('admin_revenue_overview', { p_days: rev.period.days }),
       REVENUE_TIMEOUT_MS
     );
-    if(myRequest !== rev.request) return; // a newer period was chosen meanwhile
+    if(myRequest !== rev.request) return;
     if(error) throw error;
     if(!data || typeof data !== 'object') throw new Error('The server returned no figures.');
     rev.data = data;
@@ -359,8 +342,7 @@ async function loadRevenue(){
   renderRevenue();
 }
 
-// Coin pack sizes, only for "50 coins" labels in Recent purchases. If this
-// fails the label falls back to the pack id; no figure depends on it.
+// Pack sizes for labels only; falls back to the pack id
 async function loadCoinPackLabels(){
   try {
     const { data, error } = await supabaseClient.from('coin_packs').select('id, coins');

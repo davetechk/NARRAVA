@@ -1,55 +1,18 @@
-// watch.js
-//
-// Desktop-only "watch" screen for a single series. Rebuilt against real
-// measurements taken directly off a live reelshort.com episode page
-// (loaded in the browser, not recalled from memory):
-//   - back button: 64px circle, top-left at (30,110) on a 1920px window
-//   - info column: a literal fixed 480px-wide panel, right-aligned,
-//     that scrolls internally on its own (h-full w-480px overflow-y-auto)
-//     while the video and back button stay fixed
-//   - video: not boxed small — its column is flex:1 and the video fills
-//     the full available height (855px of a 935px-tall viewport there)
-//   - breadcrumb "Home / Series / Episode N" sits right above the H1
-//     (font-size 20px/700), itself right below the breadcrumb
-//   - like/bookmark/share sit in one centered row with real counts on
-//     the real site — Like now shows a real count too (series_likes via
-//     get_series_like_count, see social.js); bookmark/share stay
-//     icon+label only, same honesty rule as ever (saves have no public
-//     count, share isn't wired to anything real)
-//   - the episode grid is 6 columns of ~62x46 cells, grouped into range
-//     tabs ("0-49", "50-63", "All Episodes") once there are enough
-//     episodes to need it — a 2-3 episode series never shows this
-//
-// Opened instead of the mobile swipe feed when a series is opened from
-// the desktop layout — see openSeriesInFeed in app.js, which is the one
-// place that decides which screen a poster/hero/search-result click
-// lands on.
-//
-// The video itself reuses the exact same real signed-URL + hls.js engine
-// app.js's mobile feed uses (attachEpisodePlayback, video-player.js) on a
-// real native <video> element — no preload/promote machinery here, since
-// that exists only for the feed's swipe-and-autoplay-instantly behaviour
-// and has no purpose on a page that plays one chosen episode at a time.
+// Desktop Watch page for one series: video, info column, episode grid with range tabs.
+// Opened by openSeriesInFeed (app.js) on desktop.
 
 const WATCH_RANGE_SIZE = 30;
 
 let watchSlide = null;
 let watchEpisodes = [];
 let watchActiveEpisodeId = null;
-let watchActiveRange = 0; // index into the RANGE_SIZE-sized chunks of watchEpisodes
-let watchVideoEl = null;     // the real, active <video> element, or null
-let watchPlaybackCtl = null; // its attachEpisodePlayback() controller (video-player.js) — .destroy() tears the real playback down
+let watchActiveRange = 0; // index of the current WATCH_RANGE_SIZE chunk
+let watchVideoEl = null;     // active <video>, or null
+let watchPlaybackCtl = null; // attachEpisodePlayback controller
 
-let watchScrubbing = false; // true while the viewer is actively dragging watchScrubRange — see app.js's identical `scrubbing` for why
+let watchScrubbing = false; // true while dragging the scrub bar
 
-// Real tap-to-pause / press-and-hold-to-2x on the video itself — same
-// real gesture as the mobile feed (app.js), confirmed directly against
-// reelshort.com; see app.js's HOLD_SPEED/TAP_MAX_MS comment for what
-// was actually confirmed there versus a reasonable default. Desktop had
-// no play/pause affordance on the video at all before this — real
-// native controls stay off (video.controls = false, watchPlayEpisode),
-// so this is now the one real way to pause here, same as reelshort's
-// own click-to-pause.
+// Tap to pause, hold for 2x (same as the feed)
 const WATCH_HOLD_SPEED = 2;
 const WATCH_TAP_MAX_MS = 200;
 let watchPressStartTime = 0;
@@ -78,11 +41,7 @@ const watchCommentsBody = document.getElementById('watchCommentsBody');
 const watchEpRangesEl = document.getElementById('watchEpRanges');
 const watchEpisodeGrid = document.getElementById('watchEpisodeGrid');
 
-// Same reasoning as app.js's destroyActivePlayback/stopFeedPlayback:
-// leaving this screen for any other one must actually tear the real
-// video down — real hls.js resources (its segment-loading loop, the
-// scheduled auth-refresh timer), not just the DOM element — called from
-// showScreen() whenever the target screen isn't 'watch'.
+// Leaving the page: tear the playback down (hls.js and the refresh timer too)
 function stopWatchPlayback(){
   saveCurrentWatchProgress();
   if(watchPlaybackCtl) watchPlaybackCtl.destroy();
@@ -92,47 +51,33 @@ function stopWatchPlayback(){
   watchPlaybackCtl = null;
   watchActiveEpisodeId = null;
   closeWatchComments();
-  refreshDownloadButtons(); // downloads.js
+  refreshDownloadButtons();
 }
 
-// Reads the real position straight off the real <video> element (never
-// assumed/estimated) and upserts it via watch-progress.js. No-ops
-// quietly if nothing is playing right now, or if nobody's signed in
-// (saveWatchProgress's own job). Called periodically, on pause, and
-// whenever this screen leaves the current episode (stopWatchPlayback,
-// switching episodes).
+// Save the current position (no-op if nothing's playing)
 function saveCurrentWatchProgress(){
   if(!watchVideoEl || !watchActiveEpisodeId || !watchSlide) return;
   saveWatchProgress(watchActiveEpisodeId, watchSlide.id, watchVideoEl.currentTime);
 }
 
-// Same 15s cadence as the mobile feed (app.js) — frequent enough that a
-// refresh/crash never loses more than a few seconds of real progress.
+// Every 15s, like the feed
 setInterval(saveCurrentWatchProgress, 15000);
 
-// Pauses the Watch page's episode as a tap would (its 'pause' listener
-// saves progress and shows the paused state) and leaves it paused. Used by
-// ads.js while a rewarded ad is showing.
+// Pause for a rewarded ad (ads.js)
 function pauseCurrentWatchEpisode(){
   if(watchVideoEl && !watchVideoEl.paused) watchVideoEl.pause();
 }
 
-// The honest failure state in watchPlayerHost — real retry button wired
-// to genuinely redo the whole load (watchPlayEpisode again, from
-// scratch, same ep/resumeSeconds — not just re-showing a spinner over
-// the same dead attempt).
+// Load failed state; retry redoes the whole load
 function showWatchLoadFailure(ep, resumeSeconds){
   watchPlayerHost.innerHTML = '<div class="watch-player-loading">' + narravaLoadFailedHtml('watchPlayerRetryBtn') + '</div>';
   document.getElementById('watchPlayerRetryBtn').addEventListener('click', () => watchPlayEpisode(ep, resumeSeconds));
 }
 
-// resumeSeconds, when given, seeks to that exact real position — a
-// real, direct, synchronous currentTime assignment once the real video
-// is actually ready (loadedmetadata), no polling needed.
+// resumeSeconds: seek there once metadata loads
 async function watchPlayEpisode(ep, resumeSeconds){
   if(!ep) return;
-  // A locked episode never tries to play — the signing function would
-  // refuse it anyway. Show the unlock panel for it instead.
+  // Locked: show the unlock panel instead
   if(!watchEpisodeUnlocked(ep)){ watchShowLockedEpisode(ep); return; }
   if(!ep.bunny_video_id) return;
   saveCurrentWatchProgress();
@@ -144,60 +89,42 @@ async function watchPlayEpisode(ep, resumeSeconds){
   watchVideoEl = null;
   watchPlaybackCtl = null;
   watchPlayerBox.classList.remove('has-video', 'paused');
-  watchScrubDuration.textContent = ''; // the new episode's length isn't known yet — never show the previous one's
+  watchScrubDuration.textContent = ''; // length not known yet
 
   const video = document.createElement('video');
   video.controls = false;
   video.playsInline = true;
-  video.muted = soundMuted; // the viewer's shared sound preference (app.js); default false = sound on, so nothing changes unless they muted
+  video.muted = soundMuted; // shared sound preference (app.js)
   video.style.display = 'none';
-  // Real loading state instead of a blank/still-loading video for the
-  // real wait until the real signed URL/hls.js setup actually resolves —
-  // the video already starts loading underneath it (added to the DOM
-  // right away, just not shown), so this never adds any extra delay of
-  // its own, only replaces what was on screen during a wait that was
-  // already happening.
+  // Loader until the signed URL / hls.js setup resolves
   watchPlayerHost.innerHTML = '<div class="watch-player-loading">' + narravaLoaderHtml('pulse') + '</div>';
   watchPlayerHost.appendChild(video);
   updateWatchMuteButton();
 
-  // The breadcrumb, heading and grid highlight are per-episode (the
-  // real site's own heading is literally "Episode N - <title>"), and
-  // update immediately — same as before — rather than waiting on the
-  // real signed URL/hls.js setup below, since they're honest the moment
-  // this episode is genuinely the one being switched to, not only once
-  // its video is actually playing.
+  // Breadcrumb, heading and grid highlight update straight away
   watchBreadcrumbEl.innerHTML = 'Home / ' + escapeWatchHtml(watchSlide.title) + ' / <span>Episode ' + ep.episode_number + '</span>';
   watchTitleEl.textContent = ep.title ? ('Ep ' + ep.episode_number + ': ' + ep.title) : ('Episode ' + ep.episode_number);
   renderWatchEpisodes();
-  refreshDownloadButtons(); // downloads.js: the Download action follows the playing episode
+  refreshDownloadButtons(); // Download follows the playing episode
 
   const ctl = await attachEpisodePlayback(video, episodeId, () => {
-    // Every real bounded retry (video-player.js) has now genuinely been
-    // exhausted — confirmed live: before this existed, nothing here ever
-    // learned the load had failed, so watchPlayerHost just sat on its
-    // loading spinner forever, over a <video> that was already dead.
-    if(watchActiveEpisodeId !== episodeId) return; // navigated away before this fired
+    // All retries used
+    if(watchActiveEpisodeId !== episodeId) return; // navigated away
     showWatchLoadFailure(ep, resumeSeconds);
   });
-  if(watchActiveEpisodeId !== episodeId) { if(ctl) ctl.destroy(); return; } // navigated away before this resolved
+  if(watchActiveEpisodeId !== episodeId) { if(ctl) ctl.destroy(); return; } // navigated away
   if(!ctl){
-    // The function's own real refusal (see video-player.js) — never
-    // fall back to anything else, just leave the real loading state
-    // showing rather than fake a working player.
+    // Refused: keep the loader, never fall back
     return;
   }
   watchVideoEl = video;
   watchPlaybackCtl = ctl;
   attachViewTracking(video, () => (watchActiveEpisodeId === episodeId) ? episodeId : null);
   watchScrubRange.value = video.currentTime || 0;
-  // Same defensive read as app.js's attachPlaybackControls: if metadata
-  // somehow already loaded by the time this runs, don't wait on an
-  // event that's already fired and will never fire again.
+  // Metadata may already be loaded
   watchScrubRange.max = (video.duration && isFinite(video.duration)) ? video.duration : 0;
   watchScrubRange.style.setProperty('--scrub-pct', '0%');
-  // Episode length at the bar's right end — same as app.js's
-  // attachPlaybackControls: blank until the real duration is known.
+  // Blank until the duration is known
   watchScrubDuration.textContent = videoDurationLabel(video);
 
   video.addEventListener('canplay', function onCanPlay(){
@@ -240,22 +167,17 @@ function escapeWatchHtml(s){
   return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-// Real free_episode_count from the series row (see feed-data.js).
-// Missing/null (a legacy row) falls back to 0 rather than guessing, so
-// nothing gets treated as unlocked that isn't really known to be.
+// free_episode_count, 0 if missing
 function watchFreeCount(){
   return (watchSlide && typeof watchSlide.freeEpisodeCount === 'number') ? watchSlide.freeEpisodeCount : 0;
 }
 
-// The one real lock rule (isEpisodeUnlocked, coins.js) — free episode
-// count, Free Mode, subscription, or a real unlock — the same rule the
-// mobile feed uses and the video signing function enforces.
+// Lock rule: isEpisodeUnlocked (coins.js)
 function watchEpisodeUnlocked(ep){
   return isEpisodeUnlocked(watchFreeCount(), ep);
 }
 
-// The player area for a locked episode: what it is, and the way to
-// unlock it (the same unlock prompt as everywhere else, coins.js).
+// Player area for a locked episode, with the unlock button
 let watchLockedEpisodeId = null;
 function watchShowLockedEpisode(ep){
   saveCurrentWatchProgress();
@@ -281,13 +203,12 @@ function watchShowLockedEpisode(ep){
 function watchPromptUnlock(ep){
   const slide = watchSlide;
   openUnlockPrompt(ep, () => {
-    if(watchSlide !== slide) return; // left this series meanwhile
+    if(watchSlide !== slide) return; // left this series
     watchPlayEpisode(ep);
   });
 }
 
-// Unlocks/subscription changed (coins.js): repaint the grid's lock
-// icons, and if the locked panel's episode is now watchable, play it.
+// Repaint lock icons; play the locked episode if it's now unlocked
 document.addEventListener('narrava:coins-changed', () => {
   if(!watchSlide || !watchEpisodes.length) return;
   if(watchLockedEpisodeId && watchActiveEpisodeId === watchLockedEpisodeId){
@@ -299,9 +220,7 @@ document.addEventListener('narrava:coins-changed', () => {
 
 function watchEpCardHtml(ep, locked){
   const isActive = ep.id === watchActiveEpisodeId;
-  // Matches the real site exactly (checked directly): the episode
-  // number stays visible even when locked — a small lock badge overlays
-  // the corner, it doesn't replace the number.
+  // Locked cards keep the number, with a lock badge
   const lockBadge = locked
     ? '<svg class="watch-ep-card-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 018 0v3"/></svg>'
     : '';
@@ -311,13 +230,7 @@ function watchEpCardHtml(ep, locked){
   '</button>';
 }
 
-// Range tabs only appear once a series actually has enough episodes to
-// need grouping — matching the real site's own behaviour (it groups
-// "0-49" / "50-63" for a 63-episode series, but a short series there
-// just shows one plain grid, no tabs). Every Narrava series today has
-// 2-3 real episodes, so this is realistically dormant, but the
-// mechanism is real and will kick in the moment a series legitimately
-// has more than WATCH_RANGE_SIZE episodes.
+// Range tabs only when there are more than WATCH_RANGE_SIZE episodes
 function renderWatchRanges(){
   if(watchEpisodes.length <= WATCH_RANGE_SIZE){
     watchEpRangesEl.innerHTML = '';
@@ -348,8 +261,7 @@ function renderWatchEpisodes(){
   watchEpisodeGrid.innerHTML = visible
     .map(ep => watchEpCardHtml(ep, !watchEpisodeUnlocked(ep)))
     .join('');
-  // A locked card opens the unlock prompt (coins.js) and, once the
-  // server says it's unlocked, plays it.
+  // Locked card opens the unlock prompt
   watchEpisodeGrid.querySelectorAll('.watch-ep-card').forEach(btn => {
     btn.addEventListener('click', () => {
       const ep = watchEpisodes.find(e => e.id === btn.dataset.epId);
@@ -360,20 +272,12 @@ function renderWatchEpisodes(){
   });
 }
 
-// slideIndex is `slides`' own index, same as every other openSeriesInFeed
-// caller already passes in. `resume`, when given ({episodeId,
-// positionSeconds}), is Continue Watching's jump-back-in — it plays that
-// exact episode (falling back to the first episode if it's somehow no
-// longer in this series' episode list) at that exact saved position.
+// slideIndex into `slides`. resume: {episodeId, positionSeconds} from Continue Watching.
 async function openWatchScreen(slideIndex, resume){
   const slide = slides[slideIndex];
   if(!slide) return;
 
-  // Real teardown of whatever was already playing (see stopWatchPlayback)
-  // — this can be reached series-to-series without ever leaving the
-  // 'watch' screen in between (a poster click while already watching
-  // something else), so the normal "leaving this screen" trigger alone
-  // isn't enough to release the outgoing real hls.js instance.
+  // Can go series to series without leaving the page, so tear down here too
   if(watchPlaybackCtl) watchPlaybackCtl.destroy();
 
   watchSlide = slide;
@@ -382,11 +286,7 @@ async function openWatchScreen(slideIndex, resume){
   watchVideoEl = null;
   watchPlaybackCtl = null;
   watchActiveRange = 0;
-  // Real loading state for the (usually brief, but real) wait on this
-  // series' own real episode list — replaces what would otherwise be a
-  // blank grid and a misleading "Select an episode to play" for a
-  // series that in fact already has a real episode about to be chosen
-  // automatically, not one that's genuinely waiting on a person to pick.
+  // Loader while the episode list loads
   watchPlayerHost.innerHTML = '<div class="watch-player-loading">' + narravaLoaderHtml('pulse') + '</div>';
   watchBreadcrumbEl.innerHTML = 'Home / ' + escapeWatchHtml(slide.title) + ' / <span>…</span>';
   watchTitleEl.textContent = slide.title;
@@ -399,9 +299,7 @@ async function openWatchScreen(slideIndex, resume){
   watchShareCount.textContent = String(slide.shares);
   watchEpisodes = [];
   watchEpRangesEl.innerHTML = '';
-  // The player itself (watchPlayerHost above) keeps the real logo loader
-  // as-is — only the episode grid becomes a skeleton, matching real
-  // .watch-ep-card tiles (6-column grid, no episode numbers).
+  // Episode grid skeleton (the player keeps its loader)
   showSkeletonLogo();
   watchEpisodeGrid.innerHTML = skeletonWatchEpisodeGridHtml(12);
 
@@ -409,14 +307,10 @@ async function openWatchScreen(slideIndex, resume){
   loadWatchSocialState(slide);
 
   const episodes = await fetchEpisodesForSeries(slide.id);
-  if(watchSlide !== slide){ hideSkeletonLogo(); return; } // navigated to a different series (or away) before this resolved
+  if(watchSlide !== slide){ hideSkeletonLogo(); return; } // navigated away
   watchEpisodes = episodes;
 
-  // watchPlayEpisode (below) only ever repaints the grid (via
-  // renderWatchEpisodes/setActiveEpisode) once it has a real episode to
-  // make active — with none at all (a failed or genuinely empty fetch)
-  // it returns immediately, which would otherwise leave the skeleton
-  // sitting there forever. This is that area's one honest empty state.
+  // No episodes: empty state (otherwise the skeleton would stay)
   if(watchEpisodes.length === 0){
     watchEpisodeGrid.innerHTML = '<div class="discover-empty">No episodes yet.</div>';
   }
@@ -427,11 +321,7 @@ async function openWatchScreen(slideIndex, resume){
   else watchPlayEpisode(watchEpisodes[0]);
 }
 
-// Real like count + this viewer's own liked/saved state (social.js),
-// fetched every time the watch page opens a series — applied to the DOM
-// only if this is still the current slide by the time it resolves, same
-// "don't let a stale fetch overwrite what's actually on screen" guard
-// as the mobile feed's loadFeedSocialState.
+// Like count and liked/saved state; ignored if the series changed meanwhile
 async function loadWatchSocialState(slide){
   const state = await fetchSeriesSocialState(slide.id);
   slide.likes = state.likeCount;
@@ -449,23 +339,16 @@ async function loadWatchSocialState(slide){
   }
 }
 
-// Writes a slide's save/share totals under the Save/Share icons, only if
-// it's the series this page is showing. Also called by app.js's
-// 'narrava:series-shared' listener after a completed share.
+// Save/share totals for the series on screen (also after a share)
 function renderWatchSaveShareCounts(slide){
   if(watchSlide !== slide) return;
   watchSaveCount.textContent = String(slide.saves);
   watchShareCount.textContent = String(slide.shares);
 }
 
-// Same as the browser's own Back: returns to whatever screen this was
-// opened from (nav.js), rather than pushing a fresh Home entry on top.
 watchBackBtn.addEventListener('click', () => navBack());
 
-// Real, draggable seeking — a real <input type=range>'s own native drag
-// handling, not hand-rolled pointer math. See app.js's identical
-// scrubRange wiring for why `watchScrubbing` and the live 'input' seek
-// (not just on release) matter.
+// Live seeking while dragging
 watchScrubRange.addEventListener('input', () => {
   watchScrubbing = true;
   if(watchVideoEl) watchVideoEl.currentTime = parseFloat(watchScrubRange.value);
@@ -474,13 +357,7 @@ watchScrubRange.addEventListener('input', () => {
 });
 watchScrubRange.addEventListener('change', () => { watchScrubbing = false; });
 
-// Real tap-to-pause / press-and-hold-to-2x, confirmed directly against
-// reelshort.com — see the WATCH_HOLD_SPEED comment above. No swipe
-// gesture exists on this screen to guard against (unlike the mobile
-// feed), so this is simpler: just a real press/release pair deciding
-// tap vs. hold. Attached to the stable watchPlayerHost container rather
-// than the <video> itself, since that's replaced on every episode
-// switch (watchPlayEpisode) while this only needs wiring once.
+// Tap vs hold, on the host (the <video> is replaced per episode)
 watchPlayerHost.addEventListener('pointerdown', () => {
   if(!watchVideoEl) return;
   watchPressStartTime = performance.now();
@@ -492,8 +369,8 @@ function endWatchPress(){
   const wasHolding = watchPressHolding;
   const elapsed = performance.now() - watchPressStartTime;
   watchPressHolding = false;
-  if(wasHolding) watchVideoEl.playbackRate = 1; // instant, exactly where playback actually is
-  if(elapsed > WATCH_TAP_MAX_MS) return; // a genuine hold already did its one real job above
+  if(wasHolding) watchVideoEl.playbackRate = 1;
+  if(elapsed > WATCH_TAP_MAX_MS) return; // a hold isn't a tap
   if(watchVideoEl.paused){
     watchVideoEl.play().catch(() => {});
   } else {
@@ -503,10 +380,7 @@ function endWatchPress(){
 watchPlayerHost.addEventListener('pointerup', endWatchPress);
 watchPlayerHost.addEventListener('pointercancel', endWatchPress);
 
-// Comment panel: a fixed drawer over the existing layout, opened/closed
-// by toggling one class — never part of the document flow, so it can
-// never push the episode grid down. Real comments now (series_comments
-// via get_series_comments — see comments-panel.js).
+// Comment drawer (fixed, out of the flow)
 function openWatchComments(){
   if(!watchSlide) return;
   watchCommentsBackdrop.classList.add('open');
@@ -521,12 +395,7 @@ watchCommentsBackdrop.addEventListener('click', (e) => {
   if(e.target === watchCommentsBackdrop) closeWatchComments();
 });
 
-// Real like: series_likes (social.js), not a session-only toggle. A
-// signed-out click opens the same sign-in modal every other
-// account-gated action in this app already uses (toggleSeriesLike's own
-// job) instead of doing nothing — null in that case, so the button is
-// left exactly as it was. The count is re-fetched for real after a
-// successful toggle rather than guessed locally.
+// Like (signed-out click opens sign-in); count re-fetched after
 watchLikeBtn.addEventListener('click', async () => {
   if(!watchSlide) return;
   const slide = watchSlide;
@@ -539,9 +408,7 @@ watchLikeBtn.addEventListener('click', async () => {
     watchLikeCount.textContent = String(slide.likes);
   }
 });
-// Same real shape as like, against series_saves: nothing changes on a
-// failed/signed-out toggle (null); after a successful one the real save
-// total is re-fetched (one get_series_social_counts call), not guessed.
+// Save; total re-fetched after
 watchSaveBtn.addEventListener('click', async () => {
   if(!watchSlide) return;
   const slide = watchSlide;
@@ -556,8 +423,7 @@ watchSaveBtn.addEventListener('click', async () => {
     renderWatchSaveShareCounts(slide);
   }
 });
-// Real sharing (shareSeries, shared-utils.js) — same real mechanism the
-// mobile feed's own shareBtn uses, not a second implementation.
+// Share (shareSeries, shared-utils.js)
 watchShareBtn.addEventListener('click', () => {
   watchShareBtn.classList.add('pulse');
   setTimeout(() => watchShareBtn.classList.remove('pulse'), 350);
@@ -565,19 +431,7 @@ watchShareBtn.addEventListener('click', () => {
 });
 
 // ---------------- Mute / unmute ----------------
-//
-// Same approach as the mobile feed's mute button (app.js, "Sound"): a real
-// button that flips the real <video>'s own .muted, and one viewer preference
-// — soundMuted, declared in app.js — that every newly created video starts
-// from. So muting here carries to the next episode played on this page and,
-// since it's the same variable, to the mobile feed and back. Nothing in the
-// feed's own sound logic is changed; this only reads and writes that shared
-// preference (and calls updateMuteButton so the feed's button is in step).
-// The button shows the video's real state when there is a video, and the
-// preference when there isn't yet.
-// The <video> is in the host from the moment it's created (it starts loading
-// underneath the spinner), before watchVideoEl is set, so look it up there too:
-// a click while it's still loading must reach it, not only the preference.
+// Shares soundMuted with the feed. Finds the <video> in the host while it's still loading.
 function watchCurrentVideo(){
   return watchVideoEl || watchPlayerHost.querySelector('video');
 }
@@ -596,6 +450,6 @@ watchMuteBtn.addEventListener('click', () => {
   soundMuted = nowOff;
   if(v) v.muted = nowOff;
   updateWatchMuteButton();
-  updateMuteButton(); // app.js: keeps the mobile feed's own button matching the shared preference
+  updateMuteButton(); // keep the feed's button in step
 });
 updateWatchMuteButton();

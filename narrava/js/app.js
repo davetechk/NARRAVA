@@ -1,60 +1,16 @@
-// app.js
-//
-// All the interactive behaviour of the mockup: rendering the current
-// slide, swipe/wheel navigation, like/save/comment/unlock buttons, and
-// the "Get Coins" sheet. Like/save/comments are real now (series_likes/
-// series_saves/series_comments via social.js/comments-panel.js). Nava
-// Coins are real too (coins.js): the balance is the server's, which
-// episode is locked is the one server-matching rule isEpisodeUnlocked,
-// and unlocking/buying always goes through the server.
-//
-// Swiping means two different real things depending on state: while
-// just browsing, it moves between series (goTo), exactly as before.
-// Once a series has actually been entered (openSeriesInFeed/
-// enterMobileWatching), it moves through THAT series' own real episodes
-// instead (see advanceForward/advanceBackward/goToEpisodeInSlide) —
-// stopping dead at episode one going backward, and rolling straight
-// into the next series' own watching state going forward once the
-// current one genuinely runs out. A real, numbered jump grid (opened
-// from the small episode badge, still visible while watching) lets
-// someone jump straight to any of a series' real episodes the same way.
-// Landing on a real locked episode, by any of these paths, never plays
-// it — it shows the same real unlock prompt (unlockBtn below) every
-// other locked episode in this app already uses.
-//
-// Video/preload identity throughout is keyed by the real EPISODE id,
-// not the series id — a single slide can now point at different real
-// videos over its lifetime (whichever episode is currently active), so
-// "which video is this" and "which series is this slide" are tracked
-// as two separate ids (currentVideoEpisodeId/currentVideoSeriesId etc.)
-// rather than conflating them the way a series-id-only slide could
-// safely assume before real episode navigation existed.
+// Mobile feed: slides, swipe navigation (between series, or episodes once watching),
+// playback, preloading, screens and app start. Video identity is the episode id.
 
 let slides = [];
-let slidesLoaded = false; // real fetchSlides() has actually resolved — see render()'s empty-feed branch, which needs this to tell "still loading" apart from "genuinely no series exist"
+let slidesLoaded = false; // fetchSlides() has resolved (empty feed vs still loading)
 let idx = 0;
 
-// Real System Settings (app_settings, admin/system-settings.html) — one
-// real row, publicly readable, admin-only to write (confirmed live).
-// Safe defaults here (nothing overridden, maintenance off, 5 featured)
-// match today's real behavior exactly, so a failed fetch never silently
-// changes anything — it just falls back to acting as if the settings
-// screen had never been touched.
-//
-// Fetched once, immediately at script load (not inside init(), and not
-// awaited by anything until it actually needs the answer) so both this
-// file's own init() and discover.js's initDiscover() can await the same
-// one real appSettingsReady promise before doing anything — the same
-// real pattern slidesReady/continueWatchingReady already use for
-// exactly this "don't act before the real data is in" reason.
+// app_settings, fetched once at load. Defaults = nothing overridden, so a failed fetch changes nothing.
 let appSettings = { free_mode_enabled: false, maintenance_mode_enabled: false, featured_series_count: 5, subscriptions_enabled: false, vip_section_enabled: false };
 let resolveAppSettingsReady;
 const appSettingsReady = new Promise(resolve => { resolveAppSettingsReady = resolve; });
 
-// True when this page load found no connection (see offline.js). Decided
-// here, before appSettingsReady resolves, so init() and initDiscover()
-// both know before they do anything. A failed settings read alone isn't
-// "offline" — only when the server can't be reached at all.
+// No connection at load (offline.js). A failed read alone isn't offline.
 let appStartedOffline = false;
 const APP_SETTINGS_TIMEOUT_MS = 10000;
 
@@ -74,26 +30,13 @@ async function loadAppSettings(){
     if(data) appSettings = data;
   } catch(err){
     console.error('Narrava: failed to load app settings — falling back to safe defaults (nothing overridden)', err);
-    if(!(await serverReachable())) appStartedOffline = true; // offline.js
+    if(!(await serverReachable())) appStartedOffline = true;
   }
   resolveAppSettingsReady();
 }
 loadAppSettings();
 
-// The maintenance scene, ported verbatim from maintenance.html (repo
-// root — the source reference, left untouched) into app.js so it can be
-// dropped in via document.body.innerHTML. Every path, shape, id, class
-// and piece of text below is identical to that file; the only things
-// changed are the seven --ink/--paper/--muted/--green/--green-deep/
-// --spark/--metal custom properties, renamed --mt-* and scoped under
-// .maintenance-screen (see styles.css) so they can never collide with
-// or be affected by the app's own --ink/--muted (different values,
-// different meaning) — every rule that used them in maintenance.html is
-// scoped the same way. This screen intentionally draws its own version
-// of the logo, because its "loose piece" (the pill) has to move
-// separately from the rest of the shape — that's the one place in the
-// whole app that doesn't use NARRAVA_LOGO_SVG; everywhere else still
-// does.
+// Maintenance scene, ported from maintenance.html (custom properties renamed --mt-*)
 function maintenanceMarkupHtml(){
   return `<div class="maintenance-screen"><main>
   <svg class="scene" viewBox="40 20 680 440" role="img" aria-label="A mechanic tightening a bolt on the app logo with a wrench">
@@ -228,17 +171,12 @@ function maintenanceMarkupHtml(){
   </svg>
 
   <h1>Tightening a few bolts</h1>
-  <p>We're doing scheduled maintenance to keep things running smoothly. Your data is safe, and we'll be back shortly.</p>
+  <p>Scheduled maintenance. Your data is safe and we'll be back soon.</p>
   <button type="button" onclick="location.reload()">Check again</button>
 </main></div>`;
 }
 
-// The Bricolage Grotesque stylesheet link maintenance.html loads in its
-// own <head> — added to the real page's head only while this screen is
-// showing (never on a normal visit), and only once even if this somehow
-// ran twice. .maintenance-screen's own font-family keeps the file's
-// exact fallback stack, so the scene still looks right if this never
-// finishes loading.
+// Font for the maintenance scene, added only while it shows
 function ensureMaintenanceFont(){
   if(document.getElementById('mtFontLink')) return;
   const link = document.createElement('link');
@@ -248,12 +186,7 @@ function ensureMaintenanceFont(){
   document.head.appendChild(link);
 }
 
-// The animation's own script, from maintenance.html, moved into a named
-// function since setting innerHTML doesn't run <script> tags — every
-// statement inside is exactly as that file has it (only the two
-// var(--spark)/var(--ink) string literals near the bottom are renamed
-// to var(--mt-spark)/var(--mt-ink), the same rename as everywhere else
-// this screen's markup/CSS references those custom properties).
+// The scene's animation script (innerHTML doesn't run <script>)
 function startMaintenanceAnimation(){
   const $ = (id) => document.getElementById(id);
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -447,17 +380,7 @@ function startMaintenanceAnimation(){
   requestAnimationFrame(render);
 }
 
-// Re-checks the same public app_settings read loadAppSettings() already
-// does at startup, but — unlike loadAppSettings() itself, which is left
-// completely unchanged for normal startup — this never infers success
-// from a side effect. It reloads ONLY when this read explicitly comes
-// back with no error, a real row, and that row's maintenance_mode_enabled
-// is literally false. Any error, timeout, thrown exception, or a row
-// that's missing/empty/still-true all fall through to "do nothing,
-// silently try again next interval" — no toast, no assumption. A
-// maintenanceCheckInFlight guard skips a tick outright if the previous
-// check is still waiting on a slow response, so a slow request can
-// never stack a second one on top of it.
+// Reload only when a re-read clearly says maintenance is off; anything else waits for the next tick
 let maintenanceCheckInFlight = false;
 async function checkMaintenanceStillOn(){
   if(maintenanceCheckInFlight) return;
@@ -478,17 +401,7 @@ async function checkMaintenanceStillOn(){
   }
 }
 
-// Real maintenance mode (see init() below and discover.js's
-// initDiscover(), both of which bail out before loading anything real
-// once appSettingsReady confirms it's on) — replaces the entire real
-// page with the maintenance scene above, nothing else, starts its
-// animation (innerHTML doesn't run <script> tags, so this has to happen
-// explicitly right after), and starts the one and only recheck timer
-// (guarded so a second call, if it ever happened, could never leave two
-// running). The admin panel lives under admin/*.html, an entirely
-// separate set of pages this function never touches, so it stays fully
-// reachable regardless — confirmed live, not just assumed from separate
-// file boundaries.
+// Replace the page with the maintenance scene and start rechecking
 let maintenanceRecheckTimer = null;
 function renderMaintenanceMode(){
   ensureMaintenanceFont();
@@ -498,61 +411,29 @@ function renderMaintenanceMode(){
   maintenanceRecheckTimer = setInterval(checkMaintenanceStillOn, 60000);
 }
 
-// Real video playback state — a real native <video> element plus hls.js
-// (video-player.js), identity is the real EPISODE id throughout (see
-// header comment above), not the series/slide id, since one slide can
-// point at different real episodes over time.
-let currentVideoEl = null;         // the real, active <video> element for the visible episode, or null
-let currentPlaybackCtl = null;     // its attachEpisodePlayback() controller (video-player.js) — owns auth refresh, .destroy() tears the real playback down
-let currentVideoEpisodeId = null;  // real episode id currentVideoEl belongs to
-let currentVideoSeriesId = null;   // the slide/series that episode belongs to, kept in lockstep with currentVideoEpisodeId — saveCurrentFeedProgress needs both, and this avoids re-deriving the series by searching `slides` after it may have already moved on to a different episode
-let pendingResumeEpisodeId = null; // real episode id the automatic resume wants seeked once its video is ready (see enterMobileWatching/promotePreload)
+// Playback state, keyed by episode id
+let currentVideoEl = null;         // active <video>, or null
+let currentPlaybackCtl = null;     // attachEpisodePlayback controller
+let currentVideoEpisodeId = null;
+let currentVideoSeriesId = null;   // series of that episode (for saving progress)
+let pendingResumeEpisodeId = null; // episode to seek once its video is ready
 let pendingResumeSeconds = 0;
-let renderedMediaEpisodeId = null; // real episode id whose media (video or art) is currently in #bgvideo, so unrelated re-renders (unlock, continue) don't restart a playing video
+let renderedMediaEpisodeId = null; // episode whose media is in #bgvideo (unrelated re-renders don't restart it)
 
-// Real playback controls (video-controls in index.html) — the same real
-// <video> element's own currentTime/duration/playbackRate throughout,
-// never a fabricated position or speed.
-let scrubbing = false; // true while the viewer's own finger/pointer is actively dragging scrubRange — timeupdate skips updating it meanwhile so it never fights the drag
+// Playback controls
+let scrubbing = false; // true while dragging the scrub bar
 
-// Press-and-hold-to-fast-forward on the video itself (playToggle below)
-// — separate, already-confirmed mechanic, untouched by the real chrome
-// show/hide sequence below: holding anywhere on the video jumps
-// instantly to 2x for exactly as long as it's actually held, snapping
-// back to 1x the instant it's released, no ramp either direction.
-// HOLD_SPEED/TAP_MAX_MS aren't from the reference itself (only the real
-// 2x value and the "instant, no ramp" shape are confirmed) —
-// TAP_MAX_MS is a standard tap-vs-hold threshold, open to correction if
-// it doesn't feel right live.
+// Hold for 2x, release for 1x
 const HOLD_SPEED = 2;
 const TAP_MAX_MS = 200;
-const SWIPE_CANCEL_PX = 15; // a real vertical swipe (forward/backward nav) cancels the tap/hold read entirely — feed's own touchstart/touchend already owns that gesture
+const SWIPE_CANCEL_PX = 15; // a vertical swipe cancels tap/hold
 let pressStartY = null;
 let pressStartTime = 0;
 let pressHolding = false;
 let pressMoved = false;
 
-// The real chrome group while watching — name (.title), description
-// (.synopsis), social icons (.actionrail), and the scrub bar
-// (.video-controls) — confirmed directly, more than once, as one
-// single group that always moves together, replacing the old
-// reference-matched "tap pauses and shows controls together" behavior
-// entirely, not merging with it:
-//   1. Entering an episode shows the whole group immediately.
-//   2. After 2 real seconds of actually playing, the whole group
-//      auto-hides together — the video itself keeps playing.
-//   3. A tap while hidden reveals the whole group and does NOT touch
-//      play/pause at all.
-//   4. A tap while already showing pauses (or resumes) the video —
-//      the real toggle every tap here has always done, just decided by
-//      "is the group visible" now, not by a fixed two-tap sequence.
-//   5. Resuming playback (from either path above) rearms the same real
-//      2-second timer, driven off the video's own real 'playing'/
-//      'pause' events (see attachPlaybackControls) rather than guessed
-//      at from when a tap happened — so it fires the same way whether
-//      playback resumed from this tap logic or from anywhere else.
-// feed.chrome-hidden (styles.css) is the one and only thing that ever
-// hides the group, and it always hides all of it together.
+// Chrome group (title, synopsis, action rail, scrub bar) shows and hides together.
+// Shown on entry, hides after 2s of playing; tap when hidden reveals, tap when shown pauses.
 const CHROME_AUTOHIDE_MS = 2000;
 let chromeHideTimer = null;
 function showChrome(){
@@ -568,27 +449,13 @@ function armChromeHideTimer(){
   clearChromeHideTimer();
   chromeHideTimer = setTimeout(() => { chromeHideTimer = null; hideChrome(); }, CHROME_AUTOHIDE_MS);
 }
-// Entering the watching state: reveal the group and start the 2s
-// auto-hide. The 'playing' listener in attachPlaybackControls is the other
-// place that arms the timer, and it only fires when playback *starts or
-// resumes* — an already-playing video never fires it again. That is exactly
-// what happens when the viewer taps Continue (or the video) in the For You
-// feed while it's already playing: entry only ever called showChrome(), so
-// the group stayed up until someone paused and resumed (found by measuring
-// the real timeline: no armChromeHideTimer call at all after entry). So
-// entry arms the timer itself when the active video is already playing; a
-// video that isn't playing yet (a cold entry from Home, a new episode)
-// still arms from its own 'playing' event as before.
+// Show the chrome on entry, and arm the auto-hide now if the video is already playing
 function showChromeOnEntry(){
   showChrome();
   if(currentVideoEl && !currentVideoEl.paused && !currentVideoEl.ended) armChromeHideTimer();
 }
 
-// episodeId -> { video, ctl, ready } for a video warming up off-screen
-// ahead of time (see preloadVideo/promotePreload) — a real <video> element
-// in #preloadHost, already fetching its real signed URL and buffering via
-// hls.js, well before it's ever shown, so a swipe can land on an
-// already-playing video instead of waiting on it cold.
+// episodeId -> { video, ctl, ready } warming up off-screen in #preloadHost
 const preloadCache = {};
 const preloadHost = document.getElementById('preloadHost');
 
@@ -634,11 +501,7 @@ const navHome = document.getElementById('navHome');
 const navForYou = document.getElementById('navForYou');
 const navLibrary = document.getElementById('navLibrary');
 const navProfile = document.getElementById('navProfile');
-// Desktop-only top bar nav (>=900px, replaces the old left sidebar — see
-// styles.css). Same destinations as navHome/navForYou/navProfile above,
-// just a second set of clickable elements for the wide-screen layout;
-// they call the exact same showScreen() function, no separate
-// navigation logic.
+// Desktop top bar nav
 const topbarHome = document.getElementById('topbarHome');
 const topbarForYou = document.getElementById('topbarForYou');
 const topbarLibrary = document.getElementById('topbarLibrary');
@@ -652,25 +515,7 @@ const topbarSearchBackdrop = document.getElementById('topbarSearchBackdrop');
 const topbarSearchInput = document.getElementById('topbarSearchInput');
 
 // ================= Sound =================
-//
-// Sound is ON by default, in browsing and in watching alike — nothing
-// here ever starts a video muted on its own choice. The viewer's only
-// control is the mute button (#muteBtn, top-left of the stage), which
-// mutes/unmutes whichever real video is currently the active one, in
-// either state, and whose choice then carries to every later video this
-// visit (soundMuted). It is not saved across page loads.
-//
-// One thing is out of our hands: browsers refuse to start *unmuted*
-// playback in a page the visitor hasn't interacted with yet (autoplay
-// policy — in practice only a cold load straight into a video, such as
-// opening a shared series link, or an iOS Safari play() that isn't tied
-// to a tap). When play() is refused for exactly that reason, playWithSound
-// falls back to playing that video muted (so it still plays, never a
-// black frame) and the button honestly shows "muted". The visitor's first
-// tap or key press anywhere then turns sound on by itself
-// (unblockSoundOnGesture), without them having to find the button.
-// soundAutoplayBlocked tracks that browser-forced state; soundMuted is
-// only ever the viewer's own choice.
+// On by default. If the browser blocks unmuted autoplay, play muted until the first tap.
 let soundMuted = false;
 let soundAutoplayBlocked = false;
 const muteBtn = document.getElementById('muteBtn');
@@ -686,14 +531,12 @@ function updateMuteButton(){
   muteBtn.setAttribute('aria-pressed', off ? 'true' : 'false');
 }
 
-// Starts playback with the viewer's sound preference. If — and only if —
-// the browser refuses because unmuted autoplay isn't allowed yet, retries
-// muted and flags it (see the block comment above).
+// Play with the viewer's sound preference; retry muted only if autoplay is blocked
 function playWithSound(video){
   const attempt = video.play();
   if(!attempt || typeof attempt.catch !== 'function') return;
   attempt.catch(err => {
-    if(currentVideoEl !== video) return; // torn down or replaced while it was starting
+    if(currentVideoEl !== video) return; // replaced while starting
     if(err && err.name === 'NotAllowedError' && !video.muted){
       soundAutoplayBlocked = true;
       video.muted = true;
@@ -710,13 +553,12 @@ muteBtn.addEventListener('click', () => {
   if(currentVideoEl) currentVideoEl.muted = nowOff;
   updateMuteButton();
 });
-// A tap on the button must never also count as a feed swipe/tap.
+// Button taps aren't feed swipes
 ['touchstart', 'touchend'].forEach(evt => {
   muteBtn.addEventListener(evt, e => e.stopPropagation());
 });
 
-// The first real tap/key after a browser-forced mute turns sound on. The
-// button's own tap is skipped — its click handler above decides that one.
+// First tap/key after a forced mute turns sound on (not the mute button itself)
 function unblockSoundOnGesture(e){
   if(!soundAutoplayBlocked) return;
   if(muteBtn.contains(e.target)) return;
@@ -729,29 +571,13 @@ function unblockSoundOnGesture(e){
 });
 updateMuteButton();
 
-// Screen switching between the "Home" (Discover) grid and the "For You"
-// swipe feed. Both screens stay mounted and populated at all times —
-// this just toggles which one is visible, so switching back to a
-// screen never re-fetches or re-renders it from scratch.
-//
-// Also toggles `discover-active` / `feed-active` on <body>: above the
-// desktop breakpoint, styles.css uses these to switch each screen into
-// its own desktop layout (top bar + grid for Discover, top bar + centered
-// video + beside-video info/actions for For You) instead of the mobile
-// phone-frame presentation. Below the breakpoint neither class does
-// anything — mobile stays exactly as it was.
-// Which screen is showing ('discover' | 'feed' | 'library' | 'profile' |
-// 'history' | 'help' | 'membership' | 'downloads' | 'watch'), kept by showScreen — nav.js reads it to keep the browser history
-// in step with real navigation.
+// Screens stay mounted; showScreen toggles which is visible.
+// activeScreenName is read by nav.js.
 let activeScreenName = 'discover';
 
 function showScreen(name){
   activeScreenName = name;
-  // Screen/nav classes are switched FIRST, before anything below reacts
-  // to them — render()'s own "is the feed actually visible" check (see
-  // its guard around renderMedia) reads feed's screen-hidden class, so
-  // that class has to already reflect the screen being switched TO by
-  // the time render() runs, not the one being left.
+  // Switch classes first: render() checks if the feed is visible
   feed.classList.toggle('screen-hidden', name !== 'feed');
   discoverScreen.classList.toggle('screen-hidden', name !== 'discover');
   libraryScreen.classList.toggle('screen-hidden', name !== 'library');
@@ -761,8 +587,7 @@ function showScreen(name){
   membershipScreen.classList.toggle('screen-hidden', name !== 'membership');
   downloadsScreen.classList.toggle('screen-hidden', name !== 'downloads');
   watchScreen.classList.toggle('screen-hidden', name !== 'watch');
-  // History, Help & Feedback, Membership and Downloads are reached from
-  // Profile, so Profile stays the highlighted tab.
+  // Screens reached from Profile keep Profile highlighted
   const profileTabActive = name === 'profile' || name === 'history' || name === 'help' || name === 'membership' || name === 'downloads';
   navHome.classList.toggle('active', name === 'discover');
   navForYou.classList.toggle('active', name === 'feed');
@@ -778,44 +603,22 @@ function showScreen(name){
   if(name !== 'feed'){
     stopFeedPlayback();
   } else if(slides.length && renderedMediaEpisodeId !== slides[idx].episodeId){
-    // Coming back into the feed after stopFeedPlayback tore its video
-    // down (or before the very first render) — reload the current
-    // slide's media the same way goTo/render always do.
+    // Back into the feed: reload the current slide's media
     render();
   }
-  // Same idea as stopFeedPlayback, for the desktop watch page's own
-  // separate video (see watch.js) — leaving it for any other screen
-  // must actually tear its iframe down too.
   if(name !== 'watch') stopWatchPlayback();
-  // Any navigation closes the search takeover — openTopbarSearch()
-  // itself calls showScreen('discover') before opening it, so this
-  // no-ops harmlessly in that order rather than fighting it.
   closeTopbarSearch();
 
-  // The real "returned to the home screen" moment pwa-install.js waits
-  // for to offer its one real second install chance — see
-  // notifyHomeScreenShown() there, which no-ops unless that chance is
-  // genuinely earned (already watched part of an episode, first chance
-  // already shown, second chance not shown yet).
+  // Install popup's second chance (pwa-install.js)
   if(name === 'discover' && typeof notifyHomeScreenShown === 'function') notifyHomeScreenShown();
 
-  // Tell the browser this is a real navigation step (nav.js).
   navSync();
 
-  // Started offline and the connection is back: leaving the player
-  // finishes the switch to online (offline.js).
+  // Offline start: finish the switch to online after leaving the player
   onScreenChangedForReconnect(name);
 }
 
-// Continue Watching: {series_id -> latest get_continue_watching row for
-// that series}. One source of truth, read by two things — the silent
-// auto-resume inside openSeriesInFeed below (every series-open, mobile
-// and desktop) and discover.js's small floating "Continue" bar (mobile
-// Home only). Neither of those is a separate lookup; both just read
-// this map. get_continue_watching (unchanged, per the hard constraint
-// against touching watch_progress/RLS/the RPC itself) already does the
-// real signed-in-viewer + "has anyone actually watched anything"
-// filtering server-side.
+// Continue Watching: series_id -> latest get_continue_watching row
 let continueWatchingMap = new Map();
 
 async function refreshContinueWatchingMap(){
@@ -824,35 +627,19 @@ async function refreshContinueWatchingMap(){
   return continueWatchingMap;
 }
 
-// Resolved once continueWatchingMap has its first real data, same
-// pattern as slidesReady below — discover.js awaits both before its
-// first render of the floating bar, so it never renders empty just
-// because slides happened to resolve first.
+// Resolves once continueWatchingMap first loads
 let resolveContinueWatchingReady;
 const continueWatchingReady = new Promise(resolve => { resolveContinueWatchingReady = resolve; });
 
-// Real per-episode lock check — the one rule in coins.js
-// (isEpisodeUnlocked): unlocked if within the series' own
-// free_episode_count, Free Mode is on, the viewer has an active
-// subscription, or the server has an episode_unlocks row for it. Same
-// rule the desktop watch page's grid uses, and the same one the video
-// signing function enforces on the server.
+// Lock rule: isEpisodeUnlocked (coins.js)
 function isEpisodeLocked(s, ep){
   return !isEpisodeUnlocked(s.freeEpisodeCount, ep);
 }
 
-// Moves slide s to real episode ep as its current position — used by
-// entering watching, in-series swipe navigation, and the jump grid
-// alike, so all three ever do this exactly one way. Never sets a real
-// bunnyVideoId for a locked episode (renderMedia's own honest "no video
-// yet" static-art fallback handles that instead of ever actually
-// playing it) — s.locked/s.lockedEpisode are what the real unlock
-// prompt (unlockBtn) reads to know what it's actually prompting for.
+// Make ep the slide's current episode (never sets a video for a locked one)
 function setActiveEpisode(s, ep){
   const locked = isEpisodeLocked(s, ep);
-  // Same episode, lock state flipped (just unlocked, or signed out): the
-  // art/video already on screen for it is now wrong, so let renderMedia
-  // redo it instead of skipping it as "already rendered".
+  // Lock state flipped: let renderMedia redo it
   if(s.episodeId === ep.id && s.locked !== locked && renderedMediaEpisodeId === ep.id) renderedMediaEpisodeId = null;
   s.activeEpisode = ep;
   s.currentEp = ep.episode_number;
@@ -863,16 +650,8 @@ function setActiveEpisode(s, ep){
   s.bunnyVideoId = locked ? null : (ep.bunny_video_id || null);
 }
 
-// Used by discover.js: open a specific series (by its index in `slides`)
-// — every poster/hero/shelf/search-result tap, and the floating bar's
-// own Continue button, all funnel through this one function. On desktop
-// this opens the dedicated watch page (watch.js) instead of the mobile
-// swipe feed. matchesMedia mirrors the exact 900px breakpoint styles.css
-// uses everywhere else, not a separate cutoff.
-//
-// resumeOverride ({episode_id, position_seconds, exactEpisode}) opens a
-// chosen episode instead of the saved one — Downloads uses it to play the
-// episode that was tapped (exactEpisode: even with no saved position).
+// Open a series by its `slides` index (desktop: the Watch page).
+// resumeOverride: {episode_id, position_seconds, exactEpisode} (used by Downloads).
 async function openSeriesInFeed(i, resumeOverride){
   const slide = slides[i];
   const resume = resumeOverride || (slide ? continueWatchingMap.get(slide.id) : null);
@@ -884,16 +663,7 @@ async function openSeriesInFeed(i, resumeOverride){
   await enterMobileWatching(i, resume);
 }
 
-// The one general mechanism for a series actually entering its watching
-// state on mobile — a normal tap, Continue Watching's resume, and a
-// swipe rolling forward off the real end of the previous series (see
-// advanceForward) all funnel through this, rather than the old one-off
-// "guess whether the resume lands on the first episode or fetch that
-// one episode specially" workaround this replaced. Fetches this one
-// series' real, full episode list via fetchEpisodesForSeries (the same
-// one real source the desktop watch page and admin panel already use),
-// once — guarded by episodesLoaded so re-entering the same series later
-// this session (tapping it again, resuming again) never re-fetches.
+// Enter a series' watching state on mobile; fetches its episode list once
 async function enterMobileWatching(i, resume){
   const slide = slides[i];
   if(!slide) return;
@@ -904,15 +674,14 @@ async function enterMobileWatching(i, resume){
     slide.episodes = episodes;
     slide.episodesLoaded = true;
   }
-  if(!slide.episodes.length) return; // genuinely no episodes to watch
+  if(!slide.episodes.length) return; // no episodes
 
   let targetEp = slide.episodes[0];
   let resumeSeconds = 0;
   if(resume && (resume.position_seconds > 0.5 || resume.exactEpisode)){
     const resumeEp = slide.episodes.find(e => e.id === resume.episode_id);
     if(resumeEp){ targetEp = resumeEp; resumeSeconds = resume.position_seconds || 0; }
-    // Saved episode no longer in this series' real list: targetEp stays
-    // the real first episode, same honest fallback as no saved progress.
+    // Saved episode gone: start from the first
   }
 
   setActiveEpisode(slide, targetEp);
@@ -923,58 +692,28 @@ async function enterMobileWatching(i, resume){
 
   goTo(i);
   feed.classList.add('watching');
-  // What to preload depends on 'watching' (this series' NEXT episode while
-  // watching, the next series' first episode while browsing — see
-  // nextPreloadTarget). goTo() above strips 'watching' and re-renders, so
-  // if this episode is already on screen, renderMedia returned early
-  // without re-picking, and if it isn't, it picked the *browsing* target
-  // before 'watching' was put back. Either way nothing re-ran once we
-  // were actually watching, so the next episode was never warmed up and
-  // the first swipe out of a series was always a cold load (found by
-  // logging real preload starts: none for episode 2 until the swipe
-  // itself). Re-pick now, but only if media is already rendered for this
-  // episode — when it isn't (a tap from Home, feed still hidden),
-  // showScreen('feed') below renders it with 'watching' already set,
-  // which picks correctly on its own. maintainPreload also drops the
-  // stale browsing-target preload, so nothing extra stays loaded.
+  // Re-pick the preload now that we're watching (next episode, not next series)
   if(renderedMediaEpisodeId === slide.episodeId) maintainPreload();
-  showChromeOnEntry(); // entering an episode always starts with the real chrome group visible, even during the brief loading-art wait before promotion — and, if its video is already playing, starts the 2s auto-hide right now
+  showChromeOnEntry(); // show the chrome group on entry
   showScreen('feed');
 }
 
-// Re-checked every time Home is opened (rather than only once at
-// startup) so the floating bar (see discover.js) reflects anything that
-// changed since — just signed in, just watched something, just resumed
-// elsewhere — instead of a stale snapshot from page load.
+// Refresh Continue Watching each time Home opens
 navHome.addEventListener('click', ()=> { showScreen('discover'); refreshContinueWatchingMap().then(renderContinueWatchingBar); });
 navForYou.addEventListener('click', ()=> showScreen('feed'));
 topbarHome.addEventListener('click', ()=> { showScreen('discover'); refreshContinueWatchingMap().then(renderContinueWatchingBar); });
 topbarForYou.addEventListener('click', ()=> showScreen('feed'));
 
-// Library: re-checked fresh every time the tab is opened (renderLibraryScreen,
-// library.js) rather than trusting a possibly-stale snapshot from earlier
-// this session — same reasoning as Home's own refreshContinueWatchingMap above.
 navLibrary.addEventListener('click', ()=> { showScreen('library'); renderLibraryScreen(); });
 topbarLibrary.addEventListener('click', ()=> { showScreen('library'); renderLibraryScreen(); });
 
-// Profile: check the current Supabase Auth session each time the tab is
-// opened (renderProfileScreen, defined in auth.js) rather than tracking
-// it continuously — simple, and sufficient since nothing else on screen
-// depends on auth state while the user is on a different tab.
 navProfile.addEventListener('click', ()=> { showScreen('profile'); renderProfileScreen(); });
 topbarProfile.addEventListener('click', ()=> { showScreen('profile'); renderProfileScreen(); });
 topbarProfileBtn.addEventListener('click', ()=> { showScreen('profile'); renderProfileScreen(); });
 
-// Top bar "Top Up" pill: the real Get Coins sheet (coins.js).
 topbarTopUpBtn.addEventListener('click', ()=> openCoinSheet());
 
-// Top bar search icon: takes over the whole nav row with a full search
-// input and dims the rest of the page behind it — checked directly
-// against reelshort.com's own search behaviour (see discover.js for the
-// close/input/results wiring, which reuses the exact same
-// searchQuery/matchesSearch logic the mobile search bar already has —
-// no second search implementation). Always switches to Discover first
-// since the results panel only makes visual sense over that screen.
+// Desktop search takes over the nav row (wiring in discover.js)
 function openTopbarSearch(){
   showScreen('discover');
   topbarDesktopInner.classList.add('search-hidden');
@@ -988,10 +727,7 @@ function closeTopbarSearch(){
   topbarSearchBackdrop.classList.remove('open');
 }
 topbarSearchBtn.addEventListener('click', openTopbarSearch);
-// Clicking anywhere on the dimmed backdrop outside the results panel
-// closes search, same as clicking outside it on the real site. The
-// listener is on the backdrop itself, not the panel inside it, so
-// clicks on real results/inputs never bubble into a false close.
+// Backdrop click closes search (results don't bubble into it)
 topbarSearchBackdrop.addEventListener('click', (e)=> {
   if(e.target === topbarSearchBackdrop) closeTopbarSearch();
 });
@@ -1016,51 +752,32 @@ function setArt(art){
   }
 }
 
-// Keeps the real playback controls (scrub bar, speed) in lockstep with
-// whether a real video is actually the thing on screen right now — art
-// (locked episode, still loading) never gets scrub/speed controls
-// floating uselessly over it. bgvideo's own 'has-video' class is the
-// single real source of truth for this everywhere it's set.
+// Scrub/speed controls only when a video is on screen ('has-video')
 function setBgHasVideo(hasVideo){
   bgvideo.classList.toggle('has-video', hasVideo);
   videoControls.classList.toggle('has-video', hasVideo);
-  if(!hasVideo) scrubDuration.textContent = ''; // no video, no duration — never a leftover from the previous episode
+  if(!hasVideo) scrubDuration.textContent = ''; // no leftover duration
 }
 
-// The real wait for a real episode's video to actually become playable
-// (renderMedia below) — replaces the series' own cover image for that
-// wait specifically, never used for a genuinely video-less/locked
-// episode (there's nothing being waited on there, see renderMedia).
+// Loader while an episode's video gets ready
 function setLoadingArt(){
   bgvideo.innerHTML = '<div class="bgvideo-loading">' + narravaLoaderHtml('pulse') + '</div>';
 }
 
-// Tears down whatever's currently the real, active video — real hls.js
-// resources (its segment-loading loop, the scheduled auth-refresh
-// timer), not just the DOM element, which merely removing/replacing
-// #bgvideo's own content never released on its own. A no-op if nothing
-// is actually playing.
+// Tear down the active video (hls.js and the refresh timer too)
 function destroyActivePlayback(){
   if(currentPlaybackCtl) currentPlaybackCtl.destroy();
   currentVideoEl = null;
   currentPlaybackCtl = null;
-  clearChromeHideTimer(); // never let a stale timer from the outgoing video hide the next one's chrome mid-flight
+  clearChromeHideTimer(); // no stale auto-hide for the next video
 }
 
-// Starts loading a real episode's video off-screen, in #preloadHost,
-// well before it's ever shown — a real <video> element plus hls.js
-// (video-player.js), already fetching its real signed URL and buffering
-// real segments, so a swipe can land on an already-playing video
-// instead of waiting on it cold. target is {id (real episode id),
-// bunnyVideoId, seriesId} — see nextPreloadTarget. No-ops if there's
-// nothing to preload or it's already in flight.
+// Start loading an episode off-screen in #preloadHost. target: {id, bunnyVideoId, seriesId}.
 function preloadVideo(target){
   if(!target || !target.bunnyVideoId || preloadCache[target.id]) return;
 
   const video = document.createElement('video');
-  // Warming up off-screen, never playing — muted so it can never make noise
-  // by accident. promotePreload applies the viewer's real sound preference
-  // (see the Sound block) the moment it becomes the active video.
+  // Muted while warming; promotePreload applies the sound preference
   video.muted = true;
   video.playsInline = true;
   video.setAttribute('playsinline', '');
@@ -1070,14 +787,10 @@ function preloadVideo(target){
   preloadCache[target.id] = entry;
 
   attachEpisodePlayback(video, target.id, () => onEpisodeLoadFailed(target)).then((ctl) => {
-    // Preload was torn down (maintainPreload dropped it, or the whole
-    // feed navigated away) before the real signed URL/hls.js setup
-    // resolved — nothing left to attach this real playback to.
+    // Preload dropped before setup finished
     if(preloadCache[target.id] !== entry) { if(ctl) ctl.destroy(); return; }
     if(!ctl){
-      // The function's own real refusal (see video-player.js) — this
-      // episode genuinely isn't playable right now. Never fall back to
-      // anything else; just drop the preload attempt.
+      // Refused: drop the preload, never fall back
       delete preloadCache[target.id];
       video.remove();
       return;
@@ -1086,26 +799,13 @@ function preloadVideo(target){
     video.addEventListener('canplay', function onCanPlay(){
       video.removeEventListener('canplay', onCanPlay);
       entry.ready = true;
-      // If the feed is sitting on this exact episode right now (it
-      // loaded faster than the viewer swiped away), promote it
-      // immediately instead of leaving it preloaded and unused.
+      // Already on this episode: promote now
       if(target.id === renderedMediaEpisodeId && currentVideoEl !== video) promotePreload(target);
     }, { once: true });
   });
 }
 
-// Every real bounded retry (attachEpisodePlayback, video-player.js) has
-// now genuinely been exhausted for this episode — confirmed live: before
-// this existed, nothing upstream ever learned a load had failed, so a
-// preload that died just sat on a dead <video> forever while the loading
-// spinner (or, if the viewer had already swiped to it, the same spinner
-// on screen) never went anywhere. Drops the dead preload entry so the
-// next time this episode is actually needed (goTo/renderMedia calling
-// preloadVideo again), it gets a genuinely fresh attempt with its own
-// full set of retries — never a permanently poisoned cache entry. If
-// the viewer is looking at this exact episode right now, replaces the
-// loading spinner with the honest failure state immediately, rather than
-// leaving them staring at a spinner that's already dead underneath it.
+// All retries used: drop the entry (next attempt starts fresh) and show the failure if on screen
 function onEpisodeLoadFailed(target){
   const entry = preloadCache[target.id];
   if(entry){
@@ -1118,9 +818,7 @@ function onEpisodeLoadFailed(target){
   }
 }
 
-// The honest failure state in #bgvideo — real retry button wired to
-// genuinely redo the whole load (preloadVideo again, from scratch, not
-// just re-showing a spinner over the same dead attempt).
+// Load failed state; retry redoes the whole load
 function setFailedToLoadArt(target){
   bgvideo.innerHTML = '<div class="bgvideo-loading">' + narravaLoadFailedHtml('bgvideoRetryBtn') + '</div>';
   document.getElementById('bgvideoRetryBtn').addEventListener('click', () => {
@@ -1129,12 +827,7 @@ function setFailedToLoadArt(target){
   });
 }
 
-// Moves an already-warmed preload from the off-screen host into #bgvideo
-// and makes it the real, active video — the "instant start" case.
-// Moving a <video> element in the DOM (rather than removing/re-adding
-// it, or ever touching its src) preserves its real playback/buffer
-// state, so this is a genuine handoff, not a reload. target is the same
-// {id, bunnyVideoId, seriesId} descriptor preloadVideo was given.
+// Move a warmed preload into #bgvideo (moving keeps its buffer, no reload)
 function promotePreload(target){
   const entry = preloadCache[target.id];
   if(!entry) return;
@@ -1151,29 +844,19 @@ function promotePreload(target){
   attachPlaybackControls(entry.video);
   attachViewTracking(entry.video, () => (currentVideoEpisodeId === target.id) ? target.id : null);
 
-  // The automatic resume's jump-back-in (see enterMobileWatching): this
-  // episode's video has just genuinely become the active one for the
-  // first time, so if a resume was queued for exactly this episode,
-  // this is when to seek it — a real, direct, synchronous currentTime
-  // assignment, already reliable the moment canplay has fired (which
-  // promotion itself is gated on), no polling needed.
+  // Seek a queued resume for this episode
   if(pendingResumeEpisodeId === target.id){
     entry.video.currentTime = pendingResumeSeconds;
     pendingResumeEpisodeId = null;
   }
 
-  // 'ended' is wired here, once, only on the video that's actually
-  // becoming active — never during preload. Checking that this episode
-  // is still the current one guards against a stale listener on a
-  // video that's since been torn down. Advances the same real way a
-  // forward swipe would (see advanceForward) — the next real episode in
-  // this series while watching, or the next series while just browsing.
+  // On end: advance like a forward swipe (only if still the current episode)
   entry.video.addEventListener('ended', () => {
     if(target.id !== currentVideoEpisodeId || target.id !== renderedMediaEpisodeId) return;
     advanceForward();
   });
 
-  // Sound on unless the viewer has muted it (see the Sound block above).
+  // Sound on unless muted
   soundAutoplayBlocked = false;
   entry.video.muted = soundMuted;
   updateMuteButton();
@@ -1181,24 +864,13 @@ function promotePreload(target){
   else playWithSound(entry.video);
 }
 
-// Wires the real scrub bar to whichever <video> just became active —
-// called once per promotion (video-player.js's own instance is
-// per-episode, so this re-wires fresh each time rather than trying to
-// move listeners between elements).
+// Wire the scrub bar to the newly active video
 function attachPlaybackControls(video){
   scrubRange.value = video.currentTime || 0;
-  // A preloaded video (the normal case — see promotePreload) has
-  // usually already buffered well past loadedmetadata by the time this
-  // runs, so that event has already fired and would never come again —
-  // read a real, already-known duration straight away rather than only
-  // ever waiting for a future event that a fresh (non-preloaded) video
-  // still genuinely needs this same listener for.
+  // Metadata may already be loaded (preloaded videos)
   scrubRange.max = (video.duration && isFinite(video.duration)) ? video.duration : 0;
   scrubRange.style.setProperty('--scrub-pct', '0%');
-  // Episode length at the bar's right end: this video's own real
-  // duration if already known, otherwise blank until loadedmetadata
-  // (videoDurationLabel, shared-utils.js, returns '' before metadata) — display
-  // only, nothing here touches seeking or playback.
+  // Blank until the duration is known
   scrubDuration.textContent = videoDurationLabel(video);
 
   video.addEventListener('loadedmetadata', () => {
@@ -1206,7 +878,7 @@ function attachPlaybackControls(video){
     scrubRange.max = video.duration || 0;
     scrubDuration.textContent = videoDurationLabel(video);
   });
-  // HLS can refine the duration after loadedmetadata.
+  // HLS can refine the duration after loadedmetadata
   video.addEventListener('durationchange', () => {
     if(currentVideoEl !== video) return;
     scrubDuration.textContent = videoDurationLabel(video);
@@ -1218,14 +890,7 @@ function attachPlaybackControls(video){
     scrubRange.style.setProperty('--scrub-pct', pct + '%');
   });
 
-  // The real chrome group (see CHROME_AUTOHIDE_MS above) always starts
-  // visible the moment this episode's video actually becomes the active
-  // one. Arming/clearing the 2-second auto-hide off this video's own
-  // real 'playing'/'pause' events (rather than only from the tap
-  // handler below) means it fires the same real way regardless of
-  // *why* playback started or stopped — the initial autoplay right
-  // after promotion, a tap-to-unpause, or anything else that genuinely
-  // plays or pauses this video.
+  // Chrome shows on promotion; auto-hide armed/cleared by 'playing'/'pause'
   showChrome();
   video.addEventListener('playing', () => {
     if(currentVideoEl !== video) return;
@@ -1234,16 +899,11 @@ function attachPlaybackControls(video){
   video.addEventListener('pause', () => {
     if(currentVideoEl !== video) return;
     clearChromeHideTimer();
-    showChrome(); // a genuinely paused video never sits there with no visible way to unpause it
+    showChrome(); // a paused video always shows its controls
   });
 }
 
-// Real, draggable seeking — a real <input type=range>'s own native drag
-// handling, not hand-rolled pointer math. scrubbing is set for the
-// whole real drag (not just the final release) so the timeupdate
-// handler above never fights the viewer's own finger mid-drag; seeking
-// live on 'input' (not only on release) is what makes this a genuine
-// scrub, not just a tap-to-jump.
+// Live seeking while dragging
 scrubRange.addEventListener('input', () => {
   scrubbing = true;
   if(currentVideoEl) currentVideoEl.currentTime = parseFloat(scrubRange.value);
@@ -1251,22 +911,12 @@ scrubRange.addEventListener('input', () => {
   scrubRange.style.setProperty('--scrub-pct', pct + '%');
 });
 scrubRange.addEventListener('change', () => { scrubbing = false; });
-// Never let a drag that starts on the scrub bar reach #feed's own
-// vertical swipe listeners (touchstart/touchend) — touch-action:none
-// (styles.css) already stops the browser's native panning from
-// interfering, but JS event bubbling is a separate concern: without
-// this, the feed would still see the same touch sequence and could
-// misread it as a swipe.
+// Scrub drags must not reach the feed's swipe listeners
 ['touchstart', 'touchend', 'touchmove', 'pointerdown'].forEach(evt => {
   scrubRange.addEventListener(evt, e => e.stopPropagation());
 });
 
-// What to warm up next depends on which of the two real states the
-// current slide is actually in: its own next real episode while
-// watching, or the next series' first episode while just browsing —
-// same preload mechanism either way (preloadVideo/maintainPreload never
-// know or care which case produced the target), just pointed at a
-// different real target.
+// Next preload: this series' next episode while watching, the next series while browsing
 function nextPreloadTarget(){
   const s = slides[idx];
   if(!s) return null;
@@ -1279,11 +929,7 @@ function nextPreloadTarget(){
   return nextSlide ? { id: nextSlide.episodeId, bunnyVideoId: nextSlide.bunnyVideoId, seriesId: nextSlide.id } : null;
 }
 
-// Kicks off preloading the real next target (see nextPreloadTarget), and
-// tears down any preload that's neither the current episode nor that
-// next one — so there's never more than one silent, warming-up video
-// sitting in the background at a time, on top of whatever's actually on
-// screen.
+// Keep at most one off-screen preload (the next target)
 function maintainPreload(){
   const target = nextPreloadTarget();
   if(target && target.id !== renderedMediaEpisodeId) preloadVideo(target);
@@ -1294,12 +940,7 @@ function maintainPreload(){
   });
 }
 
-// Tears down one off-screen preload for real — .destroy() (video-player.js)
-// releases hls.js's own real resources (its segment-loading loop, the
-// scheduled auth-refresh timer), not just the DOM element, and is a
-// no-op if the real signed URL/hls.js setup hasn't resolved yet (that
-// callback notices the cache entry is gone and cleans up itself once it
-// does — see preloadVideo).
+// Tear down one preload (safe before setup has finished)
 function destroyPreloadEntry(episodeId){
   const entry = preloadCache[episodeId];
   if(!entry) return;
@@ -1308,29 +949,8 @@ function destroyPreloadEntry(episodeId){
   entry.video.remove();
 }
 
-// Renders whichever media the current slide's real active episode
-// should show. Default is always the existing static art — honest, no
-// regression, identical to an episode with no video at all (including a
-// real locked one, see setActiveEpisode) — and it *upgrades* to the real
-// video the moment that video is actually ready, whenever that turns
-// out to be: instantly if it was already preloaded, later if it just
-// started loading now, or never if bunny_video_id doesn't point at a
-// real video (Bunny's own 404 page for a bad id never sends a 'ready' at
-// all, so this deliberately never times out and gives up — there's no
-// reliable way to tell "still loading" and "genuinely broken" apart from
-// out here, and wrongly giving up on a real, just-slow video would be
-// worse than staying on art a little longer than strictly necessary).
-//
-// destroyActivePlayback (above) tears down whatever real video was
-// already active — its own hls.js resources, not just the DOM element —
-// so at most one *active* video is ever really running.
-//
-// Guarded by renderedMediaEpisodeId so re-rendering the *same* episode
-// (unlocking it, tapping Continue) only updates the surrounding UI, not
-// the video itself — otherwise every unrelated re-render would tear
-// down and restart whatever was already playing. Keyed by the real
-// episode id, not the slide/series id, since one slide can now point at
-// different real episodes over time (see header comment).
+// Static art first, upgraded to the video when ready (never times out).
+// Skipped when re-rendering the same episode, so it doesn't restart.
 function renderMedia(s){
   if(s.episodeId === renderedMediaEpisodeId) return;
   renderedMediaEpisodeId = s.episodeId;
@@ -1352,31 +972,14 @@ function renderMedia(s){
     return;
   }
 
-  // Not preloaded yet (or still warming up) — a real episode's video
-  // that's genuinely on its way, so this shows the real loading state
-  // instead of the series' own cover image while it loads (the cover
-  // image showing here was never actually honest — there IS something
-  // real being waited on). preloadVideo's own 'ready' handler
-  // (registered below, or already registered if `existing` is truthy)
-  // promotes it — and replaces this loader with the real video — the
-  // moment it's actually ready.
+  // Loader until the preload is ready and promoted
   setBgHasVideo(false);
   setLoadingArt();
   if(!existing) preloadVideo({ id: s.episodeId, bunnyVideoId: s.bunnyVideoId, seriesId: s.id });
   maintainPreload();
 }
 
-// Leaving the feed for any other screen must actually stop playback, not
-// just hide it — destroyActivePlayback (above) is what tears down the
-// video for real (see renderMedia above), so this does the same
-// teardown renderMedia already does on every episode switch, just
-// triggered by navigation away from the feed instead. Also clears any
-// off-screen preload in flight, since those are real videos quietly
-// loading too.
-// renderedMediaEpisodeId is reset to null so coming back to the feed
-// re-renders its media from scratch via the normal render() path,
-// instead of render() thinking the current episode's video is already
-// showing.
+// Leaving the feed: stop playback and preloads; reset so coming back re-renders
 function stopFeedPlayback(){
   if(renderedMediaEpisodeId === null && Object.keys(preloadCache).length === 0) return;
   saveCurrentFeedProgress();
@@ -1389,33 +992,16 @@ function stopFeedPlayback(){
   Object.keys(preloadCache).forEach(destroyPreloadEntry);
 }
 
-// Reads the currently-playing episode's real position straight off the
-// real <video> element (never assumed/estimated) and upserts it via
-// watch-progress.js. No-ops quietly if there's no real video playing
-// right now. Both the real episode id AND its series id are read
-// straight off currentVideoEpisodeId/currentVideoSeriesId (kept in
-// lockstep wherever they're set — see renderMedia/promotePreload)
-// rather than looked up from `slides` by id here: the slide that
-// episode belongs to may already have moved on to a different real
-// episode by the time this runs (real in-series swiping makes that a
-// normal, frequent case now, not just a rare race), so searching
-// `slides` for it could silently find nothing, or worse, the slide's
-// now-different current episode. Called periodically, on pause, and
-// whenever the feed leaves the current episode (goTo, stopFeedPlayback,
-// in-series navigation).
+// Save the current position (episode and series ids kept with the video, not looked up)
 function saveCurrentFeedProgress(){
   if(!currentVideoEl || !currentVideoEpisodeId || !currentVideoSeriesId) return;
   saveWatchProgress(currentVideoEpisodeId, currentVideoSeriesId, currentVideoEl.currentTime);
 }
 
-// 15s: frequent enough that a crash/refresh never loses more than a few
-// seconds of real progress, infrequent enough not to spam the DB with
-// upserts for something the user isn't actively pausing/leaving anyway.
+// Every 15s
 setInterval(saveCurrentFeedProgress, 15000);
 
-// Pauses the feed's episode exactly as a tap on it would (paused state,
-// progress saved) and leaves it paused for the viewer to resume. Used by
-// ads.js while a rewarded ad is showing.
+// Pause for a rewarded ad (ads.js)
 function pauseCurrentFeedEpisode(){
   if(!currentVideoEl || currentVideoEl.paused) return;
   feed.classList.add('paused');
@@ -1437,20 +1023,15 @@ function renderEmptyFeed(){
   coinBalance.textContent = coinState.balance;
   ctaRow.classList.add('hidden');
 
-  // "No series available" is a real, honest statement only once
-  // fetchSlides() has actually come back empty — while it's still in
-  // flight (slidesLoaded false), this was wrongly showing that same
-  // permanent-sounding message during what's actually just a real,
-  // temporary wait on real data. The loading state replaces the title/
-  // synopsis area for that wait instead.
+  // "No series" only once fetchSlides came back empty; loader before that
   if(slidesLoaded && appStartedOffline){
     titleEl.innerHTML = 'You’re offline';
     synopsisEl.innerHTML = '';
-    synopsisEl.textContent = 'Episodes you download play here without a connection.';
+    synopsisEl.textContent = 'Downloaded episodes play here offline.';
   } else if(slidesLoaded){
     titleEl.innerHTML = 'No series available right now';
     synopsisEl.innerHTML = '';
-    synopsisEl.textContent = 'Please check back soon.';
+    synopsisEl.textContent = 'Check back soon.';
   } else {
     titleEl.innerHTML = '';
     synopsisEl.innerHTML = narravaLoaderHtml('pulse', 'Loading Narrava…');
@@ -1465,18 +1046,7 @@ function render(){
   ctaRow.classList.remove('hidden');
 
   const s = slides[idx];
-  // Only actually load/play media while the feed is the visible screen.
-  // render() also runs at startup (init(), before the user has ever
-  // navigated anywhere — Discover is the default screen) and gets
-  // called by like/save/unlock while already on the feed; in both of
-  // those cases skipping this is either correct (startup: nothing
-  // should be preloading or playing yet) or a harmless no-op
-  // (renderMedia is itself guarded against re-running for a slide
-  // that's already loaded). Without this, a fresh page load on
-  // Discover was creating a real Bunny iframe and promoting it into
-  // #bgvideo — invisible (the feed is display:none) but still actually
-  // playing — never something a shelf poster caused, purely this
-  // startup path running before any navigation happened.
+  // Only load media while the feed is visible
   if(!feed.classList.contains('screen-hidden')) renderMedia(s);
   epBadge.textContent = s.epBadge;
   titleEl.innerHTML = s.title.replace('\n','<br>');
@@ -1491,12 +1061,7 @@ function render(){
   coinBalance.textContent = coinState.balance;
   buildSpine(s.currentEp, s.totalEp);
 
-  // The real unlock prompt — shown whenever the episode actually being
-  // looked at right now (browsing preview, or wherever watching/
-  // swiping/the jump grid landed) is genuinely locked, targeting that
-  // exact real episode. Nothing to prompt once it isn't, so it just
-  // hides rather than switching to some "already unlocked" cosmetic
-  // state (see unlockBtn's own click handler, which asks the server).
+  // Unlock prompt for the locked episode being looked at
   if(s.locked && s.lockedEpisode){
     unlockBtn.classList.remove('hidden');
     unlockLabel.textContent = 'Unlock Ep ' + s.lockedEpisode.episode_number + ' · 1 Nava Coin';
@@ -1505,16 +1070,10 @@ function render(){
   }
 
   Array.from(pager.children).forEach((d,i)=>d.classList.toggle('active', i===idx));
-  refreshDownloadButtons(); // downloads.js: the rail's Download button follows the current episode
+  refreshDownloadButtons(); // Download follows the current episode
 }
 
-// Real like count + this viewer's own liked/saved state (social.js),
-// fetched once per slide — not on every render() call, which happens
-// often (every swipe, every unlock) — and guarded by s.socialLoaded so
-// a second render() before this resolves doesn't kick off a duplicate
-// fetch. Applied to the DOM only if this slide is still the current one
-// by the time it resolves, so a fetch from a slide already swiped away
-// from never overwrites whatever's actually on screen now.
+// Like count and liked/saved state, once per slide; ignored if swiped away meanwhile
 async function loadFeedSocialState(s){
   s.socialLoaded = true;
   const state = await fetchSeriesSocialState(s.id);
@@ -1534,13 +1093,7 @@ async function loadFeedSocialState(s){
   }
 }
 
-// Scrolling/swiping to a (possibly new) slide always lands back in the
-// default browsing state — overlay visible, autoplaying, not paused —
-// even if the slide you're leaving was in watching or paused. This is
-// pure series-to-series navigation (pager dots, a browsing swipe/wheel
-// tick) — callers that want to land directly in watching
-// (enterMobileWatching) explicitly add that back right after calling
-// this, same as before.
+// Series-to-series navigation; always lands in browsing
 function goTo(i){
   if(slides.length === 0) return;
   saveCurrentFeedProgress();
@@ -1550,35 +1103,19 @@ function goTo(i){
   render();
 }
 
-// A manual navigation always supersedes any still-pending automatic
-// resume seek (see enterMobileWatching/promotePreload) — without this,
-// swiping away and later swiping back onto the same episode could replay
-// a stale resume-seek the viewer never asked for this time.
+// Manual navigation cancels a pending resume seek
 function clearPendingResume(){
   pendingResumeEpisodeId = null;
 }
 
-// Moves the CURRENTLY WATCHED slide to a different one of its own real
-// episodes — idx/pager/the "watching" state itself never change, only
-// which of this series' real episodes is active. Used by in-series
-// swipe navigation and the jump grid alike. If ep is locked, this never
-// plays it — setActiveEpisode leaves it showing the same real unlock
-// prompt (unlockBtn) every other locked episode in this app already
-// uses, not a new one.
+// Switch the watched series to another of its episodes (locked: shows the unlock prompt)
 function goToEpisodeInSlide(s, ep){
   clearPendingResume();
   setActiveEpisode(s, ep);
   render();
 }
 
-// The one real "move forward" action — used by a forward swipe/wheel
-// tick AND by a video actually finishing (see promotePreload's 'ended'
-// handling), so both do exactly the same real thing. While actually
-// watching a series with its real episode list already loaded, this
-// moves to its next real episode, or — once genuinely past the last
-// one — rolls straight into the next series' own watching state at its
-// first episode (never back to browsing, same continuous feel). While
-// just browsing, it's plain series-to-series navigation, unchanged.
+// Forward swipe or video end: next episode while watching (rolls into the next series), next series while browsing
 function advanceForward(){
   const s = slides[idx];
   if(feed.classList.contains('watching') && s && s.episodesLoaded){
@@ -1595,15 +1132,12 @@ function advanceForward(){
   goTo(idx + 1);
 }
 
-// The mirror of advanceForward for a backward swipe/wheel tick. While
-// watching, this stops dead at the real episode one — no wrapping
-// around to a previous series — rather than doing anything at all past
-// that point.
+// Backward: stops at episode one while watching
 function advanceBackward(){
   const s = slides[idx];
   if(feed.classList.contains('watching') && s && s.episodesLoaded){
     const curPos = s.episodes.findIndex(e => e.id === s.episodeId);
-    if(curPos <= 0) return; // already at episode one — stays put
+    if(curPos <= 0) return; // already at episode one
     goToEpisodeInSlide(s, s.episodes[curPos - 1]);
     return;
   }
@@ -1633,35 +1167,11 @@ feed.addEventListener('wheel', e=>{
   setTimeout(()=>wheelLock=false, 500);
 });
 
-// The single tap target covering the whole video, with two different
-// jobs depending on state:
-//   - Browsing (the default): tapping commits to watching this slide —
-//     the same real "enter the watching state" mechanism as tapping a
-//     poster from Discover or Continue Watching (enterMobileWatching),
-//     so a normal in-feed tap gets a real episode list and real resume
-//     too, not just a bare CSS class flip with no episode data behind
-//     it. The video keeps playing exactly as it was, untouched, if
-//     there's no saved progress to resume from.
-//   - Watching: a real tap either reveals the real chrome group or
-//     toggles play/pause, depending on whether that group is already
-//     showing (see the CHROME_AUTOHIDE_MS comment above for the full
-//     real sequence) — and press-and-hold anywhere on the video is
-//     real, temporary 2x, a separate, untouched mechanic (see
-//     HOLD_SPEED). Neither ever brings the browsing overlay itself
-//     back — that only happens by swiping/scrolling to a new slide
-//     (goTo already resets to browsing there).
+// Video tap: browsing enters watching; watching reveals chrome or toggles pause
 playToggle.addEventListener('click', ()=>{
-  if(feed.classList.contains('watching')) return; // tap/hold here now fully owned by the pointer handlers below
+  if(feed.classList.contains('watching')) return; // handled by the pointer handlers below
   if(slides.length === 0) return;
-  // This shared feed also gets reused, restyled, as desktop's own
-  // "For You" tab (see styles.css's body.feed-active rules) — but
-  // real episode swiping/the jump grid/the real per-episode unlock
-  // prompt are mobile-only (matching how openSeriesInFeed already
-  // sends desktop to its own dedicated watch.js page instead of this
-  // feed for the actual "watch a series" experience there). Desktop's
-  // For You tab keeps its exact prior simple behavior — just commit
-  // to watching, no real episode fetch — rather than this task's new
-  // mechanism leaking into a screen it was never meant to touch.
+  // Desktop For You: just enter watching, no episode fetch
   if(window.matchMedia('(min-width: 900px)').matches){
     feed.classList.add('watching');
     showChromeOnEntry();
@@ -1672,17 +1182,7 @@ playToggle.addEventListener('click', ()=>{
   enterMobileWatching(idx, continueWatchingMap.get(s.id));
 });
 
-// Real press-and-hold-to-2x, confirmed directly against reelshort.com:
-// instant on press (no delay/ramp — see HOLD_SPEED above), instant back
-// to normal the moment it's released, exactly wherever playback
-// actually is at that instant — never a lingering faster speed. A tap
-// (a press released within TAP_MAX_MS) still toggles play/pause, same
-// as before, just decided here now instead of a separate 'click'
-// listener, since only a real press/release pair can tell a tap and a
-// hold apart. A real vertical drag (SWIPE_CANCEL_PX or more) cancels
-// this read entirely — that's #feed's own forward/backward swipe
-// gesture, not a tap or a hold, and must never also toggle pause or
-// flash 2x on top of navigating.
+// Tap = pause/play, hold = 2x while held, vertical drag = swipe (ignored here)
 playToggle.addEventListener('pointerdown', (e) => {
   if(!feed.classList.contains('watching') || !currentVideoEl) return;
   pressStartY = e.clientY;
@@ -1703,22 +1203,11 @@ function endPlayTogglePress(){
   pressStartY = null;
   pressHolding = false;
   pressMoved = false;
-  if(wasHolding && currentVideoEl) currentVideoEl.playbackRate = 1; // instant, exactly where playback actually is — no seeking, no easing
-  if(moved) return; // a real swipe — #feed's own touchstart/touchend already handles navigation
-  if(elapsed > TAP_MAX_MS) return; // a genuine hold already did its one real job above
+  if(wasHolding && currentVideoEl) currentVideoEl.playbackRate = 1;
+  if(moved) return; // a swipe
+  if(elapsed > TAP_MAX_MS) return; // a hold isn't a tap
 
-  // The real chrome group's own tap rule (see CHROME_AUTOHIDE_MS above):
-  // a tap while hidden only ever reveals it, never touches play/pause —
-  // and, from that moment, the same 2s auto-hide timer starts as on entry,
-  // so the group hides itself again if nobody taps. Nothing else would
-  // arm it here: the timer is otherwise armed by the video's 'playing'
-  // event, and a reveal-tap never stops the video, so no such event
-  // comes (before this, a revealed group stayed up until a pause and
-  // resume). A second tap inside that window takes the branch below
-  // instead — it pauses, and the video's real 'pause' event clears the
-  // timer (see attachPlaybackControls), which only re-arms once the
-  // video is actually playing again. A tap while already showing still
-  // does exactly what every tap here has always done: toggle play/pause.
+  // Tap while hidden only reveals (and arms the auto-hide); tap while shown toggles pause
   if(feed.classList.contains('chrome-hidden')){
     showChrome();
     if(currentVideoEl && !currentVideoEl.paused && !currentVideoEl.ended) armChromeHideTimer();
@@ -1737,14 +1226,7 @@ function endPlayTogglePress(){
 playToggle.addEventListener('pointerup', endPlayTogglePress);
 playToggle.addEventListener('pointercancel', endPlayTogglePress);
 
-// Real like: series_likes (social.js), not a session-only toggle. A
-// signed-out tap opens the same sign-in modal every other account-gated
-// action in this app already uses (toggleSeriesLike's own job) instead
-// of silently doing nothing — returns null in that case, so the button
-// is left exactly as it was rather than flipping to a state that didn't
-// really happen. The count is re-fetched for real after a successful
-// toggle rather than guessed locally, so it can never drift from what's
-// actually in the database.
+// Like (signed-out tap opens sign-in); count re-fetched after
 likeBtn.addEventListener('click', async ()=>{
   if(slides.length === 0) return;
   const s = slides[idx];
@@ -1757,10 +1239,7 @@ likeBtn.addEventListener('click', async ()=>{
   if(slides[idx] === s) render();
 });
 
-// Same real shape as like, against series_saves: a failed (or signed-
-// out) toggle returns null and nothing on screen changes; a successful
-// one re-fetches the real save total (and share total — same call)
-// rather than guessing it locally.
+// Save; totals re-fetched after
 bookmarkBtn.addEventListener('click', async ()=>{
   if(slides.length === 0) return;
   const s = slides[idx];
@@ -1775,8 +1254,7 @@ bookmarkBtn.addEventListener('click', async ()=>{
   if(slides[idx] === s) render();
 });
 
-// Real comments (comments-panel.js/social.js) in this app's existing
-// bottom-sheet shell.
+// Comments sheet
 commentBtn.addEventListener('click', () => {
   if(slides.length === 0) return;
   const s = slides[idx];
@@ -1791,33 +1269,14 @@ function closeCommentsSheet(){
 commentsSheetClose.addEventListener('click', closeCommentsSheet);
 commentsSheetBackdrop.addEventListener('click', closeCommentsSheet);
 
-// Scroll isolation for every bottom sheet in the feed. These sheets (and
-// their dimmed backdrops) are DOM children of #feed, and #feed owns the
-// touchstart/touchend and wheel listeners that turn a vertical drag or
-// wheel tick into advanceForward/advanceBackward — so, by ordinary event
-// bubbling, a finger drag or wheel scroll *inside* the comment list (or
-// the episode grid) also arrived at #feed and swiped
-// the episode underneath. Measured before this: 7 touch drags + 5 wheel
-// ticks inside the open comment sheet fired 12 episode swipes. Stopping
-// these events at the sheet keeps them from ever reaching #feed; the
-// sheet's own native scrolling is untouched (nothing here calls
-// preventDefault, and the listeners are passive). Only touch/wheel are
-// stopped — clicks and everything else still bubble as before.
+// Stop touch/wheel inside sheets reaching the feed's swipe listeners
 [commentsSheet, commentsSheetBackdrop, episodeGridSheet, episodeGridBackdrop].forEach(el => {
   ['touchstart', 'touchmove', 'touchend', 'wheel'].forEach(evt => {
     el.addEventListener(evt, e => e.stopPropagation(), { passive: true });
   });
 });
 
-// Real episode jump grid — same real per-episode data and honest
-// free_episode_count lock rule as the desktop watch page's own grid
-// (watchEpCardHtml in watch.js), in this app's existing bottom-sheet
-// shell. Opened from the small "EP X · Y" badge, which stays visible
-// while watching specifically so this has somewhere to open from (see
-// styles.css). Tapping any cell — locked or not — closes the sheet and
-// runs it through the exact same goToEpisodeInSlide a swipe would: an
-// unlocked one plays for real; a locked one lands there AND opens the
-// unlock prompt (coins.js), since tapping it is asking to watch it.
+// Episode jump grid (from the "EP X · Y" badge); a locked cell opens the unlock prompt
 function epgridCellHtml(s, ep){
   const locked = isEpisodeLocked(s, ep);
   const isActive = ep.id === s.episodeId;
@@ -1857,12 +1316,7 @@ epBadge.addEventListener('click', openEpisodeGrid);
 episodeGridClose.addEventListener('click', closeEpisodeGrid);
 episodeGridBackdrop.addEventListener('click', closeEpisodeGrid);
 
-// A share has completed and record_series_share has finished (see
-// recordSeriesShare, shared-utils.js): re-fetch that series' real
-// counts — one call — and show them wherever that series is on screen,
-// the feed here and the desktop Watch page (renderWatchSaveShareCounts,
-// watch.js). Never +1 locally: the database counts at most one share
-// per person per series per day.
+// After a share: re-fetch counts for the feed and the Watch page (never +1 locally)
 document.addEventListener('narrava:series-shared', async (e) => {
   const s = slides.find(x => x.id === e.detail.seriesId);
   if(!s) return;
@@ -1876,8 +1330,7 @@ document.addEventListener('narrava:series-shared', async (e) => {
   renderWatchSaveShareCounts(s);
 });
 
-// Real sharing (shareSeries, shared-utils.js) — the browser's own native
-// share sheet where available, a small fallback popup where it isn't.
+// Share (shareSeries, shared-utils.js)
 document.getElementById('shareBtn').addEventListener('click', ()=>{
   const btn = document.getElementById('shareBtn');
   btn.classList.add('pulse');
@@ -1886,13 +1339,7 @@ document.getElementById('shareBtn').addEventListener('click', ()=>{
   shareSeries(slides[idx].title, slides[idx].id);
 });
 
-// Real "enter the watching state" trigger — the same real mechanism as
-// the video's own tap target (playToggle below) and Discover/Continue
-// Watching's own opens (openSeriesInFeed/enterMobileWatching), not the
-// old fake progress-bump left over from the original mockup. Same
-// desktop-vs-mobile split as playToggle: desktop's own "For You" tab
-// keeps its simple no-episode-fetch behavior, real episode
-// fetch/resume is mobile-only.
+// Continue: enter watching (desktop: no episode fetch)
 document.getElementById('continueBtn').addEventListener('click', ()=>{
   if(slides.length === 0) return;
   if(window.matchMedia('(min-width: 900px)').matches){
@@ -1905,13 +1352,10 @@ document.getElementById('continueBtn').addEventListener('click', ()=>{
   enterMobileWatching(idx, continueWatchingMap.get(s.id));
 });
 
-// Tapping the unlock prompt on a locked episode (browsing preview, or
-// wherever a swipe/the jump grid landed). The decision and the charge
-// are entirely the server's (openUnlockPrompt, coins.js): this only
-// plays the episode once the server says it's watchable.
+// Unlock prompt; plays once the server says it's watchable
 function promptUnlockForSlide(s, ep){
   openUnlockPrompt(ep, () => {
-    if(slides[idx] !== s || s.episodeId !== ep.id) return; // moved on meanwhile — the lock icons update via narrava:coins-changed
+    if(slides[idx] !== s || s.episodeId !== ep.id) return; // moved on
     goToEpisodeInSlide(s, ep);
   });
 }
@@ -1925,10 +1369,7 @@ unlockBtn.addEventListener('click', ()=>{
 
 coinsChip.addEventListener('click', ()=> openCoinSheet());
 
-// The viewer's unlocks/subscription/balance changed (loaded, unlocked,
-// bought, signed in or out — see coins.js): re-run the lock rule for
-// every slide's current episode and repaint, so lock icons and the
-// unlock prompt always agree with the server.
+// Coins/unlocks changed: re-run the lock rule and repaint
 function reapplyEpisodeLocks(){
   slides.forEach(s => { if(s.activeEpisode) setActiveEpisode(s, s.activeEpisode); });
   if(slides.length) render();
@@ -1936,82 +1377,55 @@ function reapplyEpisodeLocks(){
 }
 document.addEventListener('narrava:coins-changed', reapplyEpisodeLocks);
 
-// Resolved once `slides` has been populated. discover.js awaits this
-// before its first render, so the poster grid never renders empty just
-// because its own (unrelated) genre queries happened to resolve first.
+// Resolves once `slides` is filled
 let resolveSlidesReady;
 const slidesReady = new Promise(resolve => { resolveSlidesReady = resolve; });
 
 async function init(){
-  // Real maintenance mode check — the one thing that happens before
-  // literally anything else, including the anonymous account bootstrap.
-  // On, this renders the honest back-soon screen and returns — nothing
-  // else in this function (or discover.js's own initDiscover, gated the
-  // same real way) ever runs.
+  // Maintenance check first, before anything else
   await appSettingsReady;
-  // No connection: open on downloads only (offline.js) — no anonymous
-  // sign-in, nothing else from the server.
+  // Offline start (offline.js)
   if(appStartedOffline){
     await startOfflineMode();
     return;
   }
   if(appSettings.maintenance_mode_enabled){
-    // Someone arriving from a password reset link sets their new password
-    // first (auth.js); the maintenance screen would wipe the popup.
+    // Let a reset link's popup finish first
     await authRedirectSettled;
     renderMaintenanceMode();
     return;
   }
 
-  // Real anonymous account bootstrap (watch-progress.js) — first thing
-  // this app does, before slides/continue-watching are even fetched, so
-  // every visitor already has a real, genuine account (anonymous or
-  // not) for the rest of init and everything after it. Someone arriving
-  // from a password reset link never gets a guest account here: its
-  // getSession() waits for supabase-js to finish reading the link, and by
-  // then the reset session is already saved.
+  // Anonymous sign-in before anything else loads.
+  // A reset link's session is already saved by now, so no guest is made.
   await bootstrapAnonymousSession();
 
-  // Real Nava Coins state (coins.js) — balance, unlocks, subscription —
-  // loaded alongside the slides so locks are right from the first render.
+  // Coin state loads alongside the slides
   const coinStateReady = refreshCoinState();
 
-  // Real visit logging (visit-log.js) — once per real page load of the
-  // actual consumer app, now that a real account genuinely exists to
-  // attribute it to. Fire-and-forget: invisible to the viewer, so it
-  // never delays real content on a slow connection.
+  // Fire and forget
   logPageVisit();
 
   const [fetchedSlides] = await Promise.all([fetchSlides(), refreshContinueWatchingMap(), coinStateReady]);
   slides = fetchedSlides;
   slidesLoaded = true;
   pager.innerHTML = slides.map((_,i)=>'<div class="pdot ' + (i===0?'active':'') + '" data-i="' + i + '"></div>').join('');
-  reapplyEpisodeLocks(); // fetchSlides may have finished before the viewer's unlocks did (also renders)
+  reapplyEpisodeLocks(); // unlocks may load after the slides
 
-  // Welcome bonus (coins.js): signed-in email accounts only, once per
-  // load — the server only ever pays it once. Silent unless granted.
+  // Welcome bonus (silent unless granted)
   claimWelcomeBonusIfEligible();
   resolveSlidesReady();
   resolveContinueWatchingReady();
 
-  // A shared series link (#series=<id>, see seriesShareUrl in
-  // shared-utils.js) — only ever acted on here, after maintenance mode
-  // has had its say and real slides exist to look the series up in.
+  // Shared #series=<id> link, after maintenance and slides
   openDeepLinkedSeries();
 }
 
-// Opens straight into the series a shared link names, through the exact
-// same openSeriesInFeed every poster tap uses — so the normal lock rule
-// (isEpisodeLocked/setActiveEpisode), Free Mode, and resume all apply
-// exactly as they do everywhere else; the link itself carries nothing
-// about episodes or unlocks. The fragment is cleared once read so a
-// refresh (or Back) lands on normal Home instead of re-opening it. An id
-// that matches nothing in `slides` (a draft, a deleted series, a mangled
-// link) just leaves the viewer on Home with a short honest note.
+// Open the series in a shared link, then clear the fragment
 function openDeepLinkedSeries(){
   const seriesId = seriesIdFromLocationHash();
   if(!seriesId) return;
-  history.replaceState(history.state, '', window.location.pathname + window.location.search); // keep nav.js's state on this entry
+  history.replaceState(history.state, '', window.location.pathname + window.location.search); // keep nav.js's state
 
   const i = slides.findIndex(s => s.id === seriesId);
   if(i === -1){
@@ -2021,10 +1435,7 @@ function openDeepLinkedSeries(){
   openSeriesInFeed(i);
 }
 
-// Someone pasting a second series link into a tab where Narrava is
-// already open only changes the fragment (no reload), so init()'s own
-// call above never runs for it. Before slides exist, init() will pick
-// the fragment up itself, so this only acts once they're loaded.
+// A link pasted into an already-open tab
 window.addEventListener('hashchange', () => {
   if(slidesLoaded) openDeepLinkedSeries();
 });

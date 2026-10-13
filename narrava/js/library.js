@@ -1,22 +1,4 @@
-// library.js
-//
-// The Library tab: every series the signed-in viewer has actually saved
-// — fetchMySavedSeriesIds (social.js) is the one real source, straight
-// off series_saves, the same table the save/bookmark button everywhere
-// else in this app already reads and writes (toggleSeriesSave). No
-// second way of reading or writing that table is built here.
-//
-// Two honest empty states, never the same one: signed out gets a real
-// sign-in prompt (nothing to show yet, not "nothing saved"); signed in
-// with nothing saved says so plainly. Re-fetched fresh every time this
-// tab is opened (renderLibraryScreen), same pattern as profile.js's own
-// renderProfileScreen, rather than trusting a possibly-stale snapshot
-// from earlier in the session.
-//
-// A saved card reuses discover.js's own posterCardHtml (its own
-// data-slide-index into the shared `slides` array) and app.js's
-// openSeriesInFeed — the exact same real navigation every other poster
-// in this app already uses, not a second one built for this tab.
+// Library tab: series the signed-in viewer saved
 
 const libraryBody = document.getElementById('libraryBody');
 
@@ -36,14 +18,12 @@ async function renderLibraryScreen(){
     return;
   }
 
-  // Preserves `slides`' own real order (whatever fetchSlides returned)
-  // rather than inventing a "recently saved" ranking series_saves' own
-  // columns were never confirmed to support.
+  // Keep the order of `slides`
   const list = slides.filter(s => savedIds.has(s.id));
 
   if(list.length === 0){
     hideSkeletonLogo();
-    libraryBody.innerHTML = '<div class="discover-empty">You haven’t saved any series yet — tap the bookmark icon on a series to add it here.</div>';
+    libraryBody.innerHTML = '<div class="discover-empty">Nothing saved yet. Tap the bookmark on a series to save it.</div>';
     return;
   }
 

@@ -1,10 +1,4 @@
-// admin-login.js
-//
-// admin/login.html only. Every other admin page redirects here whenever
-// requireAdminSession() (admin-shared.js) finds no session, or a
-// session that isn't an admin — so this page's own job is just: show
-// the login form, or if already signed in, decide which of the two
-// gates applies and show that instead of the form.
+// admin/login.html: login form, or the right gate if already signed in
 
 const adminLoginView = document.getElementById('adminLoginView');
 const adminDeniedView = document.getElementById('adminDeniedView');
@@ -75,7 +69,7 @@ async function handleAdminLoginSubmit(e){
     await afterAuthResolved(data.session);
   } catch(err){
     console.error('Narrava: admin login failed', err);
-    errorEl.textContent = 'Something went wrong. Please try again.';
+    errorEl.textContent = 'Something went wrong. Try again.';
     errorEl.classList.add('show');
   } finally {
     submitBtn.disabled = false;
@@ -89,7 +83,7 @@ async function handleDeniedSignOut(){
     if(error) throw error;
   } catch(err){
     console.error('Narrava: sign out failed', err);
-    showToast('Could not sign out — please try again');
+    showToast('Couldn’t sign out. Try again.');
     return;
   }
   document.getElementById('adminLoginEmail').value = '';

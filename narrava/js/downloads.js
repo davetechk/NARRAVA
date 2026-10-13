@@ -1,59 +1,5 @@
-// downloads.js
-//
-// Offline downloads for subscribers: the Download button in the episode
-// actions (mobile feed rail and desktop Watch page), the Downloads screen
-// (Profile -> Download), and the local copies the players use instead of
-// streaming (video-player.js's attachEpisodePlayback asks
-// localPlaybackUrl first).
-//
-// Who may download is decided by the server alone. Starting a download
-// asks bunny-signed-playback-url for a link with purpose 'download'; it
-// only answers active subscribers (and admins), with a link that lasts
-// 30 minutes, and otherwise says 403 "Downloads are for subscribers". The
-// button is only drawn for active subscribers (hasActiveSubscription,
-// coins.js), but that is presentation only: the server's answer is final.
-// Episodes already downloaded stay playable after a subscription ends;
-// only NEW downloads need one.
-//
-// How a download is fetched — exactly the way the streaming player does
-// (see video-player.js): the signed master playlist URL carries Bunny's
-// token in its query string; the master lists one sub-playlist per
-// rendition by relative path, and each sub-playlist lists its segments
-// by relative path. Relative resolution drops the query string, so the
-// same token query is put back on every request (bunnyAuthorizedUrl, the
-// helper hls.js's xhrSetup uses too). One rendition is kept: the one
-// whose short side is 720 (720p), else the highest below it, else the
-// lowest above it.
-//
-// Where it's kept — only inside the app, never as a file on the phone:
-//   - Cache Storage, cache DOWNLOADS_CACHE ('narrava-offline-v1'), under
-//     app-local URLs offline/<episodeId>/…: master.m3u8 (one rendition),
-//     video.m3u8 (the rendition, rewritten to local names), seg-NNNNN.ts
-//     (+ key-N / init-N files if a playlist ever references them) and
-//     cover. sw.js serves offline/… from this cache only, never the
-//     network, and its version clean-up never deletes this cache.
-//   - IndexedDB 'narrava-downloads', store 'episodes': one record per
-//     finished episode (ids, titles, numbers, size, date, duration).
-//     Written LAST, after every file is in the cache, so a half-download
-//     can never be listed as complete. No signed URL or token is ever
-//     stored in either place; the saved playlists are checked for that
-//     before the record is written.
-//
-// Downloads belong to the account that made them, not to the browser.
-// Each record carries ownerId (the signed-in account's user id) and its
-// files sit under offline/<ownerId>/<episodeId>/. Everything that reads
-// downloads — playback, the unlocked rule (coins.js), the Downloads
-// screen, the buttons, the offline start — sees only the current
-// account's (downloadedRecords). Who that is comes from the session
-// supabase-js has stored on this device, never the network, so it works
-// offline; nobody signed in, or a guest (anonymous) session, has none.
-// Another account's downloads stay on the device, hidden, until it signs
-// in again. Records from before this rule (no owner) are deleted.
-//
-// One download at a time; others queue. A failure (or a refusal) deletes
-// that episode's partial files and shows the honest reason. Files left
-// by a download that was interrupted (tab closed mid-way) have no record,
-// and are deleted the next time the app starts.
+// Offline downloads for subscribers: Download buttons, the Downloads screen, local playback.
+// Files in Cache Storage (offline/<ownerId>/<episodeId>/), records in IndexedDB, per account.
 
 const DOWNLOADS_CACHE = 'narrava-offline-v1'; // same name in sw.js
 const DOWNLOADS_DB_NAME = 'narrava-downloads';
@@ -63,21 +9,19 @@ const DOWNLOAD_PARALLEL_FILES = 3;
 const DOWNLOAD_NETWORK_RETRIES = 2;
 const DOWNLOAD_SPACE_MARGIN_BYTES = 20 * 1024 * 1024;
 const DOWNLOAD_LINK_TIMEOUT_MS = 20000;
-const DOWNLOAD_FILE_TIMEOUT_MS = 45000; // one segment, playlist or cover, body included
+const DOWNLOAD_FILE_TIMEOUT_MS = 45000; // per file
 
-const allDownloadRecords = new Map(); // ownerId/episodeId -> IndexedDB record: every finished download on this device, any account
-const downloadedRecords = new Map();  // episodeId -> record: the signed-in account's own finished downloads only
+const allDownloadRecords = new Map(); // every finished download on the device, any account
+const downloadedRecords = new Map();  // the signed-in account's only
 const downloadJobs = new Map();       // episodeId -> { info, ownerId, status: 'queued'|'downloading'|'failed', percent, error }
-const downloadQueue = [];             // episodeIds waiting their turn
+const downloadQueue = [];
 let activeDownloadId = null;
-let downloadOwnerId = null; // the signed-in, non-anonymous account's user id, or null
+let downloadOwnerId = null; // real (non-anonymous) account id, or null
 
 class DownloadError extends Error {}
 
 // ---------- local URLs ----------
 
-// offline/<ownerId>/<episodeId>/ next to index.html (inside the service
-// worker's scope).
 function offlineBaseUrl(ownerId, episodeId){
   return new URL('offline/' + encodeURIComponent(ownerId) + '/' + encodeURIComponent(episodeId) + '/', document.baseURI).href;
 }
@@ -90,9 +34,7 @@ function downloadRecordKey(ownerId, episodeId){
 
 // ---------- whose downloads ----------
 
-// The user in the session supabase-js keeps in local storage, read
-// directly: getSession() first tries to refresh an expired access token
-// over the network, and offline that ends with no session at all.
+// Read the stored session directly (getSession() fails offline)
 function storedSessionUser(){
   try {
     const key = supabaseClient.auth.storageKey || ('sb-' + new URL(SUPABASE_URL).hostname.split('.')[0] + '-auth-token');
@@ -107,7 +49,7 @@ function downloadOwnerIdFor(user){
   return (user && user.id && !user.is_anonymous) ? user.id : null;
 }
 
-// The current account's own records, picked from every record on the device.
+// This account's records out of all of them
 function rebuildOwnDownloads(){
   downloadedRecords.clear();
   if(!downloadOwnerId) return;
@@ -118,9 +60,7 @@ function ownDownloadJobs(){
   return [...downloadJobs.entries()].filter(([, job]) => downloadOwnerId && job.ownerId === downloadOwnerId);
 }
 
-// Signed in, out, or as someone else: show only that account's downloads.
-// Queued or failed downloads of the previous account are dropped; one
-// still running stops at its next step (assertDownloadOwner).
+// Account changed: show only its downloads; a running one stops at its next step
 function setDownloadOwner(ownerId){
   if(ownerId === downloadOwnerId) return;
   downloadOwnerId = ownerId;
@@ -134,9 +74,7 @@ function setDownloadOwner(ownerId){
   notifyDownloadsChanged();
 }
 
-// Sign in, sign out, account upgrade: supabase-js reports these locally.
-// INITIAL_SESSION is skipped: offline it can report no session (see
-// storedSessionUser); the stored session is read at load instead.
+// INITIAL_SESSION skipped (can be empty offline); read at load instead
 supabaseClient.auth.onAuthStateChange((event, session) => {
   if(event === 'INITIAL_SESSION') return;
   setDownloadOwner(event === 'SIGNED_OUT' ? null : downloadOwnerIdFor(session && session.user));
@@ -149,17 +87,14 @@ function openDownloadsDb(){
   if(!downloadsDbPromise){
     downloadsDbPromise = new Promise((resolve, reject) => {
       const req = indexedDB.open(DOWNLOADS_DB_NAME, 2);
-      // Version 2 keys records by account and episode. Version 1 records
-      // had no owner: recreating the store deletes them, and their files
-      // (no record any more) are deleted by reconcileDownloadFiles.
+      // v2 keys by account + episode; v1 records (no owner) are dropped
       req.onupgradeneeded = () => {
         const db = req.result;
         if(db.objectStoreNames.contains(DOWNLOADS_STORE)) db.deleteObjectStore(DOWNLOADS_STORE);
         db.createObjectStore(DOWNLOADS_STORE, { keyPath: ['ownerId', 'episodeId'] });
       };
       req.onsuccess = () => {
-        // Another tab needs a newer version (an app update): let it have
-        // the database; this tab reopens it on its next read or write.
+        // Let a newer tab upgrade; reopen on next use
         req.result.onversionchange = () => { req.result.close(); downloadsDbPromise = null; };
         resolve(req.result);
       };
@@ -170,7 +105,7 @@ function openDownloadsDb(){
   return downloadsDbPromise;
 }
 
-// Runs one request in its own transaction; resolves once it's committed.
+// One request in its own transaction
 function downloadsDbRun(mode, makeRequest){
   return openDownloadsDb().then(db => new Promise((resolve, reject) => {
     const tx = db.transaction(DOWNLOADS_STORE, mode);
@@ -185,8 +120,7 @@ function downloadsDbRun(mode, makeRequest){
 
 // ---------- startup ----------
 
-// Resolved once the finished downloads are known. attachEpisodePlayback
-// and the offline start (offline.js) wait on it.
+// Resolves when downloads are known (playback and offline start wait on it)
 const downloadsReady = loadDownloadRecords();
 
 async function loadDownloadRecords(){
@@ -200,19 +134,14 @@ async function loadDownloadRecords(){
   } catch(err){
     console.error('Narrava: failed to read downloads', err);
   }
-  // IndexedDB can answer before the scripts after this one have run;
-  // the listeners (buttons, screens) need app.js and friends loaded.
+  // Wait for the other scripts before wiring listeners
   if(document.readyState === 'loading'){
     await new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve, { once: true }));
   }
   notifyDownloadsChanged();
 }
 
-// Deletes files with no finished record (an interrupted download, or one
-// saved before records had an owner), and records whose playlist is gone
-// (the browser cleared the cache but not IndexedDB) — so the list only
-// ever shows what can really play. Covers every account on the device:
-// other accounts' complete downloads are kept.
+// Delete files with no record, and records whose playlist is gone (all accounts)
 async function reconcileDownloadFiles(){
   if(!('caches' in window)) return;
   const cache = await caches.open(DOWNLOADS_CACHE);
@@ -249,10 +178,7 @@ function isEpisodeDownloaded(episodeId){
   return downloadedRecords.has(episodeId);
 }
 
-// The local master playlist for an episode the signed-in account
-// downloaded, or null (not downloaded by this account, files missing, or
-// no service worker controlling this page yet — only the service worker
-// can answer offline/… URLs).
+// Local master playlist for this account's download, or null (also null with no service worker)
 async function localPlaybackUrl(episodeId){
   await downloadsReady;
   const record = downloadedRecords.get(episodeId);
@@ -268,9 +194,7 @@ async function localPlaybackUrl(episodeId){
   return url;
 }
 
-// Episode rows (the same shape fetchEpisodesForSeries returns) for the
-// downloaded episodes of one series — used when the server can't be
-// reached (feed-data.js) and for series built from downloads offline.
+// Episode rows for this account's downloads in one series
 function downloadedEpisodeRows(seriesId){
   return [...downloadedRecords.values()]
     .filter(r => r.seriesId === seriesId)
@@ -285,8 +209,7 @@ function downloadedEpisodeRows(seriesId){
     }));
 }
 
-// A feed slide (same shape as fetchSlides' slides) for a series known
-// only from its downloads: offline, or a series no longer published.
+// Feed slide for a series known only from its downloads
 function buildDownloadedSeriesSlide(seriesId){
   const episodes = downloadedEpisodeRows(seriesId);
   if(!episodes.length) return null;
@@ -309,28 +232,25 @@ function buildDownloadedSeriesSlide(seriesId){
     locked: false,
     lockedEpisode: null,
     likes: 0, saved: false, liked: false, commentCount: 0, saves: 0, shares: 0,
-    socialLoaded: true, // nothing to fetch for it offline
+    socialLoaded: true,
     freeEpisodeCount: first.freeEpisodeCount || 0,
     art: coverRecord
       ? { type: 'img', src: offlineCoverUrl(coverRecord) }
       : { type: 'markup', markup: '<div class="downloaded-art-blank"></div>' }
   };
-  setActiveEpisode(slide, episodes[0]); // app.js — downloaded episodes count as unlocked (coins.js)
+  setActiveEpisode(slide, episodes[0]); // downloads count as unlocked
   return slide;
 }
 
-// Plays a downloaded episode in the normal player: the mobile feed or the
-// desktop Watch page (openSeriesInFeed), at the saved position if
-// there is one. attachEpisodePlayback then picks the local copy.
+// Play a download in the normal player, at the saved position
 async function playDownloadedEpisode(episodeId){
   const record = downloadedRecords.get(episodeId);
   if(!record) return;
-  await slidesReady; // app.js
+  await slidesReady;
   let i = slides.findIndex(s => s.id === record.seriesId);
   const slide = i === -1 ? null : slides[i];
   if(slide && slide.episodesLoaded && !slide.episodes.some(e => e.id === episodeId)){
-    // This session's episode list for the series doesn't have it (the
-    // list came from the server while it couldn't be reached): add it.
+    // Add it if this session's episode list doesn't have it
     slide.episodes = slide.episodes.concat(downloadedEpisodeRows(record.seriesId).filter(e => e.id === episodeId))
       .sort((a, b) => a.episode_number - b.episode_number);
   }
@@ -340,7 +260,7 @@ async function playDownloadedEpisode(episodeId){
     slides.push(built);
     i = slides.length - 1;
   }
-  const saved = continueWatchingMap.get(record.seriesId); // app.js — empty offline
+  const saved = continueWatchingMap.get(record.seriesId); // empty offline
   const position = (saved && saved.episode_id === episodeId) ? saved.position_seconds : 0;
   openSeriesInFeed(i, { episode_id: episodeId, position_seconds: position, exactEpisode: true });
 }
@@ -360,7 +280,7 @@ async function requestDownloadLink(episodeId){
       body: JSON.stringify({ episodeId, purpose: 'download' })
     }), DOWNLOAD_LINK_TIMEOUT_MS);
   } catch(_err){
-    throw new DownloadError('No connection to the server. Check your internet and try again.');
+    throw new DownloadError('Can’t reach the server. Check your internet.');
   }
   let data = null;
   try { data = await res.json(); } catch(_err){ /* not JSON */ }
@@ -368,22 +288,19 @@ async function requestDownloadLink(episodeId){
     throw new DownloadError((data && (data.error || data.message)) || 'Downloads are for subscribers');
   }
   if(!res.ok || !data || !data.playbackUrl){
-    throw new DownloadError('The server couldn’t prepare this episode for download (error ' + res.status + ').');
+    throw new DownloadError('Couldn’t prepare this download. Try again.');
   }
   return { playbackUrl: data.playbackUrl, expiresAt: data.expiresAt };
 }
 
-// A fresh link (purpose 'download' again — the server decides again) if
-// Bunny starts refusing because the 30-minute link ran out mid-download.
+// Fresh 'download' link when the 30-minute one runs out
 async function refreshDownloadAuth(job){
   assertDownloadOwner(job);
   const fresh = await requestDownloadLink(job.info.episodeId);
   job.authQuery = new URL(fresh.playbackUrl).search;
 }
 
-// GET a whole file, body included, or reject after `ms` — a request that
-// stalls part-way (seen live: a download sat at 97% for minutes) is
-// aborted instead of hanging the download forever.
+// Whole file or reject after ms (a stalled request is aborted)
 async function fetchBodyWithTimeout(url, as, ms, init){
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), ms);
@@ -396,10 +313,7 @@ async function fetchBodyWithTimeout(url, as, ms, init){
   }
 }
 
-// GET a Bunny file (as 'text' or 'blob') with the token query on it —
-// the same rule hls.js's requests follow (bunnyAuthorizedUrl,
-// video-player.js). A network failure or a stall is retried twice; a
-// 401/403 (the 30-minute link ran out) gets one fresh link.
+// Bunny file with the token query. Retries twice; one fresh link on 401/403.
 async function fetchFromBunny(job, url, as){
   let networkFailures = 0;
   let refreshedAuth = false;
@@ -409,7 +323,7 @@ async function fetchFromBunny(job, url, as){
       result = await fetchBodyWithTimeout(bunnyAuthorizedUrl(url, job.authQuery), as, DOWNLOAD_FILE_TIMEOUT_MS, { cache: 'no-store' });
     } catch(_err){
       if(networkFailures >= DOWNLOAD_NETWORK_RETRIES){
-        throw new DownloadError('The connection dropped while downloading. Check your internet and try again.');
+        throw new DownloadError('Connection lost while downloading. Check your internet and retry.');
       }
       networkFailures++;
       await new Promise(r => setTimeout(r, 1000 * networkFailures));
@@ -421,7 +335,7 @@ async function fetchFromBunny(job, url, as){
       await refreshDownloadAuth(job);
       continue;
     }
-    throw new DownloadError('The video server refused part of this episode (error ' + result.status + ').');
+    throw new DownloadError('The video server refused this download. Try again.');
   }
 }
 
@@ -451,8 +365,7 @@ function parseMasterPlaylist(text){
   return variants;
 }
 
-// 720p (short side 720 — Narrava's videos are portrait, 720x1280), else
-// the highest below it, else the lowest above it.
+// 720p (short side 720), else the highest below, else the lowest above
 function pickDownloadRendition(variants){
   const sized = variants.filter(v => v.width && v.height);
   if(!sized.length) return variants.slice().sort((a, b) => b.bandwidth - a.bandwidth)[0] || null;
@@ -462,11 +375,10 @@ function pickDownloadRendition(variants){
   return sized.sort((a, b) => side(a) - side(b) || a.bandwidth - b.bandwidth)[0];
 }
 
-// Every file a media playlist references (segments, plus any key or init
-// file), each with the local name it will be saved under.
+// Files a media playlist references, with their local names
 function parseMediaPlaylist(text){
   const lines = text.split(/\r?\n/);
-  const files = new Map(); // remote uri -> local name
+  const files = new Map();
   let duration = 0;
   let segmentCount = 0, keyCount = 0, mapCount = 0;
   const extOf = (uri, fallback) => {
@@ -490,8 +402,7 @@ function parseMediaPlaylist(text){
   return { lines, files, duration, segmentCount };
 }
 
-// The playlist with every reference swapped for its local name (relative,
-// so it resolves to offline/<episodeId>/… — never Bunny, never a token).
+// Playlist with every reference made local (no Bunny URLs, no token)
 function rewriteMediaPlaylist(parsed){
   return parsed.lines.map(raw => {
     const line = raw.trim();
@@ -519,9 +430,7 @@ function formatBytes(bytes){
   return Math.max(1, Math.round(n / 1024)) + ' KB';
 }
 
-// Asked before the first download so the browser is less likely to clear
-// downloads to make room (a request, not a guarantee — see
-// DOCUMENTATION.md; Safari may still clear storage of an unused app).
+// Ask the browser not to clear downloads (a request, not a guarantee)
 async function requestPersistentStorage(){
   try {
     if(navigator.storage && navigator.storage.persist && !(await navigator.storage.persisted())){
@@ -540,8 +449,7 @@ async function checkDownloadSpace(estimatedBytes){
   const free = estimate.quota - (estimate.usage || 0);
   const needed = Math.ceil(estimatedBytes * 1.1) + DOWNLOAD_SPACE_MARGIN_BYTES;
   if(free < needed){
-    throw new DownloadError('Not enough space on this device for this episode (it needs about ' + formatBytes(estimatedBytes) +
-      ', and only ' + formatBytes(Math.max(0, free)) + ' is free for Narrava). Delete some downloads or free up space, then try again.');
+    throw new DownloadError('Not enough space (needs about ' + formatBytes(estimatedBytes) + '). Free up space and try again.');
   }
 }
 
@@ -553,9 +461,7 @@ async function deleteDownloadFiles(ownerId, episodeId){
   await Promise.all(keys.filter(req => req.url.startsWith(prefix)).map(req => cache.delete(req)));
 }
 
-// A download is for the account that started it. If someone else signs
-// in (or nobody is signed in any more), it stops at its next step and its
-// files are deleted.
+// Stop and delete if the account changed
 function assertDownloadOwner(job){
   if(job.ownerId !== downloadOwnerId) throw new DownloadError('The account changed, so this download stopped.');
 }
@@ -567,7 +473,7 @@ async function runDownload(job){
   try {
     if(!('caches' in window) || !window.indexedDB) throw new DownloadError('This browser can’t keep downloads.');
     const cache = await caches.open(DOWNLOADS_CACHE);
-    await deleteDownloadFiles(job.ownerId, info.episodeId); // leftovers from an earlier failed attempt
+    await deleteDownloadFiles(job.ownerId, info.episodeId); // leftovers from an earlier attempt
     await requestPersistentStorage();
     assertDownloadOwner(job);
 
@@ -592,7 +498,7 @@ async function runDownload(job){
     const bitsPerSecond = rendition ? (rendition.averageBandwidth || rendition.bandwidth) : 0;
     await checkDownloadSpace(bitsPerSecond ? (bitsPerSecond / 8) * media.duration : 0);
 
-    // The files, a few at a time, each straight into the cache.
+    // Files, a few at a time
     const entries = [...media.files.entries()];
     const totalSteps = entries.length + 1; // + the cover
     let doneSteps = 0;
@@ -615,8 +521,7 @@ async function runDownload(job){
     };
     await Promise.all(Array.from({ length: DOWNLOAD_PARALLEL_FILES }, worker));
 
-    // The cover, so Downloads shows it offline. Optional: a cover that
-    // can't be fetched just shows a plain tile.
+    // Cover (optional)
     let hasCover = false;
     if(info.coverImageUrl){
       try {
@@ -633,7 +538,7 @@ async function runDownload(job){
     }
     step();
 
-    // The rewritten playlists: one rendition, every reference local.
+    // Rewritten playlists
     const localMedia = rewriteMediaPlaylist(media);
     const localMaster = rendition ? '#EXTM3U\n' + rendition.infLine + '\nvideo.m3u8\n' : null;
     const saved = localMedia + (localMaster || '');
@@ -645,7 +550,7 @@ async function runDownload(job){
     await cache.put(base + 'master.m3u8', new Response(localMaster || localMedia, { headers: playlistType }));
     sizeBytes += localMedia.length + (localMaster ? localMaster.length : 0);
 
-    // Last: the record that makes it a finished download.
+    // Record last: only now is it a finished download
     assertDownloadOwner(job);
     const record = {
       ownerId: job.ownerId,
@@ -674,11 +579,7 @@ async function runDownload(job){
 
 // ---------- queue ----------
 
-// info: { episodeId, seriesId, seriesTitle, seriesEpisodeCount,
-// freeEpisodeCount, episodeNumber, episodeTitle, bunnyVideoId,
-// durationSeconds, coverImageUrl } — ids and display details only. The
-// download is for the account signed in now (a guest's fails with "Sign
-// in to download episodes.").
+// info: ids and display details only. For the account signed in now.
 function startEpisodeDownload(info){
   if(!info || !info.episodeId || downloadedRecords.has(info.episodeId)) return;
   const existing = downloadJobs.get(info.episodeId);
@@ -686,7 +587,7 @@ function startEpisodeDownload(info){
   downloadJobs.set(info.episodeId, { info, ownerId: downloadOwnerId, status: 'queued', percent: 0, error: null });
   downloadQueue.push(info.episodeId);
   notifyDownloadsChanged();
-  if(activeDownloadId) showToast('Added to downloads — it starts after the current one');
+  if(activeDownloadId) showToast('Queued. Starts after the current download.');
   pumpDownloadQueue();
 }
 
@@ -707,11 +608,11 @@ async function pumpDownloadQueue(){
   } catch(err){
     console.error('Narrava: download failed', err);
     if(job.ownerId && job.ownerId !== downloadOwnerId){
-      // Stopped because the account changed: not for whoever is signed in now.
+      // Stopped because the account changed
       if(downloadJobs.get(episodeId) === job) downloadJobs.delete(episodeId);
     } else {
       job.status = 'failed';
-      job.error = (err instanceof DownloadError) ? err.message : 'Something went wrong while saving the episode. Please try again.';
+      job.error = (err instanceof DownloadError) ? err.message : 'Couldn’t save the episode. Try again.';
       showToast('Download failed: ' + job.error);
     }
   }
@@ -720,7 +621,7 @@ async function pumpDownloadQueue(){
   pumpDownloadQueue();
 }
 
-// Any account's download: its record, then its files.
+// Any account's download: record, then files
 async function deleteDownloadRecord(record){
   try {
     await downloadsDbRun('readwrite', store => store.delete([record.ownerId, record.episodeId]));
@@ -732,15 +633,14 @@ async function deleteDownloadRecord(record){
   try { await deleteDownloadFiles(record.ownerId, record.episodeId); } catch(err){ console.error('Narrava: failed to delete download files', err); }
 }
 
-// One of the signed-in account's downloads.
+// One of this account's downloads
 async function removeDownload(episodeId, opts){
   const record = downloadedRecords.get(episodeId);
   if(record) await deleteDownloadRecord(record);
   if(!(opts && opts.quiet)) notifyDownloadsChanged();
 }
 
-// The signed-in account's finished downloads only — other accounts' stay
-// on the device, and one still in progress carries on.
+// This account's finished downloads only
 async function removeAllDownloads(){
   for(const episodeId of [...downloadedRecords.keys()]) await removeDownload(episodeId, { quiet: true });
   ownDownloadJobs().forEach(([id, job]) => { if(job.status === 'failed') downloadJobs.delete(id); });
@@ -753,7 +653,7 @@ function downloadsTotalBytes(){
   return total;
 }
 
-// ---------- the Download buttons (feed rail + Watch page) ----------
+// ---------- Download buttons (feed rail + Watch page) ----------
 
 const DOWNLOAD_ICONS = {
   download: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m-5-5l5 5 5-5M4 20h16"/></svg>',
@@ -783,12 +683,11 @@ function downloadInfoFor(slide, ep){
     episodeTitle: ep.title || null,
     bunnyVideoId: ep.bunny_video_id || null,
     durationSeconds: ep.duration_seconds || null,
-    coverImageUrl: posterArtSrc(slide) || null // discover.js
+    coverImageUrl: posterArtSrc(slide) || null
   };
 }
 
-// The episode each button is for right now, or null: the feed's current
-// episode, and the Watch page's playing episode.
+// Episode each button is for: the feed's current one, the Watch page's playing one
 function feedDownloadTarget(){
   const s = slides[idx];
   if(!s || s.locked || !s.activeEpisode || !s.activeEpisode.bunny_video_id) return null;
@@ -803,8 +702,7 @@ function watchDownloadTarget(){
 
 function paintDownloadButton(btn, target){
   if(!btn) return;
-  // Only active subscribers see it (the server still decides). A former
-  // subscriber's existing downloads stay in the Downloads screen.
+  // Subscribers only (the server still decides)
   if(!target || !hasActiveSubscription()){ btn.hidden = true; return; }
   btn.hidden = false;
   const st = downloadStateFor(target.episodeId);
@@ -835,7 +733,7 @@ function onDownloadButtonTap(target){
   const st = downloadStateFor(target.episodeId);
   if(st.state === 'downloaded'){ openDownloadsScreen(); return; }
   if(st.state === 'downloading'){ showToast('Downloading… ' + (st.percent || 0) + '%'); return; }
-  if(st.state === 'queued'){ showToast('Waiting for the current download to finish'); return; }
+  if(st.state === 'queued'){ showToast('Waiting for the current download'); return; }
   startEpisodeDownload(target); // 'none' or 'failed' (retry)
 }
 
@@ -844,7 +742,7 @@ document.getElementById('watchDownloadBtn').addEventListener('click', () => onDo
 document.addEventListener('narrava:downloads-changed', refreshDownloadButtons);
 document.addEventListener('narrava:coins-changed', refreshDownloadButtons);
 
-// ---------- the Downloads screen ----------
+// ---------- Downloads screen ----------
 
 const downloadsBody = document.getElementById('downloadsBody');
 const downloadsBackBtn = document.getElementById('downloadsBackBtn');
@@ -854,9 +752,7 @@ function openDownloadsScreen(){
   renderDownloadsScreen();
 }
 
-// Profile's Download row and tile: Downloads for subscribers (and for
-// anyone who already has downloads, or is offline and can't be checked);
-// Membership, with a line saying why, for everyone else.
+// Profile's Download row: Downloads for subscribers (or anyone with downloads / offline), else Membership
 function openDownloadsFromProfile(){
   if(hasActiveSubscription() || downloadedRecords.size || ownDownloadJobs().length || appIsOffline()){
     openDownloadsScreen();
@@ -919,7 +815,7 @@ function renderDownloadsScreen(){
   html += '<div class="downloads-summary">' +
       '<div><div class="downloads-summary-label">Storage used</div>' +
       '<div class="downloads-summary-value">' + formatBytes(downloadsTotalBytes()) + '</div>' +
-      '<div class="downloads-summary-sub">' + records.length + ' episode' + (records.length === 1 ? '' : 's') + ' · kept inside Narrava on this device</div></div>' +
+      '<div class="downloads-summary-sub">' + records.length + ' episode' + (records.length === 1 ? '' : 's') + ' · on this device</div></div>' +
       (records.length ? '<button type="button" class="help-secondary-btn downloads-delete-all" id="downloadsDeleteAllBtn">Delete all</button>' : '') +
     '</div>';
 
@@ -932,7 +828,7 @@ function renderDownloadsScreen(){
     html += '<div class="discover-empty">No downloads yet.</div>';
   }
 
-  // Grouped by series (alphabetical), episodes in order.
+  // By series (A-Z), episodes in order
   const bySeries = new Map();
   records.forEach(r => {
     if(!bySeries.has(r.seriesId)) bySeries.set(r.seriesId, []);
@@ -978,7 +874,7 @@ document.addEventListener('narrava:downloads-changed', () => {
 });
 downloadsBackBtn.addEventListener('click', () => navBack());
 
-// ---------- delete confirmation (the app's own modal, not confirm()) ----------
+// ---------- Delete confirmation ----------
 
 const downloadConfirmBackdrop = document.createElement('div');
 downloadConfirmBackdrop.className = 'auth-modal-backdrop';

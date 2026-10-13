@@ -1,36 +1,17 @@
-// ads.js
-//
-// "Watch ads to unlock episodes": Google rewarded ads for the web (Google
-// Publisher Tag), on top of the server's ad ladder. Same rule as coins.js:
-// the browser only DISPLAYS what the server says and ASKS it to act. It
-// never counts ads or earned episodes itself:
-//
-//   - status:  rpc my_ad_status() (ads_enabled, eligible, ads_today,
-//              episodes_available, ads_needed_for_next, daily_limit_reached…),
-//              held as-is in adState.status.
-//   - reward:  rpc record_ad_view(), called ONLY from GPT's
-//              rewardedSlotGranted event. The server decides whether it
-//              counts (at most 30 a day, 20 s apart, real 0-coin accounts
-//              without a subscription).
-//   - unlock:  rpc unlock_episode_with_ad(p_episode_id), from the unlock
-//              prompt (coins.js renders this file's section into it).
-//
-// gpt.js is loaded only when someone taps "Watch ad", never on page load.
+// Watch ads to unlock (Google rewarded ads). The server counts ads and unlocks;
+// this file only shows its status and asks it to act. gpt.js loads on first "Watch ad".
 
-// The rewarded ad unit. This is Google's public TEST unit, so everything can
-// be built and tested before Narrava's own Google Ad Manager account is
-// approved. Replace it with Narrava's real unit path once approved
-// (e.g. '/<network code>/<ad unit code>') — it is the only line to change.
+// Google's public TEST ad unit. Swap for Narrava's real unit once approved.
 const NARRAVA_REWARDED_AD_UNIT = '/22639388115/rewarded_web_example';
 
 const GPT_SRC = 'https://securepubads.g.doubleclick.net/tag/js/gpt.js';
-// If Google neither fills nor reports "empty" in this time, give up honestly.
+// Give up if Google neither fills nor reports empty
 const AD_LOAD_TIMEOUT_MS = 20000;
 
 const adState = {
-  status: null,     // my_ad_status()'s row, as the server sent it, or null
+  status: null,     // my_ad_status() row, or null
   phase: 'idle',    // 'idle' | 'loading' | 'showing' | 'recording' | 'unlocking'
-  message: null,    // { tone: 'ok'|'warn'|'error', text } shown in the ads section
+  message: null,    // { tone: 'ok'|'warn'|'error', text }
 };
 
 function adFlowBusy(){
@@ -46,8 +27,7 @@ function setAdMessage(tone, text){
   notifyAdsChanged();
 }
 
-// my_ad_status / record_ad_view / unlock_episode_with_ad all hand back the
-// fresh ad status. Accept it either nested or as the row's own columns.
+// Ad status from an RPC row, nested or flat
 function adStatusFromRow(row){
   if(!row) return null;
   const nested = row.ad_status || null;
@@ -73,8 +53,7 @@ async function refreshAdStatus(){
   return adState.status;
 }
 
-// Whether the unlock prompt gets an ads section at all. People with coins,
-// subscribers, anonymous visitors and Ad Unlock switched off: no.
+// Ads section only for signed-in 0-coin accounts without a subscription, when enabled
 function adsSectionVisible(){
   const s = adState.status;
   return !!(coinState.isRealAccount && coinState.balance === 0 && !hasActiveSubscription() &&
@@ -101,9 +80,7 @@ function loadGpt(){
   return gptScriptPromise;
 }
 
-// One rewarded ad, start to finish. Resolves with
-// { outcome: 'granted'|'closed'|'no_fill'|'unsupported'|'blocked', record }
-// where record is record_ad_view's row (only for 'granted').
+// One rewarded ad. Resolves { outcome: 'granted'|'closed'|'no_fill'|'unsupported'|'blocked', record }
 let activeAd = null; // { cancel } while an ad is loading or showing
 
 function runRewardedAd(){
@@ -118,7 +95,7 @@ function runRewardedAd(){
       activeAd = null;
       try {
         listeners.forEach(([type, fn]) => googletag.pubads().removeEventListener(type, fn));
-        if(slot) googletag.destroySlots([slot]); // the next request starts clean
+        if(slot) googletag.destroySlots([slot]);
       } catch(err){ console.error('Narrava: could not clean up the ad slot', err); }
       clearRewardedHash();
       Promise.resolve(recordPromise).then(record => resolve({ outcome, record: record || null }));
@@ -134,7 +111,6 @@ function runRewardedAd(){
       if(finished) return;
       slot = googletag.defineOutOfPageSlot(NARRAVA_REWARDED_AD_UNIT, googletag.enums.OutOfPageFormat.REWARDED);
       if(!slot){
-        // GPT returns null when this page/browser doesn't support rewarded.
         console.warn('Narrava: rewarded ads are not supported in this environment');
         finish('unsupported');
         return;
@@ -151,10 +127,8 @@ function runRewardedAd(){
         clearTimeout(timer);
         adState.phase = 'showing';
         notifyAdsChanged();
-        // The episode behind the ad stops, so the two are never heard at
-        // once. It stays paused after the ad; the person resumes it.
+        // Pause the episode behind the ad
         pauseEpisodesForAd();
-        // The person already opted in by tapping "Watch ad".
         event.makeRewardedVisible();
       });
       on('rewardedSlotGranted', () => {
@@ -174,20 +148,18 @@ function runRewardedAd(){
   });
 }
 
-// Mobile feed (app.js) and desktop Watch page (watch.js).
 function pauseEpisodesForAd(){
   if(typeof pauseCurrentFeedEpisode === 'function') pauseCurrentFeedEpisode();
   if(typeof pauseCurrentWatchEpisode === 'function') pauseCurrentWatchEpisode();
 }
 
-// GPT leaves "#goog_rewarded" in the URL after an ad. Drop it from the
-// current entry in place (no new history entry, its state kept as-is).
+// Drop "#goog_rewarded" from the URL in place
 function clearRewardedHash(){
   if(location.hash !== '#goog_rewarded') return;
   history.replaceState(history.state, '', location.pathname + location.search);
 }
 
-// Never called except from rewardedSlotGranted.
+// Only from rewardedSlotGranted
 async function recordAdView(){
   try {
     const { data, error } = await supabaseClient.rpc('record_ad_view');
@@ -203,21 +175,20 @@ async function recordAdView(){
 }
 
 const RECORD_AD_MESSAGES = {
-  too_soon: ['warn', 'Please wait a few seconds before the next ad.'],
-  daily_limit: ['warn', 'You’ve used today’s ad unlocks. Come back tomorrow, or get Nava Coins.'],
-  has_coins: ['warn', 'You have Nava Coins, so ads aren’t needed to unlock episodes.'],
-  subscribed: ['warn', 'You’re subscribed, so every episode is already unlocked.'],
-  ads_disabled: ['warn', 'Watching ads to unlock isn’t available right now.']
+  too_soon: ['warn', 'Wait a few seconds before the next ad.'],
+  daily_limit: ['warn', 'Today’s ad unlocks are used up. Come back tomorrow or get Nava Coins.'],
+  has_coins: ['warn', 'You have Nava Coins, so no ads needed.'],
+  subscribed: ['warn', 'You’re subscribed. Every episode is unlocked.'],
+  ads_disabled: ['warn', 'Ad unlocks aren’t available right now.']
 };
 
 const AD_OUTCOME_MESSAGES = {
-  no_fill: 'No ad available right now, please try again later.',
-  unsupported: 'Ads can’t be shown on this device or browser. Please try again later, or get Nava Coins.',
-  blocked: 'The ad couldn’t load. If you use an ad blocker, pause it for Narrava, or try again later.',
-  closed: 'The ad was closed before the end, so it didn’t count.'
+  no_fill: 'No ad available. Try again later.',
+  unsupported: 'Ads can’t play on this device. Try later or get Nava Coins.',
+  blocked: 'The ad couldn’t load. Pause any ad blocker and try again.',
+  closed: 'Ad closed early, so it didn’t count.'
 };
 
-// The "Watch ad" button.
 async function watchAdForUnlock(){
   if(adFlowBusy() || !adsSectionVisible()) return;
   adState.phase = 'loading';
@@ -236,7 +207,6 @@ async function watchAdForUnlock(){
     return;
   }
 
-  // The server's answer decides what happened.
   adState.phase = 'recording';
   notifyAdsChanged();
   const status = record && record.status;
@@ -252,16 +222,15 @@ async function watchAdForUnlock(){
     const s = adState.status;
     setAdMessage('ok', s && s.episodes_available > 0 ? 'Ad counted. You can unlock episodes now.' : 'Ad counted.');
   } else if(status === 'daily_limit' && adsSectionVisible()){
-    setAdMessage(null, null); // the section itself now says the limit is reached
+    setAdMessage(null, null);
   } else if(RECORD_AD_MESSAGES[status]){
     showAdOutcome(RECORD_AD_MESSAGES[status][0], RECORD_AD_MESSAGES[status][1]);
   } else {
-    showAdOutcome('error', 'Couldn’t save that ad. Please try again.');
+    showAdOutcome('error', 'Couldn’t save that ad. Try again.');
   }
 }
 
-// In the ads section if it's still shown, otherwise (the server now says
-// this person isn't eligible) as a toast.
+// In the ads section if still shown, otherwise a toast
 function showAdOutcome(tone, text){
   if(adsSectionVisible()) setAdMessage(tone, text);
   else { setAdMessage(null, null); showToast(text); }
@@ -269,13 +238,12 @@ function showAdOutcome(tone, text){
 
 const AD_UNLOCK_MESSAGES = {
   no_ad_unlocks: 'No ad unlocks left. Watch more ads to earn some.',
-  ads_disabled: 'Watching ads to unlock isn’t available right now.',
+  ads_disabled: 'Ad unlocks aren’t available right now.',
   not_found: 'This episode isn’t available',
-  no_profile: 'Your account isn’t ready yet — please try again'
+  no_profile: 'Your account isn’t ready yet. Try again.'
 };
 
-// The "Unlock with ads" button. onSuccess(status) plays the episode the
-// same way the coin unlock does.
+// "Unlock with ads" button
 async function unlockEpisodeWithAd(ep, onSuccess){
   if(adFlowBusy() || !ep) return;
   adState.phase = 'unlocking';
@@ -305,16 +273,15 @@ async function unlockEpisodeWithAd(ep, onSuccess){
     return;
   }
   if(!fresh) await refreshAdStatus();
-  showAdOutcome(status === 'no_ad_unlocks' ? 'warn' : 'error', AD_UNLOCK_MESSAGES[status] || 'Couldn’t unlock the episode — please try again');
+  showAdOutcome(status === 'no_ad_unlocks' ? 'warn' : 'error', AD_UNLOCK_MESSAGES[status] || 'Couldn’t unlock the episode. Try again.');
 }
 
-// Closing the prompt while an ad is still loading drops it, so it can't pop
-// up later over whatever the person went on to do.
+// Closing the prompt drops an ad that's still loading
 function cancelPendingAd(){
   if(activeAd && adState.phase === 'loading') activeAd.cancel();
 }
 
-// ---------- the ads section of the unlock prompt ----------
+// ---------- ads section of the unlock prompt ----------
 
 function adsSectionHtml(){
   if(!adsSectionVisible()) return '';
@@ -327,7 +294,7 @@ function adsSectionHtml(){
       (adState.phase === 'unlocking' ? 'Unlocking…' : 'Unlock with ads (' + s.episodes_available + ' left today)') +
       '</button>';
   } else if(s.daily_limit_reached){
-    html += '<div class="unlock-ads-note">You’ve used today’s ad unlocks. Come back tomorrow, or get Nava Coins.</div>';
+    html += '<div class="unlock-ads-note">Today’s ad unlocks are used up. Come back tomorrow or get Nava Coins.</div>';
   } else {
     const needed = s.ads_needed_for_next;
     const label = { loading: 'Loading ad…', showing: 'Ad playing…', recording: 'Saving…' }[adState.phase] || 'Watch ad';
@@ -353,8 +320,7 @@ function wireAdsSection(container, ctx){
   if(watchBtn) watchBtn.addEventListener('click', watchAdForUnlock);
 }
 
-// Called when the unlock prompt opens: the status is re-read from the
-// server every time, and an old message doesn't linger. Never throws.
+// Re-reads status each time the unlock prompt opens. Never throws.
 async function prepareAdsForPrompt(){
   if(!adFlowBusy()) adState.message = null;
   if(!coinState.isRealAccount || coinState.balance !== 0 || hasActiveSubscription()){

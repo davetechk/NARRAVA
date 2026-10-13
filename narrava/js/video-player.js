@@ -1,38 +1,9 @@
-// video-player.js
-//
-// Real native playback engine shared by the mobile feed (app.js) and
-// the desktop watch page (watch.js) — replaces Bunny's iframe + their
-// player.js entirely, everywhere a video plays. A real <video> element
-// plus hls.js (for browsers without native HLS) is the actual player;
-// this file only owns the two genuinely shared, non-trivial pieces:
-// fetching a real signed playback URL from bunny-signed-playback-url,
-// and wiring hls.js to a <video> element against that URL, including
-// carrying the real signed auth forward onto every request hls.js
-// makes on its own (level playlists, segments — see xhrSetup below),
-// and proactively refreshing that auth before its real, short (~10 min,
-// confirmed live) expiry window closes so a long episode or a long
-// pause never breaks playback partway through.
-//
-// Everything else (play/pause, currentTime, duration, the 'ended'
-// event, scrub-seeking, playback rate) is just the real, direct,
-// synchronous <video> element API — callers use it straight, no wrapper
-// needed for any of that.
-//
-// Real, bounded retry with real backoff for a genuinely failed load
-// (confirmed live: a fatal manifest/network error previously got exactly
-// one ineffective hls.js recovery call and then permanent, silent
-// failure — nothing ever told the caller, so preloadVideo/watchPlayEpisode
-// just sat on a loading spinner forever). MAX_LOAD_RETRIES real attempts
-// beyond the first, with real increasing delays between them — not
-// immediate machine-gun retries, and not infinite either.
+// Playback shared by the feed and the watch page: signed URL, hls.js wiring,
+// auth refresh before expiry, bounded retries, view counting
 const MAX_LOAD_RETRIES = 3;
 const RETRY_BACKOFF_MS = [1000, 2000, 4000];
 
-// Called once per real episode a viewer is actually entitled to see.
-// Returns {playbackUrl, expiresAt} on success. Returns null on ANY
-// refusal — not signed in, or the function's own real "not unlocked"
-// check — and that refusal is final: callers must never fall back to
-// a different URL or guess a way to play anyway (see app.js/watch.js).
+// {playbackUrl, expiresAt}, or null on any refusal (never fall back to another URL)
 async function fetchSignedPlaybackUrl(episodeId){
   const { data: sessionData } = await supabaseClient.auth.getSession();
   const accessToken = sessionData && sessionData.session ? sessionData.session.access_token : null;
@@ -56,15 +27,7 @@ async function fetchSignedPlaybackUrl(episodeId){
   return { playbackUrl: data.playbackUrl, expiresAt: data.expiresAt };
 }
 
-// Confirmed live (see the real, redeployed bunny-signed-playback-url):
-// the real auth Bunny checks sits in the query string of the master
-// playlist URL, but the master's own content only ever references its
-// resolution sub-playlists and their real segments by RELATIVE path —
-// plain HLS relative-URL resolution drops a base URL's query string,
-// so hls.js's own level/fragment requests would silently lose that
-// auth unless it's put back on every one of them. Re-attached only
-// when a request URL doesn't already carry it (the master's own first
-// request already has it from loadSource).
+// Re-attach the signed query to hls.js's relative playlist/segment requests
 function narravaHlsXhrSetup(getAuthQuery){
   return function(xhr, url){
     if(url.indexOf('token=') === -1){
@@ -73,54 +36,17 @@ function narravaHlsXhrSetup(getAuthQuery){
   };
 }
 
-// The rule above as a plain function: `url` with the signed query
-// (authQuery, e.g. "?token=…&expires=…") put back on, unless it already
-// carries a token. downloads.js fetches every playlist and segment of a
-// download through this same rule.
+// url with the signed query, unless it already has a token
 function bunnyAuthorizedUrl(url, authQuery){
   if(url.indexOf('token=') !== -1 || !authQuery) return url;
   const sep = url.indexOf('?') === -1 ? '?' : '&';
   return url + sep + authQuery.replace(/^\?/, '');
 }
 
-// Wires a real episode's real signed HLS stream to a real <video>
-// element — used both for the mobile feed's instant-start preloading
-// (an off-screen element, moved into place once ready — see app.js)
-// and the desktop watch page's single active player (see watch.js).
-// Resolves once hls.js has actually parsed the real manifest (or
-// immediately, for a browser with native HLS support — Safari — which
-// needs no hls.js at all). Returns null if the real signed URL was
-// refused (see fetchSignedPlaybackUrl) — callers must treat that
-// exactly like a locked episode, never play anything in that case.
-//
-// The returned controller's only job past setup is keeping the real
-// auth fresh for as long as this episode stays active: it reschedules
-// itself against each real expiresAt it receives, refetching a new
-// signed URL for this same episode and handing hls.js's in-flight
-// requests the new auth — playback itself is never interrupted or
-// reloaded to do this, since the auth is re-read fresh on every
-// request hls.js makes (see narravaHlsXhrSetup), not baked in once.
-//
-// onFailure (optional) is the real signal callers were never given
-// before: called at most once, only once every real bounded retry
-// attempt above has genuinely been exhausted — never for a transient
-// error still being retried, never guessed at speculatively. Every
-// real place a video gets loaded from (preloadVideo's warm-ahead
-// preloading, a normal swipe or the jump grid landing on it while
-// current, Continue Watching's resume, and the desktop watch page)
-// goes through this one function, so wiring the signal in here once
-// covers all of them — never a second retry/failure mechanism built
-// per caller.
-//
-// An episode the signed-in account downloaded (downloads.js) plays from
-// this device instead: its local playlist
-// (offline/<ownerId>/<episodeId>/master.m3u8, served by sw.js
-// from the downloads cache) goes into the same player with the same
-// retries and the same failure signal, but with no signed URL, no token
-// and no auth refresh — online too, which saves data. Everything that
-// uses the returned controller stays the same.
+// Attach an episode to a <video>. null if refused (treat as locked).
+// Downloaded episodes play from the device. onFailure fires once, after all retries.
 async function attachEpisodePlayback(videoEl, episodeId, onFailure){
-  const localUrl = await localPlaybackUrl(episodeId); // downloads.js — null unless this account downloaded it
+  const localUrl = await localPlaybackUrl(episodeId); // null unless this account downloaded it
   const isLocal = !!localUrl;
   const signed = isLocal ? { playbackUrl: localUrl, expiresAt: null } : await fetchSignedPlaybackUrl(episodeId);
   if(!signed) return null;
@@ -134,26 +60,15 @@ async function attachEpisodePlayback(videoEl, episodeId, onFailure){
   let nativeRetries = 0;
   const usingNativeHls = !(window.Hls && Hls.isSupported());
   if(usingNativeHls && !videoEl.canPlayType('application/vnd.apple.mpegurl')){
-    return null; // genuinely no way to play HLS in this browser
+    return null; // no HLS support
   }
 
-  // Refetches a real signed URL for this same episode and rotates the
-  // auth every future request will use — called proactively, ~30s
-  // ahead of the real expiry, and also right away if a fragment/level
-  // load ever genuinely comes back unauthorized (a real clock race
-  // between the proactive timer and Bunny's own expiry), so either
-  // path recovers the exact same way. Under hls.js this never touches
-  // playback — every future request just reads the rotated auth fresh
-  // (see narravaHlsXhrSetup). A browser playing the manifest natively
-  // (Safari) has no per-request hook to rotate, so there the real
-  // fix is reassigning `src` to the freshly-signed URL — which the
-  // browser treats as a real reload, so the exact real currentTime and
-  // paused state are captured first and restored once the new source
-  // is actually ready, rather than silently restarting the episode.
+  // New signed URL ~30s before expiry, or on a 401/403.
+  // Safari: reassign src and restore time/paused state.
   async function refreshAuth(){
-    if(destroyed || isLocal) return; // a local copy has no auth to refresh
+    if(destroyed || isLocal) return;
     const fresh = await fetchSignedPlaybackUrl(episodeId);
-    if(destroyed || !fresh) return; // episode no longer playable (e.g. lost its unlock) — nothing to recover into
+    if(destroyed || !fresh) return; // no longer playable
     authQuery = new URL(fresh.playbackUrl).search;
     scheduleRefresh(fresh.expiresAt);
     if(usingNativeHls){
@@ -177,9 +92,7 @@ async function attachEpisodePlayback(videoEl, episodeId, onFailure){
   }
   scheduleRefresh(signed.expiresAt);
 
-  // Every real attempt genuinely exhausted — the one thing the old code
-  // never did. Fires onFailure at most once, then tears the real dead
-  // playback attempt down the same way any other teardown does.
+  // All retries used: fire onFailure once and tear down
   function failPermanently(){
     if(destroyed) return;
     destroy();
@@ -193,9 +106,7 @@ async function attachEpisodePlayback(videoEl, episodeId, onFailure){
     hls.on(Hls.Events.ERROR, (_evt, data) => {
       const unauthorized = !isLocal && data && data.response && (data.response.code === 401 || data.response.code === 403);
       if(unauthorized){
-        // A real request lost the race against expiry — refresh right
-        // now instead of waiting for the proactive timer, then let
-        // hls.js's own retry pick the new auth up on its next attempt.
+        // Lost the race against expiry: refresh now
         refreshAuth();
         return;
       }
@@ -208,15 +119,7 @@ async function attachEpisodePlayback(videoEl, episodeId, onFailure){
           networkRetries++;
           retryTimer = setTimeout(() => {
             if(destroyed) return;
-            // Confirmed live: hls.startLoad() alone never actually
-            // recovers a fatal manifest-stage failure (manifestLoadError/
-            // manifestLoadTimeOut/manifestParsingError) — there's no
-            // manifest yet for it to resume loading from, so it silently
-            // no-ops, which is exactly how this got permanently stuck
-            // before with zero further errors ever firing. The real
-            // recovery there is re-fetching the manifest itself.
-            // startLoad() remains correct for a later-stage (level/
-            // fragment) failure, where a manifest genuinely did load.
+            // Manifest-stage failure: startLoad() can't recover it, reload the manifest
             if(data.details && data.details.indexOf('manifestLoad') === 0){
               hls.loadSource(signed.playbackUrl);
             } else {
@@ -239,12 +142,7 @@ async function attachEpisodePlayback(videoEl, episodeId, onFailure){
     hls.loadSource(signed.playbackUrl);
     hls.attachMedia(videoEl);
   } else {
-    // Real native HLS support (Safari/iOS) — no hls.js needed; the
-    // browser's own network stack fetches sub-playlists/segments
-    // straight from the manifest's relative paths using this same
-    // signed URL's query, same as hls.js's first request does. Same
-    // real bounded retry+backoff as the hls.js path above — a genuine
-    // load failure here previously had no retry of any kind.
+    // Native HLS (Safari): same retry and backoff
     onNativeVideoError = () => {
       if(destroyed) return;
       if(nativeRetries >= MAX_LOAD_RETRIES){ failPermanently(); return; }
@@ -271,19 +169,8 @@ async function attachEpisodePlayback(videoEl, episodeId, onFailure){
   return { hls, destroy, isLocal };
 }
 
-// ================= Real episode-view counting =================
-//
-// Counts a real episode view only once real genuine watching has
-// happened — 3 real seconds of actual playback, counted only while the
-// video is truly playing (not paused, buffering, or seeking) — and only
-// once per episode per page session. Shared by both real players (the
-// mobile For You feed, app.js, and the desktop Watch page, watch.js) so
-// the same real rule is enforced identically in both places instead of
-// two separate implementations drifting apart. Fire and forget: the RPC
-// call never blocks or delays playback, and a failure only ever reaches
-// the console, never the viewer. Only the episode id is ever sent — no
-// user id, series id or count is computed here; the database decides
-// the rest (see record_episode_view).
+// ================= Episode views =================
+// One view per episode per page session, after 3s of real playback
 const viewedEpisodeIds = new Set();
 
 function recordEpisodeViewOnce(episodeId){
@@ -294,19 +181,8 @@ function recordEpisodeViewOnce(episodeId){
     .catch(err => console.error('Narrava: failed to record episode view', err));
 }
 
-// Wires a real <video> element to trigger recordEpisodeViewOnce once it
-// has genuinely accumulated 3 real seconds of forward playback — tracked
-// as the sum of real progress between consecutive 'timeupdate' events
-// while the video is actually playing (not video.paused, not
-// video.seeking), so a pause, a stall/buffer, or a seek never counts
-// toward it. A jump larger than 1.5s between two timeupdate events is
-// treated as a seek (not real playback) and dropped rather than counted.
-// getEpisodeId is a function, not a plain id, since the caller's active
-// episode can change while the same <video> element stays around a
-// little longer (a stale 'timeupdate' from a video that's being torn
-// down) — it always reads the real current one, and returning a falsy
-// value from it is how a caller says "this video isn't the active one
-// right now, don't count anything for it".
+// Counts only forward playback while playing (jumps > 1.5s are seeks).
+// getEpisodeId returns falsy when this video isn't the active one.
 function attachViewTracking(video, getEpisodeId){
   let accumulated = 0;
   let lastTime = video.currentTime;
@@ -321,7 +197,7 @@ function attachViewTracking(video, getEpisodeId){
     if(video.paused || video.seeking){ lastTime = video.currentTime; return; }
     const dt = video.currentTime - lastTime;
     lastTime = video.currentTime;
-    if(dt <= 0 || dt > 1.5) return; // not real forward playback (a seek/jump)
+    if(dt <= 0 || dt > 1.5) return; // a seek
     accumulated += dt;
     if(accumulated >= 3) recordEpisodeViewOnce(episodeId);
   });

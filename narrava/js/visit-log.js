@@ -1,15 +1,6 @@
-// visit-log.js
-//
-// Real page_visits logging for the actual consumer app only — never
-// loaded by any admin/*.html page (admin-shared.js/admin-*.js never
-// include this file), so admin activity is never counted as a real
-// visit. One real row per real page load, using whichever real
-// account (anonymous or not) is already signed in by the time this
-// runs — never a second row for internal screen changes within the
-// same load, since this is only ever called once, from app.js's
-// init(), never from showScreen().
+// One page_visits row per page load (consumer app only, called from app.js init)
 
-let visitLogged = false; // guards a second call within this same load only — a genuine new page load runs this file fresh and logs again, correctly
+let visitLogged = false;
 
 async function logPageVisit(){
   if(visitLogged) return;
@@ -19,7 +10,7 @@ async function logPageVisit(){
     const { data, error: sessionError } = await supabaseClient.auth.getSession();
     if(sessionError) throw sessionError;
     const userId = data && data.session && data.session.user ? data.session.user.id : null;
-    if(!userId) return; // no real signed-in account yet — nothing real to attribute this visit to
+    if(!userId) return;
 
     const { error } = await supabaseClient
       .from('page_visits')

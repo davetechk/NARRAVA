@@ -1,11 +1,6 @@
-// shared-utils.js
-//
-// Small helpers used by both the consumer app (index.html) and every
-// admin page (admin/*.html) — one source, included by all of them,
-// rather than duplicating either function.
+// Helpers shared by the app and the admin pages
 
-// The app's release version, shown on Help & Feedback -> About
-// (help.js). The one place it's defined: bump it on every release.
+// Shown in Help & Feedback. Bump on every release.
 const APP_VERSION = '1.0.0';
 
 function escapeHtml(str){
@@ -15,9 +10,7 @@ function escapeHtml(str){
     .replace(/>/g, '&gt;');
 }
 
-// "6 months ago" style relative time, for real timestamps (comments,
-// replies) — not a fabricated freshness signal, just a friendlier
-// rendering of a real created_at.
+// "6 months ago" style
 function timeAgo(iso){
   const then = new Date(iso).getTime();
   const diffSec = Math.max(0, Math.floor((Date.now() - then) / 1000));
@@ -32,9 +25,7 @@ function timeAgo(iso){
   return 'just now';
 }
 
-// Looks up #toast fresh on every call (rather than caching it once at
-// load) since index.html and each admin page have their own #toast
-// element in different places in the DOM.
+// #toast is looked up each call (different place on each page)
 function showToast(msg){
   const toast = document.getElementById('toast');
   if(!toast) return;
@@ -43,10 +34,7 @@ function showToast(msg){
   setTimeout(()=>toast.classList.remove('show'), 2200);
 }
 
-// A video's own real duration (seconds, straight off video.duration) as
-// "2:47", or "1:02:05" past an hour. Returns '' for anything not yet
-// genuinely known (NaN before loadedmetadata, Infinity for a live
-// stream, 0) — callers show nothing rather than a fake "0:00".
+// "2:47" or "1:02:05"; '' when not known yet
 function formatDuration(seconds){
   if(typeof seconds !== 'number' || !isFinite(seconds) || seconds <= 0) return '';
   const total = Math.round(seconds);
@@ -58,16 +46,13 @@ function formatDuration(seconds){
   return m + ':' + ss;
 }
 
-// The scrub bar's duration label for a real <video>: '' until the
-// element itself reports metadata (readyState >= HAVE_METADATA). hls.js
-// can set a duration a moment before that; the label still waits.
+// '' until the video has metadata
 function videoDurationLabel(video){
   if(!video || video.readyState < 1) return '';
   return formatDuration(video.duration);
 }
 
-// "Today" / "Yesterday" / "12 Sep 2026" for a real timestamp, judged by
-// the viewer's own local calendar day (not a rolling 24 hours).
+// "Today" / "Yesterday" / "12 Sep 2026" (local calendar day)
 function formatWatchedDate(iso){
   const d = new Date(iso);
   if(isNaN(d.getTime())) return '';
@@ -78,8 +63,7 @@ function formatWatchedDate(iso){
   return formatShortDate(iso);
 }
 
-// "12 Nov 2026" — History's date style, also used for a subscription's
-// end date (membership.js), where "Today"/"Yesterday" wouldn't fit.
+// "12 Nov 2026"
 function formatShortDate(iso){
   const d = new Date(iso);
   if(isNaN(d.getTime())) return '';
@@ -87,9 +71,7 @@ function formatShortDate(iso){
   return d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
 }
 
-// Rejects if `promise` hasn't settled within `ms` — so a request that
-// never answers still lands in the caller's own error branch instead of
-// leaving a skeleton up forever.
+// Rejects if the promise takes longer than ms
 function withTimeout(promise, ms){
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('Timed out after ' + ms + 'ms')), ms);
@@ -100,29 +82,8 @@ function withTimeout(promise, ms){
   });
 }
 
-// ================= Real sharing =================
-//
-// The one real share mechanism for a series — used by both the mobile
-// feed's shareBtn (app.js) and the desktop watch page's watchShareBtn
-// (watch.js), never a second implementation. navigator.share is the
-// browser's own real native share sheet (confirmed available on mobile
-// Chrome/Safari; genuinely absent on most desktop browsers, which is
-// exactly when the fallback below is needed, not a bug).
-//
-// Each series has its own real link: this same page plus a
-// "#series=<series id>" fragment (seriesShareUrl below). The fragment —
-// not a query string or a path — is deliberate: index.html is a single
-// static page with no server-side routing, a fragment never reaches the
-// server, and sw.js never sees it, so it needs no hosting or
-// service-worker changes. app.js's openDeepLinkedSeries reads it
-// (seriesIdFromLocationHash) and opens straight into that series. The
-// link only says *which series* — it carries no episode and no unlock
-// state, so it can't be used to get around a lock: the recipient's app
-// applies the normal lock rule (free_episode_count / Free Mode) itself.
-//
-// #shareSheetBackdrop only exists on index.html, not the admin pages
-// that also load this file — every lookup below is guarded so this
-// still loads cleanly there.
+// ================= Sharing =================
+// Link is this page + #series=<id>; the opened app applies the normal lock rule
 const shareSheetBackdrop = document.getElementById('shareSheetBackdrop');
 let pendingShareData = null;
 
@@ -146,10 +107,6 @@ if(shareSheetBackdrop){
   shareSheetClose.addEventListener('click', closeShareFallback);
   shareSheetBackdrop.addEventListener('click', e => { if(e.target === shareSheetBackdrop) closeShareFallback(); });
 
-  // Real, working destinations only — a real clipboard write of this
-  // real page's own URL, and WhatsApp's/Facebook's own real
-  // no-login-required share endpoints. Never a platform icon with no
-  // real link handoff behind it (that's worse than not offering it).
   shareCopyLinkBtn.addEventListener('click', async () => {
     if(!pendingShareData) return;
     try {
@@ -158,7 +115,7 @@ if(shareSheetBackdrop){
       recordSeriesShare(pendingShareData.seriesId);
     } catch(err){
       console.error('Narrava: failed to copy share link', err);
-      showToast('Could not copy link — please try again');
+      showToast('Couldn’t copy the link. Try again.');
     }
     closeShareFallback();
   });
@@ -177,19 +134,8 @@ if(shareSheetBackdrop){
   });
 }
 
-// ================= Real share counting =================
-//
-// Counts a real series share only once a share has genuinely completed
-// — never on cancel, on error, or just from opening the fallback sheet
-// (see shareSeries/openShareFallback above, the only callers). Fire and
-// forget, same rules as recordEpisodeViewOnce (video-player.js): never
-// awaited in a way that could delay anything, and a failure only ever
-// reaches the console. Only the series id is ever sent.
-//
-// Once the call has finished (either way), fires 'narrava:series-shared'
-// on document with { seriesId } — app.js listens and re-fetches the real
-// share count shown under the Share icon, rather than adding 1 locally
-// (the database counts at most one share per person per series per day).
+// ================= Share counting =================
+// After a completed share only; fires 'narrava:series-shared' when done
 function recordSeriesShare(seriesId){
   if(!seriesId) return;
   supabaseClient.rpc('record_series_share', { p_series_id: seriesId })
@@ -198,27 +144,19 @@ function recordSeriesShare(seriesId){
     .finally(() => document.dispatchEvent(new CustomEvent('narrava:series-shared', { detail: { seriesId } })));
 }
 
-// The one place the link format is defined — build (seriesShareUrl) and
-// parse (seriesIdFromLocationHash) live side by side so they can't drift.
-// Built from origin + pathname only, so it works wherever the app is
-// hosted (root or a subfolder) and never carries along unrelated query
-// strings or a fragment from the current page.
+// Share link format (built and parsed side by side)
 function seriesShareUrl(seriesId){
   return window.location.origin + window.location.pathname + '#series=' + encodeURIComponent(seriesId);
 }
 
-// Returns the series id in the current URL's fragment, or null if there
-// isn't one (or it's malformed).
+// Series id from the URL fragment, or null
 function seriesIdFromLocationHash(){
   const match = /^#series=([^&]+)/.exec(window.location.hash);
   if(!match) return null;
   try { return decodeURIComponent(match[1]); } catch(_err){ return null; }
 }
 
-// Called with the real series the viewer is looking at. Tries the real
-// native share sheet first; AbortError (the viewer closed it themselves)
-// is not a failure worth logging. Falls back to the popup above only when
-// navigator.share itself genuinely doesn't exist.
+// Native share sheet, else the fallback popup
 async function shareSeries(title, seriesId){
   const shareData = {
     title: 'Narrava',
@@ -238,14 +176,7 @@ async function shareSeries(title, seriesId){
   openShareFallback(shareData);
 }
 
-// Narrava's one real logo (narrava/img/load_img_icon.svg) — the full,
-// unmodified 179-path faceted triangle, inlined as-is (only the <?xml?>
-// line, the generator comment, and the non-visual C2PA <metadata> block
-// are dropped; every path and every fill color is untouched). The
-// colors are baked into the markup on purpose — this mark has several
-// facet tones, not one flat fill — so nothing here uses currentColor.
-// Used for every copy narravaLoaderHtml() draws: the center icon and,
-// in the 'pulse' variant, the copy inside each .pulse-ring too.
+// Narrava logo, inlined as-is (several fill colors, so no currentColor)
 const NARRAVA_LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1008 1061" class="narrava-mark-icon">
 <path d="M0 0 C1.2 0.38 2.39 0.76 3.62 1.14 C21.32 6.98 37.72 16.99 53.78 26.27 C61.17 30.55 68.64 34.7 76.12 38.81 C77.37 39.5 78.61 40.18 79.85 40.86 C81.72 41.89 83.59 42.92 85.46 43.95 C106.74 55.66 127.92 67.53 149.1 79.43 C161.39 86.32 173.72 93.17 186.06 99.97 C195.33 105.07 204.58 110.21 213.83 115.35 C221.47 119.6 229.12 123.83 236.78 128.05 C247.39 133.89 257.97 139.77 268.53 145.7 C278.51 151.3 288.52 156.82 298.53 162.33 C305.05 165.92 311.55 169.52 318.05 173.14 C322.6 175.67 327.16 178.19 331.73 180.71 C334.22 182.08 336.7 183.44 339.19 184.81 C339.81 185.16 340.44 185.5 341.09 185.86 C349.32 190.39 357.52 194.98 365.69 199.62 C373.69 204.18 381.76 208.59 389.88 212.94 C404.59 220.82 419.14 228.98 433.66 237.21 C435.52 238.26 437.39 239.32 439.25 240.38 C440.18 240.9 441.1 241.43 442.06 241.97 C451.03 247.04 460.06 252.01 469.09 256.98 C477.02 261.35 484.92 265.75 492.81 270.19 C501.87 275.28 510.98 280.25 520.12 285.18 C527.92 289.39 535.63 293.73 543.34 298.11 C551.3 302.63 559.33 307.01 567.41 311.34 C573.19 314.44 578.91 317.65 584.6 320.92 C590.5 324.3 596.46 327.59 602.42 330.87 C605.6 332.61 608.77 334.36 611.95 336.11 C612.57 336.45 613.19 336.8 613.83 337.15 C618.6 339.78 623.36 342.41 628.12 345.06 C628.81 345.44 629.49 345.82 630.2 346.22 C632.47 347.48 634.73 348.74 637 350 C641.27 352.38 645.54 354.75 649.81 357.12 C650.95 357.76 652.09 358.39 653.27 359.05 C659.3 362.4 665.33 365.74 671.37 369.06 C671.98 369.4 672.59 369.73 673.22 370.08 C674.45 370.76 675.68 371.43 676.91 372.11 C687.06 377.7 697.19 383.35 707.27 389.07 C716.74 394.44 726.27 399.69 735.81 404.94 C736.42 405.27 737.03 405.61 737.66 405.96 C738.28 406.29 738.89 406.63 739.52 406.98 C747.01 411.1 754.48 415.26 761.95 419.41 C767.67 422.6 773.39 425.77 779.13 428.92 C812.56 447.31 842.93 466.04 854.21 504.74 C854.47 505.82 854.73 506.89 855 508 C855.26 509.06 855.26 509.06 855.53 510.15 C859.24 526.51 858.62 545.17 853 561 C852.63 562.06 852.25 563.12 851.87 564.21 C838.44 598.85 809.82 614.35 779 631 C777.85 631.62 776.71 632.24 775.53 632.88 C769.07 636.37 762.61 639.84 756.14 643.31 C744.1 649.78 732.06 656.27 720.12 662.94 C711.76 667.61 703.33 672.15 694.88 676.68 C685.13 681.93 675.4 687.22 665.68 692.54 C661.16 695.01 656.64 697.47 652.12 699.94 C651.22 700.43 650.32 700.92 649.39 701.43 C644.63 704.03 639.86 706.62 635.09 709.19 C625.23 714.5 615.41 719.88 605.69 725.44 C596.16 730.88 586.46 735.96 576.7 740.98 C569.63 744.62 562.63 748.36 555.69 752.25 C541 760.51 526.11 768.42 511.25 776.38 C510.67 776.69 510.09 777 509.49 777.32 C503.53 780.51 497.57 783.7 491.6 786.87 C479.01 793.57 466.48 800.37 454.09 807.44 C447.5 811.18 440.84 814.77 434.12 818.27 C428.15 821.38 422.22 824.58 416.31 827.81 C414.94 828.56 414.94 828.56 413.54 829.33 C411.65 830.36 409.77 831.39 407.88 832.42 C402.97 835.11 398.05 837.77 393.12 840.44 C392.13 840.98 391.13 841.52 390.11 842.07 C386.06 844.26 382.01 846.45 377.96 848.65 C363.62 856.4 349.3 864.19 335 872 C314.23 883.35 293.42 894.63 272.57 905.84 C264.81 910.02 257.06 914.23 249.33 918.46 C242.23 922.34 235.12 926.17 228 930 C219.05 934.81 210.11 939.66 201.19 944.53 C194.47 948.2 187.74 951.86 181 955.5 C173.33 959.65 165.66 963.82 158 968 C149.33 972.74 140.65 977.45 131.96 982.15 C125.34 985.73 118.73 989.33 112.12 992.94 C102.99 997.93 93.84 1002.86 84.67 1007.79 C77.77 1011.5 70.88 1015.24 64 1019 C53.71 1024.62 43.4 1030.2 33.07 1035.73 C29.45 1037.68 25.83 1039.64 22.24 1041.64 C15.03 1045.63 7.79 1049.05 0.06 1051.94 C-0.69 1052.22 -1.45 1052.5 -2.23 1052.79 C-12.66 1056.51 -22.51 1057.39 -33.56 1057.38 C-34.23 1057.37 -34.89 1057.37 -35.57 1057.37 C-52.8 1057.3 -66.59 1053.53 -82 1046 C-82.95 1045.55 -83.9 1045.1 -84.88 1044.64 C-112.54 1030.64 -135.81 1003.81 -145.59 974.4 C-151.48 956.29 -151.58 938.44 -151.51 919.58 C-151.5 915.3 -151.51 911.02 -151.52 906.74 C-151.53 899.26 -151.53 891.78 -151.52 884.29 C-151.5 873.16 -151.51 862.03 -151.52 850.9 C-151.53 831.02 -151.53 811.14 -151.51 791.26 C-151.5 773.87 -151.49 756.47 -151.5 739.07 C-151.5 737.92 -151.5 736.76 -151.5 735.57 C-151.5 730.88 -151.5 726.2 -151.5 721.51 C-151.51 677.54 -151.49 633.58 -151.46 589.61 C-151.44 550.57 -151.44 511.53 -151.45 472.49 C-151.45 462.49 -151.45 452.49 -151.45 442.5 C-151.45 441.27 -151.45 440.03 -151.45 438.77 C-151.46 406.12 -151.46 373.48 -151.44 340.83 C-151.44 337.32 -151.44 333.81 -151.44 330.29 C-151.44 327.96 -151.44 325.63 -151.44 323.3 C-151.43 305.92 -151.43 288.53 -151.44 271.15 C-151.44 251.38 -151.44 231.6 -151.42 211.83 C-151.41 200.78 -151.4 189.72 -151.41 178.66 C-151.42 171.26 -151.41 163.87 -151.4 156.48 C-151.39 152.27 -151.39 148.06 -151.4 143.85 C-151.44 124.21 -151.43 105.14 -144.81 86.38 C-144.51 85.5 -144.21 84.63 -143.9 83.73 C-140.96 75.45 -137.3 67.66 -133 60 C-132.67 59.42 -132.35 58.84 -132.01 58.24 C-127.42 50.16 -122.07 43.01 -116 36 C-115.03 34.83 -115.03 34.83 -114.04 33.63 C-101.46 18.8 -84.2 7.63 -66 1 C-65.32 0.74 -64.64 0.49 -63.94 0.22 C-44.55 -6.85 -19.41 -6.99 0 0 Z " fill="#3DE471" transform="translate(151,4)"/>
 <path d="M0 0 C1.2 0.38 2.39 0.76 3.62 1.14 C21.31 6.98 37.71 16.98 53.76 26.27 C61.31 30.63 68.93 34.86 76.56 39.06 C77.18 39.4 77.8 39.74 78.43 40.09 C81.47 41.76 84.51 43.43 87.54 45.1 C90.8 46.89 94.05 48.68 97.3 50.46 C101.86 52.98 106.43 55.49 111 58 C107.52 59.95 105.87 60.08 102 59 C102.36 59.59 102.73 60.17 103.1 60.77 C107.8 68.79 110.59 77.07 113.32 85.89 C113.9 87.7 114.56 89.49 115.23 91.27 C120.05 104.54 119.05 119.23 119.04 133.16 C119.04 134.72 119.04 134.72 119.04 136.32 C119.01 154.22 118.8 172.13 118.63 190.04 C118.51 202.44 118.4 214.84 118.29 227.23 C118.28 228.54 118.27 229.85 118.25 231.19 C117.99 260.63 117.75 290.07 117.52 319.51 C117.51 320.6 117.51 320.6 117.5 321.71 C117.5 322.43 117.49 323.15 117.49 323.9 C117.45 328.84 117.41 333.77 117.37 338.71 C117.31 346.79 117.24 354.88 117.18 362.96 C117.17 364.27 117.16 365.58 117.15 366.93 C117.05 382.09 116.99 397.25 117.01 412.41 C117.01 413.88 117.01 415.35 117.01 416.81 C117.02 423.73 117.04 430.65 117.07 437.57 C117.1 450.35 116.98 463.1 116.58 475.87 C116 494.8 115.81 513.71 115.73 532.64 C115.71 537.03 115.69 541.42 115.66 545.8 C115.62 553.37 115.59 560.94 115.55 568.51 C115.5 579.55 115.45 590.58 115.39 601.61 C115.3 619.64 115.21 637.67 115.12 655.7 C115.12 656.78 115.11 657.85 115.11 658.96 C115.09 663.3 115.07 667.64 115.05 671.99 C114.99 683.84 114.93 695.7 114.88 707.56 C114.87 708.62 114.86 709.68 114.86 710.77 C114.77 728.69 114.68 746.61 114.59 764.53 C114.54 774.52 114.49 784.5 114.45 794.49 C114.43 798.29 114.41 802.1 114.39 805.9 C114.39 806.83 114.38 807.77 114.38 808.73 C114.31 823.24 114.22 837.76 114.12 852.28 C114.04 863.23 113.99 874.19 113.97 885.14 C113.96 892.6 113.93 900.05 113.88 907.51 C113.86 911.88 113.84 916.25 113.85 920.63 C113.9 946.23 111.28 968.64 100 992 C99.47 993.29 98.94 994.58 98.42 995.87 C97 999 97 999 95 1000 C95.33 1000.66 95.66 1001.32 96 1002 C95.09 1002.48 94.17 1002.96 93.23 1003.46 C71.8 1014.74 71.8 1014.74 50.5 1026.25 C49.23 1026.94 49.23 1026.94 47.94 1027.65 C44.23 1029.68 40.53 1031.71 36.83 1033.75 C10.29 1048.39 10.29 1048.39 -3 1053 C-4.17 1053.43 -5.33 1053.86 -6.54 1054.3 C-31.78 1062.16 -58.82 1057.33 -82 1046 C-82.95 1045.55 -83.9 1045.1 -84.88 1044.64 C-112.54 1030.64 -135.81 1003.81 -145.59 974.4 C-151.48 956.29 -151.58 938.44 -151.51 919.58 C-151.5 915.3 -151.51 911.02 -151.52 906.74 C-151.53 899.26 -151.53 891.78 -151.52 884.29 C-151.5 873.16 -151.51 862.03 -151.52 850.9 C-151.53 831.02 -151.53 811.14 -151.51 791.26 C-151.5 773.87 -151.49 756.47 -151.5 739.07 C-151.5 737.92 -151.5 736.76 -151.5 735.57 C-151.5 730.88 -151.5 726.2 -151.5 721.51 C-151.51 677.54 -151.49 633.58 -151.46 589.61 C-151.44 550.57 -151.44 511.53 -151.45 472.49 C-151.45 462.49 -151.45 452.49 -151.45 442.5 C-151.45 441.27 -151.45 440.03 -151.45 438.77 C-151.46 406.12 -151.46 373.48 -151.44 340.83 C-151.44 337.32 -151.44 333.81 -151.44 330.29 C-151.44 327.96 -151.44 325.63 -151.44 323.3 C-151.43 305.92 -151.43 288.53 -151.44 271.15 C-151.44 251.38 -151.44 231.6 -151.42 211.83 C-151.41 200.78 -151.4 189.72 -151.41 178.66 C-151.42 171.26 -151.41 163.87 -151.4 156.48 C-151.39 152.27 -151.39 148.06 -151.4 143.85 C-151.44 124.21 -151.43 105.14 -144.81 86.38 C-144.51 85.5 -144.21 84.63 -143.9 83.73 C-140.96 75.45 -137.3 67.66 -133 60 C-132.67 59.42 -132.35 58.84 -132.01 58.24 C-127.42 50.16 -122.07 43.01 -116 36 C-115.03 34.83 -115.03 34.83 -114.04 33.63 C-101.46 18.8 -84.2 7.63 -66 1 C-65.32 0.74 -64.64 0.49 -63.94 0.22 C-44.55 -6.85 -19.41 -6.99 0 0 Z " fill="#3EE472" transform="translate(151,4)"/>
@@ -428,14 +359,7 @@ const NARRAVA_LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1
 <path d="M0 0 C2.31 0 4.62 0 7 0 C7.33 0.66 7.66 1.32 8 2 C4.95 2.98 3.05 2.98 0 2 C0 1.34 0 0.68 0 0 Z " fill="#4BD27B" transform="translate(325,101)"/>
 </svg>`;
 
-// Two loading-state variants, already reviewed and picked — see
-// loading-animations.html and the matching CSS in styles.css. 'pulse'
-// is the general-purpose one (drop it in any content area that's just
-// waiting on real data); 'orbit' is specifically for the one genuine
-// wait this app has where the on-screen state can lag reality — Bunny
-// Stream still processing an episode after upload — used via
-// showBunnyProcessingToast below, not meant to be embedded inline like
-// 'pulse' is.
+// Loaders: 'pulse' for content areas, 'orbit' for the Bunny processing toast
 function narravaLoaderHtml(variant, label){
   const inner = variant === 'orbit'
     ? '<div class="orbit"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>'
@@ -449,13 +373,7 @@ function narravaLoaderHtml(variant, label){
   '</div>';
 }
 
-// The honest state for a real, permanently failed load — every real
-// bounded retry (video-player.js's attachEpisodePlayback) has already
-// been exhausted by the time this ever gets shown, never guessed at
-// early. retryBtnId is the caller's own id to attach a real click
-// handler to (app.js/watch.js each wire their own — this only ever
-// builds the shared markup, never the retry behavior itself, which
-// differs per caller: re-running preloadVideo vs. watchPlayEpisode).
+// Load failed state; the caller wires the retry button
 function narravaLoadFailedHtml(retryBtnId){
   return '<div class="narrava-loading-block">' +
     '<div class="narrava-load-failed-text">Couldn’t load this episode</div>' +
@@ -464,29 +382,14 @@ function narravaLoadFailedHtml(retryBtnId){
 }
 
 // ============ Skeleton loading ============
-// Content-shaped placeholders for the handful of areas listed in
-// DOCUMENTATION.md (Home, Library, the comments sheet, the desktop
-// Watch page's episode grid, and the two admin tables) — everywhere
-// else keeps narravaLoaderHtml() exactly as it was. Every shape below
-// either reuses a real content class (poster-card, watch-ep-card, the
-// admin table shell) so it inherits that class's own real sizing/
-// border-radius, or is a small freestanding shape (skeleton-circle/
-// -pill/-text) sized inline for the one spot it's used. No real text,
-// numbers, names or images anywhere in any of these — grey shapes only.
 
-// One shimmering box. w/h/radius are plain CSS size values (px/%/ch);
-// extraClass lets a caller stack a real content class alongside
-// "skeleton-block" (see file header) instead of sizing it here.
+// One shimmering box (w/h/radius are CSS values)
 function skeletonBoxHtml(w, h, radius, extraClass){
   return '<div class="skeleton-block' + (extraClass ? ' ' + extraClass : '') +
     '" style="width:' + w + ';height:' + h + (radius ? ';border-radius:' + radius : '') + ';"></div>';
 }
 
-// One poster-card-shaped skeleton — reuses the real .poster-card class
-// (styles.css) for its aspect-ratio/border-radius, so it lines up
-// exactly with the real card that replaces it, in both the .poster-grid
-// (mobile Home, Library) and .shelf-row (desktop Home shelves) contexts,
-// each of which already sizes .poster-card differently by itself.
+// Reuses .poster-card for its sizing
 function skeletonPosterCardHtml(){
   return '<div class="poster-card skeleton-block"></div>';
 }
@@ -496,11 +399,7 @@ function skeletonPosterGridHtml(count){
   return html;
 }
 
-// Home, desktop: the hero banner (discoverHero) — same element ids'
-// worth of shape as renderHero() in discover.js builds for real: a
-// full-bleed background block, a title bar, two small tag pills, two
-// synopsis lines, a play-button-shaped pill, and a row of thumbnail-
-// shaped blocks matching .hero-thumb's own 112px width.
+// Home desktop: hero
 function skeletonHomeHeroHtml(){
   let thumbs = '';
   for(let i = 0; i < 4; i++) thumbs += skeletonBoxHtml('112px', '160px', '8px');
@@ -517,9 +416,7 @@ function skeletonHomeHeroHtml(){
     '</div>';
 }
 
-// Home, desktop: the shelf stack (discoverShelves) — a couple of
-// shelf-shaped skeletons, each a title bar over a row of poster-card
-// skeletons sized by the real .shelf-row .poster-card rule (259x345).
+// Home desktop: shelves
 function skeletonHomeShelfHtml(){
   let cards = '';
   for(let i = 0; i < 5; i++) cards += skeletonPosterCardHtml();
@@ -532,9 +429,7 @@ function skeletonHomeShelvesHtml(){
   return skeletonHomeShelfHtml() + skeletonHomeShelfHtml();
 }
 
-// Comments sheet: a handful of avatar+two-lines rows, shaped exactly
-// like a real .cmt-row (round 32px avatar, a short name-width line and
-// a longer body-width line stacked in .cmt-main).
+// Comments sheet row
 function skeletonCommentRowHtml(){
   return '<div class="cmt-row">' +
     skeletonBoxHtml('32px', '32px', null, 'skeleton-circle') +
@@ -550,22 +445,14 @@ function skeletonCommentRowsHtml(count){
   return html;
 }
 
-// Desktop Watch page: the episode grid (watchEpisodeGrid) — real
-// .watch-ep-card tiles (6-column grid, 46px tall, 6px radius), no
-// episode numbers.
+// Desktop Watch page: episode grid
 function skeletonWatchEpisodeGridHtml(count){
   let html = '';
   for(let i = 0; i < count; i++) html += '<div class="watch-ep-card skeleton-block"></div>';
   return html;
 }
 
-// Admin Series List / Episodes tables: the real table shell (thead
-// labels are static UI chrome, not data, so they stay real and visible
-// immediately) with skeleton-shaped body rows matching each table's own
-// real columns. Kept as two small functions rather than one generic
-// "columns" abstraction since the two row shapes genuinely differ
-// (Series List's Featured switch and Episodes count vs. Episodes'
-// Duration/Uploaded text columns) and neither reuses the other's shape.
+// Admin Series List / Episodes table rows
 function skeletonAdminSeriesRowHtml(){
   return '<tr>' +
     '<td><div class="admin-row-cell">' + skeletonBoxHtml('42px', '42px', '8px') + '<div>' + skeletonBoxHtml('130px', '13px', '4px') + '</div></div></td>' +
@@ -602,9 +489,7 @@ function skeletonAdminEpisodesTableHtml(count){
   '</table></div>';
 }
 
-// Admin Most Watched table: rank, cover+title, status badge, then the
-// four real count columns — same two-function shape as the series/
-// episodes tables above.
+// Admin Most Watched table rows
 function skeletonAdminMostWatchedRowHtml(){
   return '<tr>' +
     '<td>' + skeletonBoxHtml('20px', '15px', '4px') + '</td>' +
@@ -626,14 +511,7 @@ function skeletonAdminMostWatchedTableHtml(count){
   '</table></div>';
 }
 
-// One faint logo per PAGE, not one per skeleton section — Home shows
-// three skeleton areas (hero/shelves/mobile grid) at once and still
-// gets exactly one overlay, since every caller shares this same
-// singleton element (the id guard makes a second show() while one is
-// already up a no-op). Callers show() right where they used to set
-// narravaLoaderHtml(), and hide() in every branch that replaces the
-// skeleton with real content, an empty state, or an error state — see
-// each call site for its own never-stuck handling.
+// One faint logo per page, shared by every skeleton
 function showSkeletonLogo(){
   if(document.getElementById('narravaSkeletonLogo')) return;
   const el = document.createElement('div');
@@ -647,15 +525,7 @@ function hideSkeletonLogo(){
   if(el) el.remove();
 }
 
-// The honest "Bunny is still processing this" notice — a real situation
-// this app has (uploaded bytes finish transferring well before Bunny
-// itself finishes transcoding them into something playable), shown as
-// a small persisting toast with the orbit-dots loader rather than the
-// plain showToast() above, since this one deserves to actually be seen
-// animating, not just flash by in 2.2s. Looks up #toast's sibling
-// container fresh each call, same reasoning as showToast. No fake
-// progress or completion signal — it just says what's true and goes
-// away on its own.
+// "Bunny is still processing" toast with the orbit loader
 function showBunnyProcessingToast(msg){
   let el = document.getElementById('bunnyProcessingToast');
   if(!el){

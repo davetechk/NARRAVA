@@ -1,25 +1,5 @@
-// offline.js
-//
-// Opening the app with no connection. Normally the app needs the server
-// to start (settings, a session, the series list). When loadAppSettings
-// (app.js) finds the device offline — navigator.onLine is false, or the
-// settings request failed and the server can't be reached at all — it
-// sets appStartedOffline, and init() calls startOfflineMode() instead of
-// the normal start:
-//   - no anonymous sign-in, no coins/subscription/progress requests;
-//   - the feed is built only from the episodes the signed-in account
-//     downloaded (downloads.js, read from the session stored on the
-//     device), so they play in the normal player, from the device;
-//     signed out or a guest, there are none;
-//   - Home shows "You're offline" with a button to Downloads.
-// sw.js keeps the app's own files and the two CDN libraries (supabase-js,
-// hls.js) cached, which is what lets the page load at all offline.
-//
-// When the connection comes back (the browser's 'online' event, plus a
-// slow check in case that event never fires), the app reloads into the
-// normal online start — straight away if nothing is playing, otherwise
-// as soon as the person leaves the player, with a bar offering to do it
-// now.
+// Offline start: feed built from this account's downloads only.
+// Reloads into the online app when the connection comes back.
 
 const OFFLINE_RECHECK_MS = 20000;
 const SERVER_PROBE_TIMEOUT_MS = 6000;
@@ -27,14 +7,12 @@ const SERVER_PROBE_TIMEOUT_MS = 6000;
 let reconnectPending = false;
 let reconnectChecking = false;
 
-// True when the app started offline and hasn't reloaded yet, or the
-// browser says the device is offline right now.
+// Started offline (not reloaded yet), or offline right now
 function appIsOffline(){
   return appStartedOffline || navigator.onLine === false;
 }
 
-// Can the server be reached at all? An opaque request: any answer means
-// yes, a network failure (or no answer in time) means no.
+// Any answer means reachable
 async function serverReachable(){
   try {
     await withTimeout(fetch(SUPABASE_URL + '/auth/v1/health', { mode: 'no-cors', cache: 'no-store' }), SERVER_PROBE_TIMEOUT_MS);
@@ -75,8 +53,8 @@ function renderOfflineHome(){
     '<div class="offline-home-icon">' + DOWNLOAD_ICONS.offline + '</div>' +
     '<h2 class="offline-home-title">You’re offline</h2>' +
     '<p class="offline-home-text">' + (count
-      ? 'You have ' + count + ' downloaded episode' + (count === 1 ? '' : 's') + ' you can watch without a connection.'
-      : 'Connect to the internet to watch Narrava. Episodes you download play here without a connection.') + '</p>' +
+      ? 'You have ' + count + ' downloaded episode' + (count === 1 ? '' : 's') + ' you can watch offline.'
+      : 'Connect to the internet to watch. Downloads play here offline.') + '</p>' +
     '<button type="button" class="pill-cta-btn" id="offlineHomeDownloadsBtn">Go to Downloads</button>';
   document.getElementById('offlineHomeDownloadsBtn').addEventListener('click', openDownloadsScreen);
 }
@@ -101,7 +79,7 @@ async function checkConnectionBack(){
   }
 }
 
-// Shown over the player while something is still playing.
+// Shown over the player while something is playing
 function showReconnectBar(){
   const bar = document.createElement('div');
   bar.className = 'reconnect-bar';
@@ -111,8 +89,7 @@ function showReconnectBar(){
   document.getElementById('reconnectNowBtn').addEventListener('click', () => location.reload());
 }
 
-// showScreen (app.js) calls this on every screen change: leaving the
-// player after the connection came back finishes the switch to online.
+// Called on every screen change: finish the switch to online after leaving the player
 function onScreenChangedForReconnect(name){
   if(reconnectPending && name !== 'feed' && name !== 'watch') location.reload();
 }

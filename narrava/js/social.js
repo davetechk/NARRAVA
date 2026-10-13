@@ -1,18 +1,5 @@
-// social.js
-//
-// Real like, save, and comments for a series — series_likes,
-// series_saves, series_comments, comment_likes, and the two existing
-// RPCs (get_series_like_count, get_series_comments). All five already
-// exist server-side (tables + RLS + both functions) — this file only
-// ever calls them, never touches their structure. getSignedInUserId
-// comes from watch-progress.js (a general "who's signed in, if anyone"
-// helper, not actually video-specific despite where it lives).
-//
-// Every write helper below does its own sign-in check and opens the
-// same sign-in modal every other account-gated action in this app
-// already uses (openAuthModal, auth.js) rather than failing silently —
-// resolving to null in that case, which callers treat as "no change,
-// don't touch the UI as if it succeeded."
+// Likes, saves, shares and comments. Write helpers open the sign-in popup
+// and resolve null when not signed in or the write fails.
 
 // ================= Series like/save =================
 
@@ -27,12 +14,7 @@ async function fetchSeriesLikeCount(seriesId){
   }
 }
 
-// Public save + share totals for one series — one call,
-// get_series_social_counts, which returns a single { saves, shares } row
-// (no row at all for a series that isn't published). Shares are the
-// database's own count: at most one per person per series per day (see
-// record_series_share). Same failure behaviour as fetchSeriesLikeCount
-// above: logged, and 0 shown.
+// Public save + share totals (get_series_social_counts)
 async function fetchSeriesSaveShareCounts(seriesId){
   try {
     const { data, error } = await supabaseClient.rpc('get_series_social_counts', { p_series_id: seriesId });
@@ -48,10 +30,6 @@ async function fetchSeriesSaveShareCounts(seriesId){
   }
 }
 
-// Real select-own-row reads — series_likes/series_saves have no RPC of
-// their own, so this is a normal scoped read against the existing
-// table/RLS, same as every other "does this row exist for me" check
-// elsewhere in this app.
 async function fetchMySeriesLikeSaveState(seriesId, userId){
   if(!userId) return { liked: false, saved: false };
   try {
@@ -68,17 +46,7 @@ async function fetchMySeriesLikeSaveState(seriesId, userId){
   }
 }
 
-// Fetches the real count + this viewer's own liked/saved state together
-// — one place both app.js (mobile feed) and watch.js (desktop) call
-// whenever a series becomes the current one, rather than two separate
-// implementations of the same real lookup. commentCount reuses
-// fetchSeriesComments (the one real source for comment data — see
-// below) rather than a separate count-only query, so the number shown
-// next to the Comment icon on the main screen can never drift from the
-// same real total the opened panel's own heading shows.
-// saveCount/shareCount ride along in the same Promise.all (one
-// get_series_social_counts call), so all four numbers under the icons
-// load together, the same way, in both places.
+// Counts and this viewer's liked/saved state for one series (feed and watch page)
 async function fetchSeriesSocialState(seriesId){
   const userId = await getSignedInUserId();
   const [likeCount, myState, commentCount, saveShare] = await Promise.all([
@@ -93,11 +61,7 @@ async function fetchSeriesSocialState(seriesId){
   };
 }
 
-// Toggles a real row in series_likes for the signed-in viewer. Returns
-// the new liked state (true/false) on success, or null if nothing
-// happened (not signed in — the sign-in modal was opened instead — or
-// the write failed), so callers know not to update the button as if it
-// worked.
+// Returns the new liked state, or null if nothing happened
 async function toggleSeriesLike(seriesId, currentlyLiked){
   const userId = await getSignedInUserId();
   if(!userId){ openAuthModal('login'); return null; }
@@ -116,21 +80,12 @@ async function toggleSeriesLike(seriesId, currentlyLiked){
     return true;
   } catch(err){
     console.error('Narrava: failed to toggle series like', err);
-    showToast('Could not update like — please try again');
+    showToast('Couldn’t update the like. Try again.');
     return null;
   }
 }
 
-// The Library tab's one real source (see library.js) — every series id
-// the signed-in viewer has actually saved, straight off series_saves,
-// same table toggleSeriesSave below writes to. Returns null (not an
-// empty Set) when nobody's signed in — deliberately getRealAccountUserId,
-// not getSignedInUserId: a real anonymous account isn't enough to see a
-// Library, only a genuine sign-up is, same real distinction
-// toggleSeriesSave below makes. Callers use the null/Set split to tell
-// "signed out (or anonymous-only)" apart from "signed in for real,
-// genuinely nothing saved" — those need two different honest empty
-// states, never the same one.
+// Saved series ids for a real account; null when signed out or a guest
 async function fetchMySavedSeriesIds(){
   const userId = await getRealAccountUserId();
   if(!userId) return null;
@@ -144,12 +99,7 @@ async function fetchMySavedSeriesIds(){
   }
 }
 
-// Same shape as toggleSeriesLike, against series_saves. The public
-// total shown under the Save icon comes from fetchSeriesSaveShareCounts
-// above, re-fetched by the callers after a successful toggle. Deliberately
-// getRealAccountUserId, not getSignedInUserId: saving a series still
-// needs a genuine, real (sign-up-backed) account — a real anonymous
-// account is not enough here, unlike like/comment/reply.
+// Needs a real account (guests can't save)
 async function toggleSeriesSave(seriesId, currentlySaved){
   const userId = await getRealAccountUserId();
   if(!userId){ openAuthModal('login'); return null; }
@@ -168,17 +118,14 @@ async function toggleSeriesSave(seriesId, currentlySaved){
     return true;
   } catch(err){
     console.error('Narrava: failed to toggle series save', err);
-    showToast('Could not update save — please try again');
+    showToast('Couldn’t update the save. Try again.');
     return null;
   }
 }
 
 // ================= Comments =================
 
-// The one real way to read a series' comments — every top-level
-// comment and reply together, each with a real like_count and whether
-// the signed-in viewer (if any) has liked it. Works signed out too
-// (get_series_comments itself handles that — confirmed live).
+// All comments and replies with like counts (works signed out)
 async function fetchSeriesComments(seriesId){
   try {
     const { data, error } = await supabaseClient.rpc('get_series_comments', { p_series_id: seriesId });
@@ -190,20 +137,13 @@ async function fetchSeriesComments(seriesId){
   }
 }
 
-// The real total shown next to the Comment icon on the main screen
-// (mobile feed and desktop watch page) — comments and replies together,
-// same number the opened panel's own heading shows, since both read it
-// off the same fetchSeriesComments array rather than two separate ways
-// of counting.
+// Comments + replies, same number as the panel heading
 async function fetchSeriesCommentCount(seriesId){
   const comments = await fetchSeriesComments(seriesId);
   return comments.length;
 }
 
-// Posts a real comment or reply (parentCommentId null/omitted for a
-// top-level comment). Returns true on success, null if nothing
-// happened (signed out — sign-in modal opened instead — or empty body,
-// or the write failed).
+// parentCommentId null for a top-level comment. true, or null if nothing happened.
 async function postSeriesComment(seriesId, body, parentCommentId){
   const trimmed = (body || '').trim();
   if(!trimmed) return null;
@@ -222,17 +162,12 @@ async function postSeriesComment(seriesId, body, parentCommentId){
     return true;
   } catch(err){
     console.error('Narrava: failed to post comment', err);
-    showToast('Could not post comment — please try again');
+    showToast('Couldn’t post the comment. Try again.');
     return null;
   }
 }
 
-// Deletes a comment — the RLS policy already in place decides whether
-// this specific viewer is actually allowed to (its own comment, or any
-// comment if they're an admin); this never re-implements that check,
-// it just attempts the delete and reports what really happened.
-// Deleting a comment with real replies removes those too — a database
-// cascade, confirmed live, not something this function does itself.
+// RLS decides who may delete; replies go with it (database cascade)
 async function deleteSeriesComment(commentId){
   try {
     const { error } = await supabaseClient.from('series_comments').delete().eq('id', commentId);
@@ -240,14 +175,12 @@ async function deleteSeriesComment(commentId){
     return true;
   } catch(err){
     console.error('Narrava: failed to delete comment', err);
-    showToast('Could not delete comment — please try again');
+    showToast('Couldn’t delete the comment. Try again.');
     return false;
   }
 }
 
-// Real like/unlike on one specific comment — comment_likes, entirely
-// separate from the series' own like button. Same null-means-"prompted
-// sign-in-or-failed" contract as toggleSeriesLike/toggleSeriesSave.
+// Like on one comment. null if nothing happened.
 async function toggleCommentLike(commentId, currentlyLiked){
   const userId = await getSignedInUserId();
   if(!userId){ openAuthModal('login'); return null; }
@@ -266,17 +199,12 @@ async function toggleCommentLike(commentId, currentlyLiked){
     return true;
   } catch(err){
     console.error('Narrava: failed to toggle comment like', err);
-    showToast('Could not update like — please try again');
+    showToast('Couldn’t update the like. Try again.');
     return null;
   }
 }
 
-// Real moderation gate for the UI only (whether to even show an admin
-// "delete" affordance on someone else's comment) — the actual authority
-// is the RLS policy on series_comments itself, checked fresh each time
-// rather than trusting a possibly-stale flag from elsewhere in the app
-// (profile.js's own isAdmin is only refreshed when the Profile tab is
-// opened, which has nothing to do with when a comment panel opens).
+// Only decides whether to show admin delete; RLS is the real check
 async function isCurrentUserAdmin(){
   const userId = await getSignedInUserId();
   if(!userId) return false;

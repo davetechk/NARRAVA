@@ -1,19 +1,5 @@
-/* admin.css
-   Layout and components for the admin dashboard, now a set of real,
-   separate pages under admin/ (login.html, dashboard.html,
-   series-list.html, episodes.html, genres.html, revenue-analytics.html,
-   user-management.html, system-settings.html) rather than one
-   single-page app. The structure below intentionally mirrors the
-   design reference (sidebar / topbar / stat cards / panels / data
-   table) exactly, with Narrava's own green tokens and fonts swapped in
-   for the reference's blue accent — see :root in styles.css for
-   --leaf / --leaf-light / --leaf-deep / --gold. Loaded alongside
-   styles.css, which supplies those tokens, the fonts, and a handful of
-   reused pieces (.auth-*, .genre-chip(s), .toast, .screen-hidden).
-   Nothing in this file is reachable from index.html. Every selector
-   here is prefixed admin- (or scoped under .admin-shell) so nothing
-   collides with the consumer app's own .sidebar/.topbar/.avatar/.brand
-   rules elsewhere in styles.css. */
+/* Admin pages. Loaded with styles.css (tokens, fonts, .auth-*, .toast).
+   Everything is prefixed admin- so it can't clash with the app. */
 
 body.admin-page{
   display:block;
@@ -216,7 +202,7 @@ body.admin-page{
   font-size:21px;line-height:1;color:var(--text);margin-bottom:4px;
 }
 .admin-stat-body .admin-stat-caption{font-size:11px;color:var(--muted);}
-/* A stat card that opens another page (Dashboard "Total Revenue"). */
+/* Stat card that links to another page */
 a.admin-stat-card{text-decoration:none;color:inherit;transition:border-color .15s;}
 a.admin-stat-card:hover, a.admin-stat-card:focus-visible{border-color:var(--leaf);}
 .admin-stat-body .admin-stat-value + .admin-stat-value{margin-top:6px;}
@@ -297,9 +283,7 @@ table.admin-table tbody tr:hover{background:rgba(255,255,255,0.02);}
 }
 .admin-thumb.small{width:52px;height:32px;border-radius:6px;}
 
-/* Cover image file picker (Create Series + Series List edit forms) — a
-   real file upload to Supabase Storage's cover-images bucket in place
-   of the old plain URL text field, with a preview shown before saving. */
+/* Cover image picker with preview */
 .admin-cover-picker{display:flex;align-items:center;gap:12px;}
 .admin-cover-preview{
   width:64px;height:64px;border-radius:8px;flex-shrink:0;
@@ -310,9 +294,7 @@ table.admin-table tbody tr:hover{background:rgba(255,255,255,0.02);}
 .admin-row-sub{font-size:11.5px;color:var(--muted);margin-top:2px;}
 .admin-row-sub.admin-warn-text{color:#F2A0A0;font-weight:700;}
 
-/* Zero-episode warning — a series with no real episodes never appears
-   on the live app no matter its status, so this badge sits right next
-   to the Live/Draft status itself, not tucked away as a small aside. */
+/* No-episodes warning beside the Live/Draft status */
 .admin-warn-badge{
   display:inline-flex;align-items:center;gap:4px;
   margin-left:8px;
@@ -462,9 +444,7 @@ table.admin-table tbody tr:hover{background:rgba(255,255,255,0.02);}
 .admin-batch-summary.partial{color:#F2A0A0;}
 
 
-/* ---------- Revenue & Analytics (admin/revenue-analytics.html) ----------
-   Period choice, tabs, alert cards, plan list and the Recent purchases
-   table, which scrolls inside its own box. */
+/* ---------- Revenue (admin/revenue-analytics.html) ---------- */
 
 .admin-stats-row.cols-2{grid-template-columns:repeat(2, 1fr);}
 .rev-periods{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;}
@@ -519,7 +499,7 @@ table.admin-table tbody tr:hover{background:rgba(255,255,255,0.02);}
 .rev-failure{font-size:11px;color:var(--muted);max-width:260px;overflow-wrap:anywhere;}
 .rev-muted{color:var(--muted);}
 
-/* ---------- Line chart (real analytics — page_visits by day) ---------- */
+/* ---------- Line chart (visits by day) ---------- */
 
 .admin-line-chart{width:100%;}
 .admin-line-chart-svg{width:100%;height:220px;display:block;}
@@ -544,7 +524,7 @@ table.admin-table tbody tr:hover{background:rgba(255,255,255,0.02);}
 .admin-genre-card-name{font-weight:800;font-size:14px;color:var(--text);}
 .admin-genre-card-count{font-size:11.5px;color:var(--muted);margin-top:2px;}
 
-/* ---------- Episode list (episode management inside dashboard/episodes) ---------- */
+/* ---------- Episode list (dashboard / episodes) ---------- */
 
 .admin-episode-panel-select{margin-bottom:18px;max-width:360px;}
 
@@ -567,16 +547,7 @@ table.admin-table tbody tr:hover{background:rgba(255,255,255,0.02);}
 }
 
 /* ---------- Phone layout (<= 860px) ----------
-   Real mobile treatment, not a shrunk desktop:
-     1. the sidebar is a slide-in drawer opened from a sticky top bar
-        (markup + behaviour: setupAdminMobileNav in admin-shared.js);
-     2. every table becomes a stack of labelled cards, so nothing needs
-        sideways scrolling to be read or used;
-     3. form fields are 16px (below that, iOS zooms the page on focus)
-        and stack one per row;
-     4. buttons, switches and icon buttons are given real touch sizes
-        (see the touch block after this one).
-   Nothing is removed or hidden — every control on desktop is here too. */
+   Drawer sidebar, tables as stacked cards, 16px inputs (no iOS zoom) */
 @media (max-width: 860px){
   .admin-shell{flex-direction:column;}
 
@@ -634,12 +605,7 @@ table.admin-table tbody tr:hover{background:rgba(255,255,255,0.02);}
   }
   .admin-shell.nav-open .admin-drawer-backdrop{opacity:1;pointer-events:auto;}
   body.admin-nav-locked{overflow:hidden;}
-  /* The rule above only locks scrolling when <html> isn't a scroll container itself. It is
-     one here (styles.css sets overflow-x:hidden on html, which makes overflow-y auto), so on its
-     own the lock did nothing to the page and only appeared to work while a bug had the mouse
-     wheel dead everywhere. This line makes the lock reach the page: while the drawer is open the
-     page behind it can't scroll. Same class, same JS (setOpen in admin-shared.js) — nothing else
-     changed. */
+  /* html is a scroll container here (overflow-x:hidden), so lock it too while the drawer is open */
   html:has(body.admin-nav-locked){overflow:hidden;}
 
   .admin-nav-item{padding:12px 12px;white-space:normal;min-height:44px;box-sizing:border-box;text-decoration:none;}
@@ -690,13 +656,13 @@ table.admin-table tbody tr:hover{background:rgba(255,255,255,0.02);}
   .admin-settings-number{min-width:0;}
   .admin-settings-inline-form .admin-btn{flex-shrink:0;}
 
-  /* long unbroken text (an email address in a confirmation, a long title) must wrap, never push the page sideways */
+  /* long unbroken text wraps instead of pushing the page sideways */
   .admin-main p, .admin-main strong, .admin-main .auth-error, .admin-main .admin-row-sub, .admin-main .admin-helper-text, .admin-main .admin-panel-sub{overflow-wrap:anywhere;}
 
   /* charts */
   .admin-line-chart-svg{height:180px;}
 
-  /* revenue page: Recent purchases scrolls inside its own box (cards stack inside it) */
+  /* revenue: Recent purchases scrolls in its own box */
   .admin-table-wrap.rev-recent-scroll{max-height:70vh;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;}
   .rev-status-cell{align-items:flex-end;text-align:right;}
   .rev-failure{max-width:100%;}
@@ -753,10 +719,7 @@ table.admin-table tbody tr:hover{background:rgba(255,255,255,0.02);}
   .admin-batch-row-progress{order:5;}
 }
 
-/* ---------- Touch sizes ----------
-   Applies on any touch-first device, and at phone widths. 44px is the
-   usual minimum comfortable target; the desktop sizes above are for a
-   mouse pointer. */
+/* ---------- Touch sizes (44px targets) ---------- */
 @media (max-width: 860px), (pointer: coarse){
   .admin-btn, .admin-btn.small{min-height:44px;padding:10px 18px;font-size:13.5px;display:inline-flex;align-items:center;justify-content:center;}
   .admin-btn-ghost{min-height:48px;font-size:14px;}
@@ -764,7 +727,7 @@ table.admin-table tbody tr:hover{background:rgba(255,255,255,0.02);}
   .admin-badge.clickable{min-height:44px;padding:0 18px;display:inline-flex;align-items:center;font-size:12.5px;}
   .admin-icon-btn{min-width:44px;height:44px;width:auto;padding:0 12px;gap:6px;font-size:13px;font-weight:800;}
   .admin-icon-btn svg{width:18px;height:18px;}
-  /* on a phone there's no hover to reveal a tooltip, so show each icon button's name */
+  /* no hover on a phone: show each icon button's name */
   .admin-icon-btn[title]::after{content:attr(title);}
   .admin-switch{width:60px;height:44px;background:none;border:none;padding:0;position:relative;}
   .admin-switch::before{

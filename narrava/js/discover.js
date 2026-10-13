@@ -1,30 +1,12 @@
-// discover.js
-//
-// The "Home" tab: search + tabs (Popular / New / Rankings / Categories /
-// VIP) + a poster grid, all built from the same `slides` array app.js
-// already fetches from Supabase (one entry per series, holding that
-// series' first episode). No separate fetch for the grid itself — this
-// file only adds two more read-only queries, for genres and the
-// series<->genre links, needed by the Categories tab.
-//
-// Tapping a poster hands off to `openSeriesInFeed` (defined in app.js),
-// which reuses the feed's existing `goTo` navigation — that pattern
-// already existed, nothing new had to be invented for it.
+// Home: search, tabs and poster grid (mobile), hero and shelves (desktop), all from `slides`
 
 let genres = [];
 let seriesGenreMap = {}; // series id -> Set of genre ids
 
 let activeTab = 'popular';
 
-// Rankings (mobile Rankings tab + desktop Top shelf): the real order
-// from get_series_rankings — real views, already sorted server-side and
-// never re-sorted here. Each row is matched to a series already in
-// `slides`; an id the app doesn't have (not published / not loaded) is
-// simply skipped. rank is the position in that matched list, fixed —
-// a search on the tab filters rows but never renumbers them.
-//   'loading' -> skeleton cards
-//   'ready'   -> rankedItems: [{ slide, rank, views }]
-//   'failed'  -> the tab/shelf's previous unranked behaviour, said plainly
+// Rankings from get_series_rankings (sorted server-side; search never renumbers).
+// 'loading' | 'ready' (rankedItems: [{ slide, rank, views }]) | 'failed'
 let rankingsState = 'loading';
 let rankedItems = [];
 const RANKINGS_TIMEOUT_MS = 10000;
@@ -42,12 +24,7 @@ function posterArtSrc(slide){
   return (slide.art && slide.art.type === 'img') ? slide.art.src : '';
 }
 
-// Shared by the mobile tabs+grid below and the desktop shelves — one
-// card markup, not two, so both ever look and behave identically.
-// `ranking` ({ rank, views }) is only passed for Rankings/Top cards: a
-// rank badge plus the real view count, top-left, always visible (the
-// desktop shelf hides .poster-title until hover, so these can't live
-// inside it).
+// One card markup for the grid and the shelves. ranking ({ rank, views }) adds the badge.
 function posterCardHtml(slide, locked, ranking){
   const src = posterArtSrc(slide);
   const img = src ? '<img src="' + src + '" alt="">' : '';
@@ -66,7 +43,7 @@ function posterCardHtml(slide, locked, ranking){
   '</div>';
 }
 
-// "1,204 views" / "1 view" / "0 views" — the real number, grouped.
+// "1,204 views" / "1 view"
 function formatViews(n){
   const v = Number(n) || 0;
   return v.toLocaleString('en-US') + (v === 1 ? ' view' : ' views');
@@ -74,10 +51,7 @@ function formatViews(n){
 
 async function loadRankings(){
   try {
-    // app.js resolves slidesReady only after bootstrapAnonymousSession —
-    // get_series_rankings refuses a caller with no session at all
-    // ("permission denied", seen live on a first-ever visit), so this
-    // must not run before that. Matching also needs the loaded series.
+    // get_series_rankings needs a session: wait for the anonymous sign-in
     await slidesReady;
     const { data, error } = await withTimeout(
       supabaseClient.rpc('get_series_rankings', { result_limit: 100 }),
@@ -88,7 +62,7 @@ async function loadRankings(){
     const items = [];
     data.forEach(row => {
       const slide = slides.find(s => s.id === row.series_id);
-      if(!slide) return; // not a series this app has loaded — skip, don't invent one
+      if(!slide) return; // not loaded here: skip
       items.push({ slide, rank: items.length + 1, views: row.views });
     });
     rankedItems = items;
@@ -118,10 +92,7 @@ function currentTabSlides(){
       return false;
     });
   }
-  // popular, vip (and rankings when its real order couldn't be
-  // loaded): whatever order the series query returned, no invented
-  // ranking of any kind. A loaded Rankings tab doesn't use this list
-  // at all — see renderRankingsBody.
+  // Query order, no ranking
 
   return list.filter(matchesSearch);
 }
@@ -133,15 +104,7 @@ function renderPosterGrid(list, locked){
   return '<div class="poster-grid">' + list.map(s => posterCardHtml(s, locked)).join('') + '</div>';
 }
 
-// Mobile-only Popular tab layout: two larger feature cards, then a tight
-// 3-column grid for the next nine, then a roomier 2-column grid for
-// everything after that — matches the real reference screenshots.
-// Desktop is untouched: styles.css collapses all three containers back
-// to the same uniform grid `.poster-grid` already uses there, so the
-// desktop "View all" expanded view looks exactly as it did before.
-// Naturally adapts to however many real series actually exist — with
-// under 11 series (true for every series in this app today) the roomy
-// tier is simply empty, nothing invented to fill it.
+// Mobile Popular layout: 2 feature cards, a 3-column grid of 9, then 2 columns
 function renderPopularGrid(list, locked){
   if(list.length === 0){
     return '<div class="discover-empty">No series match right now.</div>';
@@ -157,10 +120,7 @@ function renderPopularGrid(list, locked){
   return html;
 }
 
-// Rankings tab: skeleton while loading, the real ranked list once
-// loaded, and — if the load failed — the tab's previous plain list with
-// a note saying so, never stuck on the skeleton. Returns null in the
-// failed case so renderDiscoverBody falls through to its normal grid.
+// Rankings tab body; null on failure so the normal grid shows
 function renderRankingsBody(){
   if(rankingsState === 'loading'){
     return '<div class="poster-grid">' + skeletonPosterGridHtml(6) + '</div>';
@@ -175,7 +135,7 @@ function renderDiscoverBody(){
   let html = '';
 
   if(activeTab === 'rankings' && rankingsState === 'failed'){
-    html += '<div class="discover-note">Couldn\'t load rankings right now — showing all series instead.</div>';
+    html += '<div class="discover-note">Couldn’t load rankings. Showing all series.</div>';
   }
 
   if(activeTab === 'categories'){
@@ -207,9 +167,7 @@ function renderDiscoverBody(){
 
   discoverBody.querySelectorAll('.poster-card:not(.skeleton-block)').forEach(card => {
     card.addEventListener('click', () => {
-      // VIP gating isn't real yet — posters in this tab are a visual
-      // placeholder only; tapping one says so with the same "Coming
-      // soon" toast every other unbuilt item uses.
+      // VIP posters: not built yet
       if(activeTab === 'vip'){ showToast('Coming soon'); return; }
       openSeriesInFeed(parseInt(card.dataset.slideIndex, 10));
     });
@@ -226,31 +184,16 @@ function renderDiscoverBody(){
 }
 
 // ================= Desktop shelves =================
-//
-// Replaces the mobile tabs+grid on desktop with a stack of named
-// horizontal shelves (New Release / Top / one per genre in use) —
-// confirmed against real reelshort.com screenshots. Built entirely
-// from data already loaded here (`slides`, `genres`, `seriesGenreMap`),
-// no second fetch, no second "what's featured/new" concept.
-//
-// A genre with zero series tagged simply doesn't get a shelf — same
-// honesty rule as everywhere else in this app: never render an empty
-// shelf just to fill out the row of names from the reference site.
+// New Release, Top, one per genre in use (no empty shelves)
 
 function shelvesData(){
   const shelves = [];
 
-  // New Release: same "newest first" ordering the mobile New tab
-  // already uses — not a second definition of what "new" means.
+  // Newest first, same as the New tab
   const newRelease = slides.slice().sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
   if(newRelease.length) shelves.push({ key: 'new', title: 'New Release', items: newRelease });
 
-  // Top: the same real view ranking as the mobile Rankings tab
-  // (rankedItems, from get_series_rankings — never re-sorted here).
-  // Skeleton cards while it loads. If it failed to load, falls back to
-  // the shelf's previous order — featured series first (featured_at, a
-  // real admin decision), everything else after — and the caption says
-  // plainly that it isn't ranked by views.
+  // Top: Rankings order; skeleton while loading; featured-first fallback if it failed
   if(rankingsState === 'loading'){
     shelves.push({ key: 'top', title: 'Top', loading: true, items: [] });
   } else if(rankingsState === 'ready'){
@@ -267,13 +210,13 @@ function shelvesData(){
       shelves.push({
         key: 'top',
         title: 'Top',
-        caption: 'Couldn\'t load view counts — featured series shown first, not ranked by views',
+        caption: 'Couldn’t load views. Featured series first.',
         items: top
       });
     }
   }
 
-  // One shelf per genre that actually has at least one series tagged.
+  // Genres with at least one series
   genres.forEach(g => {
     const items = slides.filter(s => seriesGenreMap[s.id] && seriesGenreMap[s.id].has(g.id));
     if(items.length) shelves.push({ key: 'genre:' + g.id, title: g.name, items: items });
@@ -282,8 +225,7 @@ function shelvesData(){
   return shelves;
 }
 
-// Same arrow markup/style as the hero carousel's own next button — see
-// .shelf-arrow / body.discover-active .hero-carousel-next in styles.css.
+// Same arrows as the hero carousel
 const SHELF_ARROW_LEFT_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>';
 const SHELF_ARROW_RIGHT_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>';
 
@@ -306,10 +248,7 @@ function shelfHtml(shelf){
   '</div>';
 }
 
-// One shelf's worth of cards scrolled per click — plain scrollBy, no
-// second carousel mechanism invented for this (the hero filmstrip's own
-// autoplay/drag logic is unrelated and untouched). Arrows hide
-// themselves at whichever end there's genuinely nothing left to scroll.
+// Scroll one shelf width per click; arrows hide at the ends
 function wireShelfArrows(wrap){
   const row = wrap.querySelector('.shelf-row');
   const leftBtn = wrap.querySelector('.shelf-arrow-left');
@@ -347,12 +286,7 @@ function renderShelves(){
   discoverShelves.querySelectorAll('.shelf-row-wrap').forEach(wireShelfArrows);
 }
 
-// "View all" doesn't build a second grid — it reuses the exact same
-// tabs+grid the mobile screen already has, just expanded to fill the
-// desktop column in place of the shelves, with a way back. Genre
-// shelves land on the existing Categories tab with that one genre
-// already selected, New Release lands on the existing New tab, and Top
-// lands on the Rankings tab — the same real view ranking, as a grid.
+// "View all": expand the mobile tabs+grid on the matching tab
 function expandShelf(key){
   if(key === 'new'){
     activeTab = 'new';
@@ -375,17 +309,7 @@ if(discoverBackToShelves){
   });
 }
 
-// Desktop-only featured banner above the tabs (hidden on mobile via
-// CSS). Built from the same `slides` app.js already loaded — no extra
-// fetch. `featured_at` (set via Supabase, no admin UI for it yet) is
-// the only source of truth for what's featured; nothing here invents a
-// second curation concept.
-//
-// Driven by a thumbnail filmstrip instead of arrows/dots (matching
-// narrava-desktop-mockup.html): the strip is built once, then clicking
-// a thumbnail (or autoplay advancing on its own) just swaps the bg
-// image / title / tags / synopsis text in place — same pattern as the
-// reference's renderHero(i)/setActive(i)/scrollTrackTo(i).
+// Desktop hero banner with a thumbnail filmstrip (featured_at decides what's featured)
 let heroItems = [];
 let activeHeroIndex = 0;
 let heroAutoplayTimer = null;
@@ -396,11 +320,7 @@ const HERO_VISIBLE = 4;
 let heroBgEl, heroTitleEl, heroTagsEl, heroDescEl, heroLeftEl, heroTrackEl;
 let heroThumbEls = [];
 
-// Up to appSettings.featured_series_count (app_settings, System
-// Settings — see app.js's loadAppSettings; real admin panel now exists
-// to set this) series with a non-null featured_at, most recently
-// featured first. If none are featured yet, fall back to one random
-// series so the hero never just goes blank.
+// Up to featured_series_count featured series, newest first; one random series if none
 function pickHeroItems(){
   const count = (typeof appSettings.featured_series_count === 'number' && appSettings.featured_series_count >= 0)
     ? appSettings.featured_series_count
@@ -415,10 +335,7 @@ function pickHeroItems(){
   return [ slides[Math.floor(Math.random() * slides.length)] ];
 }
 
-// Tags are real genres already linked to this series (seriesGenreMap,
-// loaded in initDiscover below) — not the reference's invented
-// "Trending"/"Female" labels. A series with no genre tagged yet simply
-// shows no tags, same honesty rule as everywhere else in this app.
+// Tags = genres linked to the series
 function heroTagsFor(slide){
   const ids = seriesGenreMap[slide.id];
   if(!ids || ids.size === 0) return [];
@@ -449,7 +366,7 @@ function setActiveHero(i){
   heroThumbEls.forEach((el, idx) => el.classList.toggle('active', idx === i));
   updateHeroContent(i);
   scrollHeroTrackTo(i);
-  if(heroAutoplayTimer) startHeroAutoplay(); // reset countdown after any change
+  if(heroAutoplayTimer) startHeroAutoplay(); // reset the countdown
 }
 
 function startHeroAutoplay(){
@@ -529,12 +446,7 @@ function renderHero(){
 }
 
 // ================= VIP tab =================
-//
-// Shown only while app_settings.vip_section_enabled is on (System
-// Settings → VIP Section). VIP means an active yearly plan:
-// my_subscription()'s own is_vip (isVipMember, coins.js). The card says
-// only that — no perks are listed until they're agreed. The posters
-// below it keep their "Coming soon" toast.
+// Shown while vip_section_enabled is on. VIP = active yearly plan (isVipMember).
 const VIP_CROWN_SVG = '<svg viewBox="0 0 24 24" fill="#E8B85C"><path d="M3 8l4.5 4L12 5l4.5 7L21 8l-2 11H5L3 8z"/></svg>';
 
 function vipCardHtml(){
@@ -559,7 +471,7 @@ function applyVipSectionSetting(){
   }
 }
 
-// VIP status loads/changes after Home first renders — repaint the card.
+// Repaint the VIP card when status loads/changes
 document.addEventListener('narrava:coins-changed', () => {
   if(activeTab === 'vip') renderDiscoverBody();
 });
@@ -577,44 +489,19 @@ discoverSearchInput.addEventListener('input', () => {
   renderDiscoverBody();
 });
 
-// Desktop: the fixed top bar fades from transparent-over-the-hero to a
-// solid background once scrolled past it — one scroll listener toggling
-// one body class, not a second layout. discoverScreen (the `.discover`
-// element itself) is the thing that actually scrolls now (see styles.css
-// body.discover-active .discover); it's already declared in app.js.
-// No-ops harmlessly on mobile, where `.discover` itself never scrolls
-// (the mobile tabs+grid scrolls via .discover-body instead).
+// Desktop: solid top bar once scrolled past the hero
 discoverScreen.addEventListener('scroll', () => {
   const heroHeight = discoverHero ? discoverHero.offsetHeight : 0;
   document.body.classList.toggle('discover-scrolled', discoverScreen.scrollTop > heroHeight - 80);
 });
 
 // ================= Top bar search (desktop) =================
-//
-// The icon in the top bar (see app.js openTopbarSearch/closeTopbarSearch)
-// takes over the whole nav row with this input and dims the page behind
-// it — matching reelshort.com's own search behaviour, checked directly
-// rather than assumed, rather than a small dropdown under a still-
-// visible nav bar. Shares the exact same `searchQuery` state and
-// `matchesSearch()` predicate as discoverSearchInput above — typing here
-// also keeps the mobile/expanded-grid view in sync via the same
-// renderDiscoverBody() call — this is one search implementation with two
-// trigger elements, not two separate searches.
-// topbarSearchInput is already declared in app.js (it wires the icon
-// that opens/closes search) — reused here as-is, not redeclared.
+// Shares searchQuery and matchesSearch() with the mobile search
 const topbarSearchInputWrap = document.getElementById('topbarSearchInputWrap');
 const topbarSearchClear = document.getElementById('topbarSearchClear');
 const topbarSearchGrid = document.getElementById('topbarSearchGrid');
 
-// A real grid of series thumbnails + titles, shown as-is before anyone
-// types (matchesSearch returns true for everything on an empty query)
-// and live-filtered down to real matches as they type — the same
-// matchesSearch() predicate the mobile bar and Categories tab already
-// use, rendered as thumbnail+title+tags rows (2 per row), matching the
-// real site's own results layout. Genre tags reuse heroTagsFor (real
-// seriesGenreMap links, already used by the hero) — no view counts or
-// rankings, since there's no real data behind those, unlike the real
-// site's own view-count/rank numbers.
+// Results grid: every series before typing, filtered as they type
 function searchGridCardHtml(slide){
   const src = posterArtSrc(slide);
   const img = src ? '<img src="' + src + '" alt="">' : '';
@@ -661,21 +548,7 @@ topbarSearchClear.addEventListener('click', () => {
 });
 
 // ================= Mobile floating "Continue Watching" bar =================
-//
-// Small, fixed bar just above the bottom nav (see .cw-float in
-// styles.css) — NOT part of the scrolling page, unlike the row of cards
-// this replaces. Shows only the single most recently watched series
-// (highest updated_at among continueWatchingMap's rows — see app.js),
-// only on the mobile Home screen (CSS gates it to body.discover-active,
-// and hides it outright on desktop alongside .bottomnav itself), only
-// for a signed-in viewer who's actually watched something —
-// get_continue_watching (untouched, see watch-progress.js) already does
-// that filtering server-side, so an empty map here means exactly that,
-// never "still loading".
-//
-// Tapping Continue reuses openSeriesInFeed (app.js) — the exact same
-// silent-resume path any other poster/hero tap uses. There is no second
-// resume mechanism here; this bar is only ever a shortcut into it.
+// Most recently watched series, mobile Home only
 const cwFloatEl = document.getElementById('cwFloat');
 
 function mostRecentContinueWatchingItem(){
@@ -686,13 +559,7 @@ function mostRecentContinueWatchingItem(){
   return best;
 }
 
-// Dismissing hides this one series' bar only for right now, in this
-// page instance — plain in-memory state, nothing written to
-// localStorage/sessionStorage/the DB. A fresh reload has no memory of
-// the dismissal at all: if there's still real progress behind it,
-// get_continue_watching returns it again and the bar shows again, same
-// as if it had never been dismissed. This is a convenience nudge, not a
-// setting — there's nothing to persist.
+// Dismissed for this page load only
 const dismissedThisPageLoad = new Set();
 
 function renderContinueWatchingBar(){
@@ -730,39 +597,20 @@ function renderContinueWatchingBar(){
 }
 
 async function initDiscover(){
-  // Real maintenance mode check — same one real appSettingsReady/
-  // appSettings app.js's own init() already awaits and checks first;
-  // registered right after app.js's own equivalent check, so if
-  // maintenance mode is on, app.js's init() has already replaced the
-  // real page with the honest back-soon screen by the time this runs,
-  // and this never writes so much as a loading spinner into what's now
-  // a page that no longer exists.
+  // Maintenance on: app.js already replaced the page
   await appSettingsReady;
   if(appSettings.maintenance_mode_enabled) return;
-  // Opened with no connection: Home is the "You're offline" state
-  // (offline.js) — no skeletons, nothing to fetch.
+  // Offline start: nothing to fetch
   if(appStartedOffline) return;
   applyVipSectionSetting();
 
-  // Real loading state for Home's own real first wait — genres, the
-  // genre links, and `slides` itself (app.js) are all real reads still
-  // in flight the moment this screen is ever seen. Which of these three
-  // containers is actually the visible one depends on device width/state
-  // (mobile always shows tabs+discoverBody; desktop's default view shows
-  // discoverHero+discoverShelves instead) — existing CSS already decides
-  // which, this just makes sure whichever one that is doesn't sit blank
-  // in the meantime. Content-shaped skeletons (shared-utils.js) in each,
-  // one shared center logo over all three rather than three separate
-  // ones — hidden again the moment the real render calls below run,
-  // whatever they actually found (including nothing).
+  // Skeletons in whichever Home containers are visible, one shared logo
   showSkeletonLogo();
   if(discoverHero) discoverHero.innerHTML = skeletonHomeHeroHtml();
   if(discoverShelves) discoverShelves.innerHTML = skeletonHomeShelvesHtml();
   if(discoverBody) discoverBody.innerHTML = '<div class="poster-grid">' + skeletonPosterGridHtml(6) + '</div>';
 
-  // Started now, in parallel with everything else; the Rankings tab and
-  // Top shelf show skeleton cards until it settles (success or failure),
-  // then both re-render below — independent of the rest of Home.
+  // Rankings load in parallel; tab and Top shelf re-render when settled
   const rankingsLoaded = loadRankings();
 
   const [genreRows, links] = await Promise.all([fetchGenres(), fetchSeriesGenres()]);
@@ -772,11 +620,11 @@ async function initDiscover(){
     seriesGenreMap[link.series_id].add(link.genre_id);
   });
 
-  await slidesReady; // app.js: don't render the grid until slides exist
+  await slidesReady; // wait for slides
   renderHero();
   renderShelves();
   renderDiscoverBody();
-  renderTopbarSearchGrid(); // unfiltered by default — every real series, no invented ranking
+  renderTopbarSearchGrid();
   hideSkeletonLogo();
 
   rankingsLoaded.then(() => {
@@ -784,7 +632,7 @@ async function initDiscover(){
     if(activeTab === 'rankings') renderDiscoverBody();
   });
 
-  await continueWatchingReady; // app.js: don't render the bar until it has real data
+  await continueWatchingReady; // wait for Continue Watching data
   renderContinueWatchingBar();
 }
 

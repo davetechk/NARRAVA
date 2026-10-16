@@ -142,10 +142,20 @@ Browser (static files in narrava/)          Supabase                       Bunny
 **Running it locally:** serve the `narrava/` folder with any static file server (for example
 `python -m http.server` from inside `narrava/`) and open it over `http://localhost`. Don't open
 `index.html` straight from disk: the service worker and the Supabase calls need a real origin.
-There is no deploy configuration in this repo, so where it's hosted isn't recorded here.
+It's hosted on Vercel with `narrava/` as the site root. `narrava/vercel.json` adds
+`X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`,
+`X-Frame-Options: DENY` and a `Content-Security-Policy-Report-Only` (logs violations to the
+console, blocks nothing yet). Live Server doesn't send these headers.
 
-**External libraries**, loaded from a CDN in the HTML: `supabase-js` v2 (floating on the v2
-major), `hls.js` 1.5.17, and `tus-js-client` 4.2.2 (admin pages that upload video).
+**External libraries**, loaded from a CDN in the HTML: `supabase-js` 2.117.3, `hls.js` 1.5.17,
+and `tus-js-client` 4.2.2 (admin pages that upload video). All are pinned to an exact version
+with an `integrity` hash and `crossorigin="anonymous"`. To upgrade one, change the version on
+every page (and in `CDN_URLS` in `sw.js` for supabase-js and hls.js), then replace the hash:
+`curl -s <url> | openssl dgst -sha384 -binary | openssl base64 -A`.
+
+**Database text in HTML:** anything from the database (titles, genre names, tags, cover URLs)
+that goes into `innerHTML` or an attribute goes through `escapeHtml` (`shared-utils.js`), which
+escapes `& < > " '`.
 
 ## The consumer app
 
@@ -410,6 +420,9 @@ Videos are stored and encoded on Bunny Stream. The `episodes` table stores each 
    - About 30 seconds before expiry, the player fetches a fresh signed URL and swaps the
      signature in for future requests, without interrupting playback. (On native-HLS Safari the
      only way is to reassign `src`, so it saves and restores the position and paused state.)
+     If the expiry is missing or not a number, it refreshes after 9 minutes instead.
+   - A 401/403 mid-play triggers an immediate refresh. If that's refused, the player shows the
+     "couldn't load" state.
 4. **A refusal is final.** If the function says no, the code never falls back to another URL.
 5. If loading fails, it retries up to 3 times with 1s / 2s / 4s waits, then shows a "couldn't
    load, retry" state.
@@ -685,8 +698,8 @@ body-level popup, so it works from any screen.
   Paystack confirms. On `onSuccess` the sheet shows "Confirming your payment…" and polls
   `purchases.status` for that `paystack_reference` every 2 s for up to 60 s:
   - `completed`: balance and unlocks are refreshed, then "Coins added".
-  - `refunding` / `refunded` / `refund_failed`: "Naira payments need a Nigerian card. Your payment
-    is being refunded."
+  - `refunding` / `refunded` / `refund_failed`: "Your payment is being refunded." (The poll reads
+    only `status`, so it doesn't know why.)
   - `failed`: "The payment didn't go through. No coins were added."
   - still `pending` after 60 s: "Payment received, your coins will appear shortly." The foreground
     balance refresh picks the coins up later.
@@ -1215,7 +1228,7 @@ Home Screen web apps use an opaque status bar in some situations; either way `bl
 
 **1. The service worker can keep serving old files after you deploy.** `sw.js` answers requests
 for the app's own files from its cache first and only goes to the network when it has nothing
-cached. The cache name is currently `narrava-shell-v42` and old caches are deleted only when the name
+cached. The cache name is currently `narrava-shell-v44` and old caches are deleted only when the name
 *changes*. So after changing any app file, people who have already visited can keep getting the
 old version. **Bump `CACHE_NAME` in `sw.js` whenever you ship a change.** The service worker's
 scope is the whole `narrava/` folder, so this affects the **admin pages too**, not only the

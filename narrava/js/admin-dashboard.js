@@ -66,7 +66,7 @@ function dashFilteredSeries(){
 function seriesPreviewRowHtml(series){
   const genreIds = dashSeriesGenres[series.id] || new Set();
   const isFeatured = !!series.featured_at;
-  const cover = series.cover_image_url ? 'background-image:url(\'' + series.cover_image_url.replace(/'/g, '') + '\');' : '';
+  const cover = series.cover_image_url ? 'background-image:url(\'' + escapeHtml(series.cover_image_url.replace(/'/g, '')) + '\');' : '';
 
   return '<tr>' +
     '<td><div class="admin-row-cell"><div class="admin-thumb" style="' + cover + '"></div><span class="admin-row-title">' + escapeHtml(series.title) + '</span></div></td>' +

@@ -1,12 +1,12 @@
 // Service worker: installability, cache-first app shell, downloads cache.
 // Bump CACHE_NAME on every release. DOWNLOADS_CACHE is never deleted.
 
-const CACHE_NAME = 'narrava-shell-v42';
+const CACHE_NAME = 'narrava-shell-v44';
 const DOWNLOADS_CACHE = 'narrava-offline-v1'; // same name in js/downloads.js
 
 // CDN files the app can't start without
 const CDN_URLS = [
-  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js',
+  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js',
   'https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js'
 ];
 

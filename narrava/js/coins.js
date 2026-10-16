@@ -521,7 +521,7 @@ async function confirmPurchase(kind, reference){
       return;
     }
     if(status === 'refunding' || status === 'refunded' || status === 'refund_failed'){
-      setPurchase({ kind, phase: 'done', tone: 'warn', message: 'Naira payments need a Nigerian card. Your payment is being refunded.' });
+      setPurchase({ kind, phase: 'done', tone: 'warn', message: 'Your payment is being refunded.' });
       return;
     }
     if(status === 'failed'){

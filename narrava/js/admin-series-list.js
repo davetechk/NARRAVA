@@ -38,7 +38,7 @@ function seriesRowHtml(series){
   const isFeatured = !!series.featured_at;
   const episodeCount = slEpisodeCounts[series.id] || 0;
   const hasNoEpisodes = episodeCount === 0;
-  const cover = series.cover_image_url ? 'background-image:url(\'' + series.cover_image_url.replace(/'/g, '') + '\');' : '';
+  const cover = series.cover_image_url ? 'background-image:url(\'' + escapeHtml(series.cover_image_url.replace(/'/g, '')) + '\');' : '';
 
   // A series with no episodes never shows in the app, so flag it
   const noEpisodesNote = hasNoEpisodes
@@ -78,7 +78,7 @@ function editRowHtml(series){
         '<textarea class="auth-input" rows="3" id="editDescription-' + series.id + '" required>' + escapeHtml(series.description) + '</textarea>' +
         '<label class="auth-label">Cover Image</label>' +
         '<div class="admin-cover-picker">' +
-          '<div class="admin-cover-preview" id="editCoverPreview-' + series.id + '"' + (series.cover_image_url ? ' style="background-image:url(\'' + series.cover_image_url.replace(/'/g, '') + '\')"' : '') + '></div>' +
+          '<div class="admin-cover-preview" id="editCoverPreview-' + series.id + '"' + (series.cover_image_url ? ' style="background-image:url(\'' + escapeHtml(series.cover_image_url.replace(/'/g, '')) + '\')"' : '') + '></div>' +
           '<button type="button" class="admin-btn-link" id="editCoverFileBtn-' + series.id + '">Change Image</button>' +
           '<input type="file" id="editCoverFile-' + series.id + '" accept="image/*" hidden>' +
         '</div>' +

@@ -290,7 +290,7 @@ async function openWatchScreen(slideIndex, resume){
   watchPlayerHost.innerHTML = '<div class="watch-player-loading">' + narravaLoaderHtml('pulse') + '</div>';
   watchBreadcrumbEl.innerHTML = 'Home / ' + escapeWatchHtml(slide.title) + ' / <span>…</span>';
   watchTitleEl.textContent = slide.title;
-  watchTagsEl.innerHTML = heroTagsFor(slide).map(t => '<span class="watch-tag">' + t + '</span>').join('');
+  watchTagsEl.innerHTML = heroTagsFor(slide).map(t => '<span class="watch-tag">' + escapeHtml(t) + '</span>').join('');
   watchLikeBtn.classList.toggle('active', slide.liked);
   watchLikeCount.textContent = String(slide.likes);
   watchSaveBtn.classList.toggle('active', slide.saved);

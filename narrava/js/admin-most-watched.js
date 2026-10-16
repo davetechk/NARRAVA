@@ -4,7 +4,7 @@ let mwRows = [];
 
 function mostWatchedRowHtml(row, rank){
   const isPublished = row.status === 'published';
-  const cover = row.cover_image_url ? 'background-image:url(\'' + row.cover_image_url.replace(/'/g, '') + '\');' : '';
+  const cover = row.cover_image_url ? 'background-image:url(\'' + escapeHtml(row.cover_image_url.replace(/'/g, '')) + '\');' : '';
 
   return '<tr>' +
     '<td>' + rank + '</td>' +

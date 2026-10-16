@@ -1,0 +1,16 @@
+{
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        { "key": "X-Frame-Options", "value": "DENY" },
+        {
+          "key": "Content-Security-Policy-Report-Only",
+          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://js.paystack.co https://securepubads.g.doubleclick.net https://*.googlesyndication.com https://*.google.com; connect-src 'self' https://bzbowtnupdduakoghtqf.supabase.co wss://bzbowtnupdduakoghtqf.supabase.co https://*.b-cdn.net https://video.bunnycdn.com https://api.paystack.co https://*.doubleclick.net https://*.google.com; media-src 'self' blob: https://*.b-cdn.net; img-src 'self' data: blob: https://bzbowtnupdduakoghtqf.supabase.co https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; frame-src https://checkout.paystack.com https://*.doubleclick.net https://*.googlesyndication.com https://*.google.com; frame-ancestors 'none'; base-uri 'self'; object-src 'none'"
+        }
+      ]
+    }
+  ]
+}

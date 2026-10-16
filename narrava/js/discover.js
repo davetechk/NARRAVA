@@ -27,7 +27,7 @@ function posterArtSrc(slide){
 // One card markup for the grid and the shelves. ranking ({ rank, views }) adds the badge.
 function posterCardHtml(slide, locked, ranking){
   const src = posterArtSrc(slide);
-  const img = src ? '<img src="' + src + '" alt="">' : '';
+  const img = src ? '<img src="' + escapeHtml(src) + '" alt="">' : '';
   const lock = locked
     ? '<div class="poster-lock"><svg viewBox="0 0 24 24" fill="#E8B85C"><path d="M6 10V8a6 6 0 0112 0v2h1a1 1 0 011 1v9a1 1 0 01-1 1H5a1 1 0 01-1-1v-9a1 1 0 011-1h1zm2 0h8V8a4 4 0 00-8 0v2z"/></svg></div>'
     : '';
@@ -39,7 +39,7 @@ function posterCardHtml(slide, locked, ranking){
     : '';
   return '<div class="poster-card' + (locked ? ' locked' : '') + '" data-slide-index="' + slides.indexOf(slide) + '">' +
     img + lock + rank +
-    '<div class="poster-title">' + slide.title + '</div>' +
+    '<div class="poster-title">' + escapeHtml(slide.title) + '</div>' +
   '</div>';
 }
 
@@ -143,7 +143,7 @@ function renderDiscoverBody(){
       html += '<div class="discover-note">No categories set up yet.</div>';
     } else {
       html += '<div class="genre-chips">' + genres.map(g =>
-        '<button class="genre-chip' + (selectedGenreIds.has(g.id) ? ' active' : '') + '" data-genre-id="' + g.id + '">' + g.name + '</button>'
+        '<button class="genre-chip' + (selectedGenreIds.has(g.id) ? ' active' : '') + '" data-genre-id="' + g.id + '">' + escapeHtml(g.name) + '</button>'
       ).join('') + '</div>';
     }
   }
@@ -233,7 +233,7 @@ function shelfHtml(shelf){
   return '<div class="shelf">' +
     '<div class="shelf-head">' +
       '<div class="shelf-title-group">' +
-        '<h3 class="shelf-title">' + shelf.title + '</h3>' +
+        '<h3 class="shelf-title">' + escapeHtml(shelf.title) + '</h3>' +
         (shelf.caption ? '<span class="shelf-caption">' + shelf.caption + '</span>' : '') +
       '</div>' +
       '<button type="button" class="shelf-viewall" data-shelf-key="' + shelf.key + '">View all ›</button>' +
@@ -349,7 +349,7 @@ function updateHeroContent(i){
     const src = posterArtSrc(s);
     heroBgEl.style.backgroundImage = src ? "url('" + src + "')" : 'none';
     heroTitleEl.textContent = s.title;
-    heroTagsEl.innerHTML = heroTagsFor(s).map(t => '<span class="hero-tag">' + t + '</span>').join('');
+    heroTagsEl.innerHTML = heroTagsFor(s).map(t => '<span class="hero-tag">' + escapeHtml(t) + '</span>').join('');
     heroDescEl.textContent = s.synopsis;
     heroLeftEl.style.opacity = 1;
   }, 150);
@@ -416,10 +416,10 @@ function renderHero(){
 
   heroThumbEls = heroItems.map((s, i) => {
     const src = posterArtSrc(s);
-    const img = src ? '<img src="' + src + '" alt="">' : '';
+    const img = src ? '<img src="' + escapeHtml(src) + '" alt="">' : '';
     const el = document.createElement('div');
     el.className = 'hero-thumb' + (i === 0 ? ' active' : '');
-    el.innerHTML = img + '<div class="hero-thumb-title">' + s.title + '</div>';
+    el.innerHTML = img + '<div class="hero-thumb-title">' + escapeHtml(s.title) + '</div>';
     el.addEventListener('click', () => setActiveHero(i));
     heroTrackEl.appendChild(el);
     return el;
@@ -504,15 +504,15 @@ const topbarSearchGrid = document.getElementById('topbarSearchGrid');
 // Results grid: every series before typing, filtered as they type
 function searchGridCardHtml(slide){
   const src = posterArtSrc(slide);
-  const img = src ? '<img src="' + src + '" alt="">' : '';
+  const img = src ? '<img src="' + escapeHtml(src) + '" alt="">' : '';
   const tags = heroTagsFor(slide);
   const tagsHtml = tags.length
-    ? '<div class="search-grid-tags">' + tags.map(t => '<span class="search-grid-tag">' + t + '</span>').join('') + '</div>'
+    ? '<div class="search-grid-tags">' + tags.map(t => '<span class="search-grid-tag">' + escapeHtml(t) + '</span>').join('') + '</div>'
     : '';
   return '<button type="button" class="search-grid-card" data-slide-index="' + slides.indexOf(slide) + '">' +
     '<div class="search-grid-thumb">' + img + '</div>' +
     '<div class="search-grid-info">' +
-      '<div class="search-grid-title">' + slide.title + '</div>' +
+      '<div class="search-grid-title">' + escapeHtml(slide.title) + '</div>' +
       tagsHtml +
     '</div>' +
   '</button>';
@@ -522,7 +522,7 @@ function renderTopbarSearchGrid(){
   const matches = slides.filter(matchesSearch);
   topbarSearchGrid.innerHTML = matches.length
     ? matches.map(searchGridCardHtml).join('')
-    : '<div class="topbar-search-empty">No matches' + (searchQuery ? ' for "' + searchQuery + '"' : '') + '.</div>';
+    : '<div class="topbar-search-empty">No matches' + (searchQuery ? ' for "' + escapeHtml(searchQuery) + '"' : '') + '.</div>';
 
   topbarSearchGrid.querySelectorAll('.search-grid-card').forEach(card => {
     card.addEventListener('click', () => {
@@ -576,7 +576,7 @@ function renderContinueWatchingBar(){
 
   const art = posterArtSrc(slide);
   cwFloatEl.innerHTML =
-    (art ? '<img class="cw-float-thumb" src="' + art + '" alt="">' : '<div class="cw-float-thumb"></div>') +
+    (art ? '<img class="cw-float-thumb" src="' + escapeHtml(art) + '" alt="">' : '<div class="cw-float-thumb"></div>') +
     '<div class="cw-float-info">' +
       '<div class="cw-float-title">' + escapeHtml(slide.title) + '</div>' +
       '<div class="cw-float-ep">EP ' + item.episode_number + ' / EP ' + slide.totalEp + '</div>' +

@@ -746,7 +746,7 @@ function buildSpine(currentEp,totalEp){
 
 function setArt(art){
   if(art.type === 'img'){
-    bgvideo.innerHTML = '<img src="' + art.src + '" style="width:100%;height:100%;object-fit:cover;display:block;">';
+    bgvideo.innerHTML = '<img src="' + escapeHtml(art.src) + '" style="width:100%;height:100%;object-fit:cover;display:block;">';
   } else {
     bgvideo.innerHTML = art.markup;
   }
@@ -1049,7 +1049,7 @@ function render(){
   // Only load media while the feed is visible
   if(!feed.classList.contains('screen-hidden')) renderMedia(s);
   epBadge.textContent = s.epBadge;
-  titleEl.innerHTML = s.title.replace('\n','<br>');
+  titleEl.innerHTML = escapeHtml(s.title).replace('\n','<br>');
   synopsisEl.textContent = s.synopsis;
   likeCount.textContent = s.likes;
   likeBtn.classList.toggle('liked', s.liked);

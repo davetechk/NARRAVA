@@ -2,6 +2,7 @@
 // auth refresh before expiry, bounded retries, view counting
 const MAX_LOAD_RETRIES = 3;
 const RETRY_BACKOFF_MS = [1000, 2000, 4000];
+const DEFAULT_REFRESH_MS = 9 * 60 * 1000;
 
 // {playbackUrl, expiresAt}, or null on any refusal (never fall back to another URL)
 async function fetchSignedPlaybackUrl(episodeId){
@@ -63,12 +64,13 @@ async function attachEpisodePlayback(videoEl, episodeId, onFailure){
     return null; // no HLS support
   }
 
-  // New signed URL ~30s before expiry, or on a 401/403.
+  // New signed URL ~30s before expiry, or on a 401/403. false if refused.
   // Safari: reassign src and restore time/paused state.
   async function refreshAuth(){
-    if(destroyed || isLocal) return;
+    if(destroyed || isLocal) return true;
     const fresh = await fetchSignedPlaybackUrl(episodeId);
-    if(destroyed || !fresh) return; // no longer playable
+    if(destroyed) return true;
+    if(!fresh) return false; // no longer playable
     authQuery = new URL(fresh.playbackUrl).search;
     scheduleRefresh(fresh.expiresAt);
     if(usingNativeHls){
@@ -81,13 +83,17 @@ async function attachEpisodePlayback(videoEl, episodeId, onFailure){
         if(!wasPaused) videoEl.play();
       });
     }
+    return true;
   }
 
   function scheduleRefresh(expiresAt){
     if(refreshTimer) clearTimeout(refreshTimer);
     if(isLocal) return;
-    const msUntilExpiry = expiresAt * 1000 - Date.now();
-    const delay = Math.max(msUntilExpiry - 30000, 5000);
+    // Missing or bad expiry: refresh in ~9 min, not in a loop
+    const exp = expiresAt == null ? NaN : Number(expiresAt);
+    const delay = Number.isFinite(exp) && exp > 0
+      ? Math.max(exp * 1000 - Date.now() - 30000, 5000)
+      : DEFAULT_REFRESH_MS;
     refreshTimer = setTimeout(refreshAuth, delay);
   }
   scheduleRefresh(signed.expiresAt);
@@ -106,8 +112,8 @@ async function attachEpisodePlayback(videoEl, episodeId, onFailure){
     hls.on(Hls.Events.ERROR, (_evt, data) => {
       const unauthorized = !isLocal && data && data.response && (data.response.code === 401 || data.response.code === 403);
       if(unauthorized){
-        // Lost the race against expiry: refresh now
-        refreshAuth();
+        // Lost the race against expiry: refresh now, give up if refused
+        refreshAuth().then(ok => { if(!ok) failPermanently(); });
         return;
       }
       if(!(data && data.fatal)) return;
